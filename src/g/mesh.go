@@ -40,10 +40,8 @@ func AddMeshNode(name, addr string) {
 	member, ok := Cfg.Network[addr]
 	if !ok {
 		member = NetworkMember{Name: name, Addr: addr, Pingmesh: true, Ping: []string{}, Topology: []map[string]string{}}
-	} else if member.Name != "" {
-		// 节点已存在: 保留主节点上的现有名字(重复 join/重启不覆盖页面上的改名)
-		name = member.Name
 	}
+	// 显式 join 提供的名字生效(重启重放旧参数的场景由 agent 侧参数指纹拦截)
 	member.Name = name
 	member.Addr = addr
 	member.Pingmesh = true
