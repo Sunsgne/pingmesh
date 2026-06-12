@@ -68,7 +68,7 @@
           <div class="hint">逗号分隔。白名单中的 IP 无需登录即可访问（兼容旧版）</div>
         </div>
         <div class="field" style="grid-column:1 / -1;margin-bottom:0">
-          <label style="font-size:14px">探测参数（毫秒级，适配 IPLC / IEPL 专线监控）</label>
+          <label style="font-size:14px">探测参数 — 全局默认（毫秒级，可在「节点管理」按链路单独覆盖）</label>
           <div class="hint">专线建议: 间隔 200~500ms、超时 500~1000ms、包数 50~100；普通互联网链路保持默认即可。间隔×包数 ≤ 55 秒（每分钟一轮聚合入库）</div>
         </div>
         <div class="field">
@@ -452,6 +452,8 @@
           <input type="number" class="input" id="ta-num" value="3" style="width:70px;padding:4px 8px" title="触发次数">
           <span class="muted" style="font-size:11px">次</span>
           <input type="text" class="input mono" id="ta-src" placeholder="源IP" style="width:120px;padding:4px 8px" title="探测源IP(双网口分路), 留空不套用">
+          <input type="number" class="input" id="ta-pint" placeholder="间隔" style="width:70px;padding:4px 8px" title="链路探测间隔(ms), 留空不套用">
+          <input type="number" class="input" id="ta-pcnt" placeholder="包数" style="width:65px;padding:4px 8px" title="链路探测包数, 留空不套用">
           <button class="btn primary sm" id="ta-apply">套用到已勾选</button>
           <span class="muted" id="t-count" style="font-size:12px;margin-left:auto"></span>
         </div>
@@ -462,6 +464,7 @@
             <th style="width:100px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING</th>
             <th>延迟(ms)</th><th>丢包(%)</th><th title="抖动阈值, 留空不检查; IPLC/IEPL 专线建议 5~20ms">抖动(ms)</th><th>窗口(秒)</th><th>次数</th>
             <th title="双网口分路监控: 指定从本节点哪个网口IP发起探测(公网口/专线口), 留空走系统默认路由">源IP</th>
+            <th title="按链路覆盖探测间隔/包数/超时/包大小, 未设置时使用基础设置中的全局默认">探测参数</th>
           </tr></thead>
           <tbody id="n-targets"></tbody>
         </table>
@@ -1020,7 +1023,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             });
             box.append('<tr class="t-group" data-g="' + SP.esc(gname) + '" style="background:#f8fafc">' +
                 '<td style="text-align:center"><input type="checkbox" class="g-on" title="勾选整组"></td>' +
-                '<td colspan="8"><b style="font-size:12px">' + SP.esc(gname) + '</b> <span class="muted" style="font-size:11px">' + rows.length + ' 个节点</span></td></tr>');
+                '<td colspan="9"><b style="font-size:12px">' + SP.esc(gname) + '</b> <span class="muted" style="font-size:11px">' + rows.length + ' 个节点</span></td></tr>');
             $.each(rows, function (_, pair) {
                 var addr = pair[0], other = pair[1];
                 var t = topoMap[addr] || {};
@@ -1043,11 +1046,20 @@ SP.init('config', '系统配置').done(function (ctx) {
                     '<td><input type="number" class="input t-jitter" style="padding:4px 8px" placeholder="可空" value="' + (t['Thdjitter'] || '') + '"></td>' +
                     '<td><input type="number" class="input t-sec" style="padding:4px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
                     '<td><input type="number" class="input t-num" style="padding:4px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td>' +
-                    '<td><input type="text" class="input mono t-src" style="padding:4px 8px;min-width:110px" placeholder="默认" value="' + SP.esc(t['Srcip'] || '') + '"></td></tr>');
+                    '<td><input type="text" class="input mono t-src" style="padding:4px 8px;min-width:110px" placeholder="默认" value="' + SP.esc(t['Srcip'] || '') + '"></td>' +
+                    '<td style="white-space:nowrap"><a class="t-probe-toggle">' + probeSummary(t) + '</a></td></tr>');
+                box.append('<tr class="t-probe-row" data-pa="' + SP.esc(addr) + '" style="display:none;background:#f8fafc">' +
+                    '<td></td><td colspan="9" style="padding:8px 12px">' +
+                    '<span class="muted" style="font-size:12px;margin-right:6px">本链路探测参数(留空=全局默认):</span>' +
+                    '间隔 <input type="number" class="input p-interval" style="width:90px;padding:3px 8px" placeholder="' + (cfg.Base['Pinginterval'] || 3000) + '" value="' + SP.esc(t['Pinterval'] || '') + '"> ms　' +
+                    '包数 <input type="number" class="input p-count" style="width:75px;padding:3px 8px" placeholder="' + (cfg.Base['Pingcount'] || 20) + '" value="' + SP.esc(t['Pcount'] || '') + '">　' +
+                    '超时 <input type="number" class="input p-timeout" style="width:90px;padding:3px 8px" placeholder="' + (cfg.Base['Pingtimeout'] || 3000) + '" value="' + SP.esc(t['Ptimeout'] || '') + '"> ms　' +
+                    '包大小 <input type="number" class="input p-size" style="width:80px;padding:3px 8px" placeholder="' + (cfg.Base['Pingsize'] || 56) + '" value="' + SP.esc(t['Psize'] || '') + '"> 字节' +
+                    '</td></tr>');
             });
         });
         if (box.children().length === 0) {
-            box.append('<tr><td colspan="9" class="muted" style="padding:14px">暂无其他节点，请先添加</td></tr>');
+            box.append('<tr><td colspan="10" class="muted" style="padding:14px">暂无其他节点，请先添加</td></tr>');
         }
         syncGroupChecks();
         updateCount();
@@ -1068,11 +1080,32 @@ SP.init('config', '系统配置').done(function (ctx) {
         if (cnt === 0) box.append('<tr><td class="muted" style="padding:14px">暂无探测节点</td></tr>');
     }
 
+    /* 链路探测参数: 摘要与展开 */
+    function probeSummary(t) {
+        var has = (t['Pinterval'] || t['Pcount'] || t['Ptimeout'] || t['Psize']);
+        if (!has) return '<span class="muted">默认 &#9662;</span>';
+        return '<span class="badge indigo" style="font-size:10px">' +
+            (t['Pinterval'] || '默') + 'ms×' + (t['Pcount'] || '默') + ' / ' + (t['Ptimeout'] || '默') + 'ms / ' + (t['Psize'] || '默') + 'B</span> &#9662;';
+    }
+    $('#n-targets').on('click', '.t-probe-toggle', function () {
+        $(this).closest('tr').next('.t-probe-row').toggle();
+    });
+    $('#n-targets').on('change keyup', '.t-probe-row input', function () {
+        var row = $(this).closest('tr');
+        var t = {
+            'Pinterval': $.trim(row.find('.p-interval').val()), 'Pcount': $.trim(row.find('.p-count').val()),
+            'Ptimeout': $.trim(row.find('.p-timeout').val()), 'Psize': $.trim(row.find('.p-size').val())
+        };
+        row.prev().find('.t-probe-toggle').html(probeSummary(t));
+    });
+
     /* 搜索过滤 */
     $('#t-search').bind('keyup input', function () {
         var q = $.trim($(this).val()).toLowerCase();
         $('#n-targets tr[data-a]').each(function () {
-            $(this).toggle(q === '' || ($(this).attr('data-s') || '').indexOf(q) >= 0);
+            var vis = (q === '' || ($(this).attr('data-s') || '').indexOf(q) >= 0);
+            $(this).toggle(vis);
+            if (!vis) $(this).next('.t-probe-row').hide();
         });
         // 组内全部隐藏时隐藏组头
         $('#n-targets tr.t-group').each(function () {
@@ -1115,6 +1148,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         var d = $('#ta-delay').val(), l = $('#ta-loss').val(), s = $('#ta-sec').val(), c = $('#ta-num').val();
         var j = $.trim($('#ta-jitter').val());
         var sip = $.trim($('#ta-src').val());
+        var pint = $.trim($('#ta-pint').val()), pcnt = $.trim($('#ta-pcnt').val());
         var n = 0;
         $('#n-targets tr[data-a]').each(function () {
             if (!$(this).find('.t-on').is(':checked')) return;
@@ -1122,6 +1156,9 @@ SP.init('config', '系统配置').done(function (ctx) {
             $(this).find('.t-sec').val(s); $(this).find('.t-num').val(c);
             if (j !== '') $(this).find('.t-jitter').val(j);
             if (sip !== '') $(this).find('.t-src').val(sip);
+            var pr = $(this).next('.t-probe-row');
+            if (pint !== '') pr.find('.p-interval').val(pint).trigger('change');
+            if (pcnt !== '') pr.find('.p-count').val(pcnt).trigger('change');
             n++;
         });
         SP.toast('已套用阈值到 ' + n + ' 个目标', 'ok');
@@ -1227,7 +1264,11 @@ SP.init('config', '系统配置').done(function (ctx) {
             'Thdjitter': $.trim(tr ? (tr.find('.t-jitter').val() || '') : ''),
             'Thdchecksec': String(tr ? (tr.find('.t-sec').val() || 900) : 900),
             'Thdoccnum': String(tr ? (tr.find('.t-num').val() || 3) : 3),
-            'Srcip': $.trim(tr ? (tr.find('.t-src').val() || '') : '')
+            'Srcip': $.trim(tr ? (tr.find('.t-src').val() || '') : ''),
+            'Pinterval': $.trim(tr ? tr.next('.t-probe-row').find('.p-interval').val() || '' : ''),
+            'Pcount': $.trim(tr ? tr.next('.t-probe-row').find('.p-count').val() || '' : ''),
+            'Ptimeout': $.trim(tr ? tr.next('.t-probe-row').find('.p-timeout').val() || '' : ''),
+            'Psize': $.trim(tr ? tr.next('.t-probe-row').find('.p-size').val() || '' : '')
         };
     }
 
