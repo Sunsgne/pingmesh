@@ -78,14 +78,18 @@
     <!-- 节点管理 -->
     <div class="tab-pane" id="tab-nodes">
       <div class="card-body" style="padding-bottom:0">
-        <div class="flex mb-4">
-          <span class="muted">共 <b id="node-count">0</b> 个节点。开启「探测」的节点会主动 PING 其监测目标并参与 Pingmesh 汇总</span>
+        <div class="flex mb-2">
+          <span class="muted">共 <b id="node-count">0</b> 个节点</span>
           <span class="spacer"></span>
           <button class="btn primary sm" id="node-add-btn">+ 添加节点</button>
         </div>
+        <div class="muted mb-4" style="font-size:12.5px;background:var(--sp-primary-soft);border-radius:8px;padding:10px 14px;line-height:1.8">
+          <b>探测节点</b>=部署了 PingMesh 的机器，主动 PING 别人；<b>被测目标</b>=网关/DNS/服务器等，只被 PING。<br>
+          <b>单向监测</b>：编辑探测节点 → 勾选「我监测它」。<b>互 PING</b>：两个探测节点之间再勾选「互PING」即可，无需分别编辑两个节点。
+        </div>
       </div>
       <table class="sp-table">
-        <thead><tr><th>节点名称</th><th>IP 地址</th><th>探测</th><th>监测目标数</th><th style="width:170px">操作</th></tr></thead>
+        <thead><tr><th>节点名称</th><th>IP 地址</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
         <tbody id="nodelist"></tbody>
       </table>
     </div>
@@ -159,13 +163,25 @@
       </div>
     </div>
 
-    <!-- 全国延迟 -->
-    <div class="tab-pane card-body" id="tab-chinamap">
-      <div class="muted mb-4" style="font-size:13px">
-        各地区按线路配置探测 IP。格式: { "地区": { "线路名": ["探测IP"] } }。<br>
-        地区使用<b>英文国家/地区名</b>(如 United States、Japan、Singapore)才能在世界地图上着色; 线路名称任意(如 骨干网、精品网)。
+    <!-- 全球延迟 -->
+    <div class="tab-pane" id="tab-chinamap">
+      <div class="card-body" style="padding-bottom:0">
+        <div class="flex mb-4">
+          <span class="muted" style="font-size:12.5px">
+            地区使用<b>英文国家/地区名</b>（United States、Japan、Singapore...）才能在世界地图着色，线路名称任意（骨干网 / 精品网 / CN2...）
+          </span>
+          <span class="spacer"></span>
+          <button class="btn sm" id="gm-import-btn">批量导入</button>
+          <button class="btn primary sm" id="gm-add-btn">+ 添加探测点</button>
+        </div>
       </div>
-      <textarea class="input" id="f-chinamap" rows="18" spellcheck="false"></textarea>
+      <table class="sp-table">
+        <thead><tr><th>地区</th><th>线路</th><th>探测 IP</th><th style="width:150px">操作</th></tr></thead>
+        <tbody id="gm-list"></tbody>
+      </table>
+      <div class="empty-state" id="gm-empty" style="display:none">
+        <div class="big">&#127757;</div>尚未配置探测点，点击「添加探测点」或「批量导入」
+      </div>
     </div>
 
     <!-- 高级 -->
@@ -220,36 +236,108 @@
   </div>
 </div>
 
+<!-- 全球延迟: 添加/编辑探测点 -->
+<div class="sp-modal-mask" id="gm-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3 id="gm-modal-title">添加探测点</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="field">
+        <label>地区（英文国家/地区名，可着色到世界地图）</label>
+        <input type="text" class="input" id="gm-region" list="gm-countries" placeholder="如: United States">
+        <datalist id="gm-countries">
+          <option value="China"><option value="United States"><option value="Japan"><option value="South Korea">
+          <option value="Singapore"><option value="India"><option value="Thailand"><option value="Vietnam">
+          <option value="Indonesia"><option value="Malaysia"><option value="Philippines"><option value="Australia">
+          <option value="Germany"><option value="France"><option value="United Kingdom"><option value="Netherlands">
+          <option value="Italy"><option value="Spain"><option value="Russia"><option value="Turkey">
+          <option value="Brazil"><option value="Mexico"><option value="Canada"><option value="Argentina">
+          <option value="South Africa"><option value="Egypt"><option value="Saudi Arabia"><option value="United Arab Emirates">
+        </datalist>
+      </div>
+      <div class="field">
+        <label>线路名称</label>
+        <input type="text" class="input" id="gm-line" placeholder="如: 骨干网 / 精品网 / CN2">
+      </div>
+      <div class="field">
+        <label>探测 IP（多个用逗号、空格或换行分隔，取多 IP 平均值）</label>
+        <textarea class="input mono" id="gm-ips" rows="3" placeholder="8.8.8.8, 8.8.4.4"></textarea>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="gm-save">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 全球延迟: 批量导入 -->
+<div class="sp-modal-mask" id="gm-import-modal">
+  <div class="sp-modal lg">
+    <div class="m-head"><h3>批量导入探测点</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="muted mb-2" style="font-size:12.5px;line-height:1.8">
+        支持两种格式，自动识别、与现有配置合并去重：<br>
+        1. <b>CSV</b>（每行一条）：<span class="mono">地区,线路,IP1,IP2...</span>　例如 <span class="mono">United States,骨干网,8.8.8.8,8.8.4.4</span><br>
+        2. <b>JSON</b>：<span class="mono">{ "地区": { "线路": ["IP", ...] } }</span>
+      </div>
+      <textarea class="input mono" id="gm-import-text" rows="12" spellcheck="false"
+        placeholder="United States,骨干网,8.8.8.8&#10;Japan,骨干网,129.250.35.250&#10;Singapore,精品网,1.1.1.1"></textarea>
+      <div class="hint mt-2" id="gm-import-result"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="gm-import-save">解析并导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 节点编辑 -->
 <div class="sp-modal-mask" id="node-modal">
   <div class="sp-modal lg">
     <div class="m-head"><h3 id="node-modal-title">添加节点</h3><button class="m-close">&times;</button></div>
     <div class="m-body">
-      <div class="grid cols-3">
-        <div class="field">
+      <div class="grid cols-2 mb-2">
+        <div class="field" style="margin-bottom:0">
           <label>节点名称</label>
-          <input type="text" class="input" id="n-name" placeholder="如: 北京机房">
+          <input type="text" class="input" id="n-name" placeholder="如: 北京机房 / 核心网关">
         </div>
-        <div class="field">
+        <div class="field" style="margin-bottom:0">
           <label>IP 地址</label>
           <input type="text" class="input mono" id="n-addr" placeholder="如: 10.0.0.1">
-        </div>
-        <div class="field">
-          <label>主动探测 (Smartping)</label><br>
-          <label class="switch" style="margin-top:6px"><input type="checkbox" id="n-smartping"><span class="track"></span></label>
-          <span class="hint" style="display:inline;margin-left:8px">该节点部署了 PingMesh 探针</span>
+          <div class="hint" id="n-addr-hint" style="display:none">修改 IP 后，其他节点对它的监测关系会自动跟随更新</div>
         </div>
       </div>
+
+      <div class="field">
+        <label>节点类型</label>
+        <div class="grid cols-2" style="gap:10px">
+          <label class="type-opt" id="type-probe">
+            <input type="radio" name="n-type" value="probe" style="margin-right:8px">
+            <b>探测节点</b>
+            <span class="hint" style="display:block;margin-top:3px">部署了 PingMesh 程序，会主动 PING 监测目标，并出现在 Pingmesh 矩阵的「源」中</span>
+          </label>
+          <label class="type-opt" id="type-target">
+            <input type="radio" name="n-type" value="target" style="margin-right:8px">
+            <b>被测目标</b>
+            <span class="hint" style="display:block;margin-top:3px">仅作为被 PING 的对象（网关 / DNS / 服务器等），不需要部署任何程序</span>
+          </label>
+        </div>
+      </div>
+
       <div id="n-targets-box">
-        <label style="display:block;font-size:13px;font-weight:600;color:var(--sp-text-2);margin:8px 0">监测目标与报警阈值</label>
+        <label style="display:block;font-size:13px;font-weight:600;color:var(--sp-text-2);margin:8px 0">本节点监测哪些目标</label>
         <table class="sp-table">
           <thead><tr>
-            <th style="width:36px">监测</th><th>目标节点</th>
-            <th>延迟阈值(ms)</th><th>丢包阈值(%)</th><th>检测窗口(秒)</th><th>达标次数</th>
+            <th style="width:64px">我监测它</th><th>目标节点</th>
+            <th style="width:110px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING <span class="muted">(它也监测我)</span></th>
+            <th>延迟阈值(ms)</th><th>丢包阈值(%)</th><th>检测窗口(秒)</th><th>触发次数</th>
           </tr></thead>
           <tbody id="n-targets"></tbody>
         </table>
-        <div class="hint mt-2">在「检测窗口」时间内，延迟或丢包超过阈值的次数少于「达标次数」时触发报警</div>
+        <div class="hint mt-2">
+          单向监测：勾选「我监测它」即可。互 PING：目标也是探测节点时，再勾选「互PING」，双方会互相监测（对方使用默认阈值）。<br>
+          报警规则：在「检测窗口」时间内，延迟或丢包超过阈值的次数达到「触发次数」即报警。
+        </div>
       </div>
     </div>
     <div class="m-foot">
@@ -258,6 +346,14 @@
     </div>
   </div>
 </div>
+<style>
+.type-opt {
+  display: block; border: 1px solid var(--sp-border); border-radius: 10px;
+  padding: 12px 14px; cursor: pointer; transition: all .15s; font-size: 13.5px;
+}
+.type-opt:hover { border-color: var(--sp-primary-2); }
+.type-opt.active { border-color: var(--sp-primary); background: var(--sp-primary-soft); }
+</style>
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/app.js"></script>
@@ -302,12 +398,150 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-emailaccount').val(cfg.Alert['SendEmailAccount']);
         $('#f-emailpassword').val(cfg.Alert['SendEmailPassword']);
         $('#f-emaillist').val(cfg.Alert['RevcEmailList']);
-        $('#f-chinamap').val(JSON.stringify(cfg.Chinamap, null, 2));
         $('#f-jointoken').val(cfg.Password || '');
         renderNodes();
         renderJoin();
         renderChannels();
+        renderGmap();
     }
+
+    /* ----- 全球延迟探测点 ----- */
+    var editingGm = null; // [region, line]
+
+    function renderGmap() {
+        if (!cfg.Chinamap) cfg.Chinamap = {};
+        var box = $('#gm-list').empty();
+        var cnt = 0;
+        var regions = [];
+        $.each(cfg.Chinamap, function (r) { regions.push(r); });
+        regions.sort();
+        $.each(regions, function (_, region) {
+            var lines = [];
+            $.each(cfg.Chinamap[region], function (l) { lines.push(l); });
+            lines.sort();
+            $.each(lines, function (_, line) {
+                cnt++;
+                var ips = cfg.Chinamap[region][line] || [];
+                box.append('<tr>' +
+                    '<td><b>' + SP.esc(region) + '</b></td>' +
+                    '<td><span class="badge indigo">' + SP.esc(line) + '</span></td>' +
+                    '<td class="mono" style="font-size:12px">' + SP.esc(ips.join(', ')) + '</td>' +
+                    '<td><button class="btn sm gm-edit" data-r="' + SP.esc(region) + '" data-l="' + SP.esc(line) + '">编辑</button> ' +
+                    '<button class="btn sm ghost-danger gm-del" data-r="' + SP.esc(region) + '" data-l="' + SP.esc(line) + '">删除</button></td></tr>');
+            });
+        });
+        $('#gm-empty').toggle(cnt === 0);
+        $('.gm-edit').click(function () { openGm($(this).attr('data-r'), $(this).attr('data-l')); });
+        $('.gm-del').click(function () {
+            var r = $(this).attr('data-r'), l = $(this).attr('data-l');
+            SP.confirm('删除探测点', '确定删除「' + r + ' / ' + l + '」吗？', function () {
+                delete cfg.Chinamap[r][l];
+                var empty = true;
+                $.each(cfg.Chinamap[r], function () { empty = false; return false; });
+                if (empty) delete cfg.Chinamap[r];
+                renderGmap();
+                SP.toast('已从工作副本删除，记得点击「保存配置」', 'ok');
+            });
+        });
+    }
+
+    function openGm(region, line) {
+        editingGm = region ? [region, line] : null;
+        $('#gm-modal-title').text(region ? '编辑探测点 - ' + region + ' / ' + line : '添加探测点');
+        $('#gm-region').val(region || '');
+        $('#gm-line').val(line || '骨干网');
+        $('#gm-ips').val(region ? (cfg.Chinamap[region][line] || []).join(', ') : '');
+        SP.openModal('gm-modal');
+    }
+    $('#gm-add-btn').click(function () { openGm(null, null); });
+    $('#gm-modal .m-cancel').click(function () { SP.closeModal('gm-modal'); });
+
+    function parseIps(text) {
+        var out = [], seen = {};
+        $.each(text.split(/[\s,;，；]+/), function (_, ip) {
+            ip = $.trim(ip);
+            if (ip === '' || seen[ip]) return;
+            if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) { throw new Error('非法 IP: ' + ip); }
+            seen[ip] = true;
+            out.push(ip);
+        });
+        return out;
+    }
+
+    $('#gm-save').click(function () {
+        var region = $.trim($('#gm-region').val());
+        var line = $.trim($('#gm-line').val());
+        if (!region || !line) { SP.toast('请填写地区与线路', 'err'); return; }
+        var ips;
+        try { ips = parseIps($('#gm-ips').val()); }
+        catch (e) { SP.toast(e.message, 'err'); return; }
+        if (ips.length === 0) { SP.toast('请至少填写一个探测 IP', 'err'); return; }
+        if (editingGm && (editingGm[0] !== region || editingGm[1] !== line)) {
+            delete cfg.Chinamap[editingGm[0]][editingGm[1]];
+            var empty = true;
+            $.each(cfg.Chinamap[editingGm[0]], function () { empty = false; return false; });
+            if (empty) delete cfg.Chinamap[editingGm[0]];
+        }
+        if (!cfg.Chinamap[region]) cfg.Chinamap[region] = {};
+        cfg.Chinamap[region][line] = ips;
+        SP.closeModal('gm-modal');
+        renderGmap();
+        SP.toast('已更新工作副本，记得点击「保存配置」', 'ok');
+    });
+
+    /* 批量导入: 自动识别 JSON / CSV */
+    $('#gm-import-btn').click(function () {
+        $('#gm-import-text').val('');
+        $('#gm-import-result').text('');
+        SP.openModal('gm-import-modal');
+    });
+    $('#gm-import-modal .m-cancel').click(function () { SP.closeModal('gm-import-modal'); });
+    $('#gm-import-save').click(function () {
+        var text = $.trim($('#gm-import-text').val());
+        if (!text) { SP.toast('请粘贴导入内容', 'err'); return; }
+        var added = 0, errors = [];
+        function mergeOne(region, line, ips) {
+            if (!cfg.Chinamap[region]) cfg.Chinamap[region] = {};
+            if (!cfg.Chinamap[region][line]) cfg.Chinamap[region][line] = [];
+            $.each(ips, function (_, ip) {
+                if ($.inArray(ip, cfg.Chinamap[region][line]) < 0) {
+                    cfg.Chinamap[region][line].push(ip);
+                    added++;
+                }
+            });
+        }
+        if (text.charAt(0) === '{') {
+            try {
+                var obj = JSON.parse(text);
+                $.each(obj, function (region, lines) {
+                    $.each(lines, function (line, ips) { mergeOne(region, line, parseIps((ips || []).join(','))); });
+                });
+            } catch (e) { $('#gm-import-result').html('<span style="color:var(--sp-red)">JSON 解析失败: ' + SP.esc(e.message) + '</span>'); return; }
+        } else {
+            $.each(text.split('\n'), function (i, lineTxt) {
+                lineTxt = $.trim(lineTxt);
+                if (lineTxt === '') return;
+                var parts = lineTxt.split(/[,，]/);
+                if (parts.length < 3) { errors.push('第' + (i + 1) + '行: 字段不足(需 地区,线路,IP...)'); return; }
+                try {
+                    var ips = parseIps(parts.slice(2).join(','));
+                    if (ips.length === 0) { errors.push('第' + (i + 1) + '行: 无有效 IP'); return; }
+                    mergeOne($.trim(parts[0]), $.trim(parts[1]), ips);
+                } catch (e) { errors.push('第' + (i + 1) + '行: ' + e.message); }
+            });
+        }
+        if (errors.length > 0) {
+            $('#gm-import-result').html('<span style="color:var(--sp-red)">' + SP.esc(errors.join('；')) + '</span>');
+            if (added === 0) return;
+        }
+        renderGmap();
+        if (added > 0) {
+            SP.closeModal('gm-import-modal');
+            SP.toast('成功导入 ' + added + ' 个探测 IP，记得点击「保存配置」', 'ok');
+        } else if (errors.length === 0) {
+            $('#gm-import-result').html('内容均已存在，无新增');
+        }
+    });
 
     /* ----- 节点接入 ----- */
     function renderJoin() {
@@ -452,13 +686,20 @@ SP.init('config', '系统配置').done(function (ctx) {
     function renderNodes() {
         var box = $('#nodelist').empty();
         var cnt = 0;
+        // 统计每个节点被多少探测节点监测
+        var watchedBy = {};
+        $.each(cfg.Network, function (_, n) {
+            if (!n.Smartping) return;
+            $.each(n.Ping || [], function (_, t) { watchedBy[t] = (watchedBy[t] || 0) + 1; });
+        });
         $.each(cfg.Network, function (addr, n) {
             cnt++;
             box.append('<tr>' +
                 '<td><b>' + SP.esc(n.Name) + '</b>' + (addr === cfg.Addr ? ' <span class="badge indigo">本机</span>' : '') + '</td>' +
                 '<td class="mono">' + SP.esc(addr) + '</td>' +
-                '<td>' + (n.Smartping ? '<span class="badge green"><span class="dot"></span>开启</span>' : '<span class="badge gray">关闭</span>') + '</td>' +
-                '<td>' + (n.Ping || []).length + '</td>' +
+                '<td>' + (n.Smartping ? '<span class="badge green"><span class="dot"></span>探测节点</span>' : '<span class="badge gray">被测目标</span>') + '</td>' +
+                '<td>' + (n.Smartping ? (n.Ping || []).length + ' 个' : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (watchedBy[addr] ? watchedBy[addr] + ' 个节点' : '<span class="badge yellow" title="没有任何探测节点监测它">未被监测</span>') + '</td>' +
                 '<td><button class="btn sm n-edit" data-a="' + SP.esc(addr) + '">编辑</button> ' +
                 '<button class="btn sm ghost-danger n-del" data-a="' + SP.esc(addr) + '">删除</button></td></tr>');
         });
@@ -480,15 +721,26 @@ SP.init('config', '系统配置').done(function (ctx) {
     }
 
     /* ----- node modal ----- */
+    function nodeType() { return $('input[name="n-type"]:checked').val() || 'target'; }
+    function setNodeType(t) {
+        $('input[name="n-type"][value="' + t + '"]').prop('checked', true);
+        $('.type-opt').removeClass('active');
+        $('#type-' + t).addClass('active');
+        $('#n-targets-box').toggle(t === 'probe');
+    }
+    $('input[name="n-type"]').change(function () { setNodeType($(this).val()); });
+
     function openNode(addr) {
         editingAddr = addr;
-        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Smartping: true, Ping: [], Topology: [] };
+        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Smartping: false, Ping: [], Topology: [] };
         $('#node-modal-title').text(addr ? '编辑节点 - ' + n.Name : '添加节点');
         $('#n-name').val(n.Name);
-        $('#n-addr').val(n.Addr).attr('disabled', !!addr);
-        $('#n-smartping').prop('checked', !!n.Smartping);
+        // 本机节点的 IP 与 Cfg.Addr 绑定, 需在「基础设置」中修改; 其他节点 IP 可直接改
+        $('#n-addr').val(n.Addr).attr('disabled', addr === cfg.Addr)
+            .attr('title', addr === cfg.Addr ? '本机 IP 请在「基础设置」中修改' : '');
+        $('#n-addr-hint').toggle(!!addr && addr !== cfg.Addr);
+        setNodeType(addr ? (n.Smartping ? 'probe' : 'target') : 'probe');
         renderTargets(n);
-        toggleTargets();
         SP.openModal('node-modal');
     }
 
@@ -500,55 +752,90 @@ SP.init('config', '系统配置').done(function (ctx) {
             if (addr === n.Addr && n.Addr !== '') return;
             var t = topoMap[addr] || {};
             var checked = $.inArray(addr, n.Ping || []) >= 0 || !!topoMap[addr];
+            var mutualCell;
+            if (other.Smartping) {
+                var mutualOn = n.Addr !== '' && $.inArray(n.Addr, other.Ping || []) >= 0;
+                mutualCell = '<td style="text-align:center"><input type="checkbox" class="t-mutual"' + (mutualOn ? ' checked' : '') + '></td>';
+            } else {
+                mutualCell = '<td style="text-align:center"><span class="muted" title="对方是被测目标, 无法反向监测">—</span></td>';
+            }
             box.append('<tr data-a="' + SP.esc(addr) + '">' +
-                '<td><input type="checkbox" class="t-on"' + (checked ? ' checked' : '') + '></td>' +
-                '<td><b>' + SP.esc(other.Name) + '</b> <span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
+                '<td style="text-align:center"><input type="checkbox" class="t-on"' + (checked ? ' checked' : '') + '></td>' +
+                '<td><b>' + SP.esc(other.Name) + '</b> ' +
+                (other.Smartping ? '<span class="badge indigo" style="font-size:10px">探测节点</span> ' : '') +
+                '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
+                mutualCell +
                 '<td><input type="number" class="input t-delay" style="padding:5px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
                 '<td><input type="number" class="input t-loss" style="padding:5px 8px" value="' + (t['Thdloss'] || 30) + '"></td>' +
                 '<td><input type="number" class="input t-sec" style="padding:5px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
                 '<td><input type="number" class="input t-num" style="padding:5px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td></tr>');
         });
         if (box.children().length === 0) {
-            box.append('<tr><td colspan="6" class="muted">暂无其他节点，请先添加</td></tr>');
+            box.append('<tr><td colspan="7" class="muted">暂无其他节点，请先添加</td></tr>');
         }
     }
-
-    function toggleTargets() {
-        $('#n-targets-box').toggle($('#n-smartping').is(':checked'));
-    }
-    $('#n-smartping').change(toggleTargets);
 
     $('#node-add-btn').click(function () { openNode(null); });
     $('#node-modal .m-cancel').click(function () { SP.closeModal('node-modal'); });
 
+    function topoEntry(addr, name, tr) {
+        return {
+            'Addr': addr, 'Name': name,
+            'Thdavgdelay': String(tr ? (tr.find('.t-delay').val() || 200) : 200),
+            'Thdloss': String(tr ? (tr.find('.t-loss').val() || 30) : 30),
+            'Thdchecksec': String(tr ? (tr.find('.t-sec').val() || 900) : 900),
+            'Thdoccnum': String(tr ? (tr.find('.t-num').val() || 3) : 3)
+        };
+    }
+
     $('#n-save').click(function () {
         var name = $.trim($('#n-name').val());
         var addr = $.trim($('#n-addr').val());
-        var smart = $('#n-smartping').is(':checked');
+        var probe = nodeType() === 'probe';
         if (!name) { SP.toast('请输入节点名称', 'err'); return; }
         if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) { SP.toast('请输入合法的 IPv4 地址', 'err'); return; }
-        if (!editingAddr && cfg.Network[addr]) { SP.toast('该 IP 节点已存在', 'err'); return; }
+        if (addr !== editingAddr && cfg.Network[addr]) { SP.toast('该 IP 已存在: ' + SP.nodeName(cfg, addr), 'err'); return; }
+
+        // IP 变更: 重建键并迁移所有引用
+        if (editingAddr && addr !== editingAddr) {
+            delete cfg.Network[editingAddr];
+            $.each(cfg.Network, function (_, m) {
+                m.Ping = $.map(m.Ping || [], function (x) { return x === editingAddr ? addr : x; });
+                $.each(m.Topology || [], function (_, t) { if (t['Addr'] === editingAddr) t['Addr'] = addr; });
+            });
+        }
 
         var ping = [], topo = [];
-        if (smart) {
+        if (probe) {
             $('#n-targets tr[data-a]').each(function () {
                 if (!$(this).find('.t-on').is(':checked')) return;
                 var ta = $(this).attr('data-a');
                 ping.push(ta);
-                topo.push({
-                    'Addr': ta,
-                    'Name': SP.nodeName(cfg, ta),
-                    'Thdavgdelay': String($(this).find('.t-delay').val() || 200),
-                    'Thdloss': String($(this).find('.t-loss').val() || 30),
-                    'Thdchecksec': String($(this).find('.t-sec').val() || 900),
-                    'Thdoccnum': String($(this).find('.t-num').val() || 3)
-                });
+                topo.push(topoEntry(ta, SP.nodeName(cfg, ta), $(this)));
             });
         }
-        cfg.Network[addr] = { Name: name, Addr: addr, Smartping: smart, Ping: ping, Topology: topo };
+        cfg.Network[addr] = { Name: name, Addr: addr, Smartping: probe, Ping: ping, Topology: topo };
+
+        // 互PING: 同步对方节点对本节点的监测关系
+        $('#n-targets tr[data-a]').each(function () {
+            var mu = $(this).find('.t-mutual');
+            if (mu.length === 0) return;
+            var other = cfg.Network[$(this).attr('data-a')];
+            if (!other || !other.Smartping) return;
+            other.Ping = other.Ping || []; other.Topology = other.Topology || [];
+            var has = $.inArray(addr, other.Ping) >= 0;
+            if (mu.is(':checked') && !has) {
+                other.Ping.push(addr);
+                other.Topology.push(topoEntry(addr, name, null));
+            } else if (!mu.is(':checked') && has) {
+                other.Ping = $.grep(other.Ping, function (x) { return x !== addr; });
+                other.Topology = $.grep(other.Topology, function (t) { return t['Addr'] !== addr; });
+            }
+        });
+
         // 同步其他节点 Topology 中的名称
-        $.each(cfg.Network, function (_, n) {
-            $.each(n.Topology || [], function (_, t) {
+        $.each(cfg.Network, function (_, m) {
+            $.each(m.Topology || [], function (_, t) {
                 if (t['Addr'] === addr) t['Name'] = name;
             });
         });
@@ -575,11 +862,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Alert['SendEmailPassword'] = $('#f-emailpassword').val();
         cfg.Alert['RevcEmailList'] = $.trim($('#f-emaillist').val());
         cfg.Password = $.trim($('#f-jointoken').val());
-        var cm = $.trim($('#f-chinamap').val());
-        if (cm !== '') {
-            try { cfg.Chinamap = JSON.parse(cm); }
-            catch (e) { throw new Error('全国延迟 JSON 格式错误: ' + e.message); }
-        }
+        // Chinamap(全球延迟) 与 Channels 由各自的可视化编辑器直接维护在 cfg 上
         return cfg;
     }
 
