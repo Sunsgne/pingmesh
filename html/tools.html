@@ -44,12 +44,7 @@
 <div class="sp-modal-mask" id="mtr-modal">
   <div class="sp-modal lg">
     <div class="m-head"><h3 id="mtr-title">MTR 路由追踪</h3><button class="m-close">&times;</button></div>
-    <div class="m-body" style="padding:0">
-      <table class="sp-table">
-        <thead><tr><th>#</th><th>Host</th><th>Loss%</th><th>Snt</th><th>Last</th><th>Avg</th><th>Best</th><th>Wrst</th><th>StDev</th></tr></thead>
-        <tbody id="tracertdata"></tbody>
-      </table>
-    </div>
+    <div class="m-body" id="mtr-body" style="padding:0;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -195,7 +190,7 @@ SP.init('tools', '检测工具').done(function (ctx) {
             var key = tr.attr('data-v');
             mtrResults[key] = hops;
             c.eq(3).html('<a class="mtr-view" data-k="' + SP.esc(key) + '">查看 ' + hops.length + ' 跳路径 &rarr;</a>');
-            tr.find('.mtr-view').click(function () { showMtr($(this).attr('data-k'), tr.find('b').first().text()); });
+            tr.find('.mtr-view').click(function () { showMtr($(this).attr('data-k'), tr.find('b').first().text(), res.ip); });
             ok();
         } else if (ttype === 'dns') {
             var d = res.dns;
@@ -205,19 +200,11 @@ SP.init('tools', '检测工具').done(function (ctx) {
         }
     }
 
-    function showMtr(key, nodeName) {
+    function showMtr(key, nodeName, targetIp) {
         var hops = mtrResults[key] || [];
         $('#mtr-title').text('MTR 路由追踪 - 从 ' + nodeName + ' 出发');
-        var body = $('#tracertdata').empty();
-        $.each(hops, function (n, h) {
-            var loss = h.Send > 0 ? (h.Loss / h.Send * 100) : 0;
-            body.append('<tr' + (loss >= 50 ? ' style="background:var(--sp-red-soft)"' : '') + '>' +
-                '<td>' + (n + 1) + '</td><td class="mono">' + SP.esc(h.Host) + '</td>' +
-                '<td>' + loss.toFixed(1) + '%</td><td>' + h.Send + '</td>' +
-                '<td>' + (h.Last / 1e6).toFixed(2) + '</td><td>' + (h.Avg / 1e6).toFixed(2) + '</td>' +
-                '<td>' + (h.Best / 1e6).toFixed(2) + '</td><td>' + (h.Wrst / 1e6).toFixed(2) + '</td>' +
-                '<td>' + h.StDev.toFixed(2) + '</td></tr>');
-        });
+        $('#mtr-body').html(SP.renderMtr(hops, targetIp));
+        SP.fillMtrAsn('#mtr-body');
         SP.openModal('mtr-modal');
     }
 });

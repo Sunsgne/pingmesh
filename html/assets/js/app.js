@@ -382,8 +382,81 @@ var SP = (function () {
         return (cfg.Network[addr] && cfg.Network[addr].Name) ? cfg.Network[addr].Name : addr;
     }
 
+    /* ---------- MTR 渲染器(报警记录/检测工具共用) ---------- */
+    function renderMtr(hops, targetIp) {
+        hops = hops || [];
+        if (hops.length === 0) {
+            return '<div class="empty-state"><div class="big">&#128679;</div>无 MTR 数据</div>';
+        }
+        // 折叠尾部连续无响应跳
+        var lastResp = -1;
+        for (var i = 0; i < hops.length; i++) {
+            if (hops[i].Host && hops[i].Host !== '???') lastResp = i;
+        }
+        var trailing = hops.length - 1 - lastResp;
+        var shown = trailing > 1 ? hops.slice(0, lastResp + 1) : hops;
+        var maxAvg = 0.001;
+        $.each(shown, function (_, h) {
+            var avg = h.Avg / 1e6;
+            if (h.Host !== '???' && avg > maxAvg) maxAvg = avg;
+        });
+        var html = '<table class="mtr-table"><thead><tr>' +
+            '<th style="width:46px">#</th><th>节点</th><th style="width:90px">丢包</th>' +
+            '<th>平均延迟</th><th style="width:150px">最近 / 最优 / 最差</th><th style="width:80px">抖动</th>' +
+            '</tr></thead><tbody>';
+        $.each(shown, function (i, h) {
+            var timeout = (h.Host === '???');
+            var loss = h.Send > 0 ? (h.Loss / h.Send * 100) : 0;
+            var avg = h.Avg / 1e6;
+            var reached = !timeout && targetIp && h.Host === targetIp;
+            var rowCls = timeout ? 'mtr-timeout' : (reached ? 'mtr-reach' : '');
+            var hostCell;
+            if (timeout) {
+                hostCell = '<span class="muted">* * * 无响应(不回 TTL 超时报文)</span>';
+            } else {
+                hostCell = '<span class="mono">' + esc(h.Host) + '</span> <span class="mtr-asn" data-h="' + esc(h.Host) + '"></span>' +
+                    (reached ? ' <span class="badge green" style="font-size:10px"><span class="dot"></span>到达目标</span>' : '');
+            }
+            var lossCell;
+            if (timeout) lossCell = '<span class="muted">—</span>';
+            else if (loss >= 50) lossCell = '<span class="badge red">' + loss.toFixed(0) + '%</span>';
+            else if (loss >= 10) lossCell = '<span class="badge yellow">' + loss.toFixed(0) + '%</span>';
+            else lossCell = '<span class="badge green">' + loss.toFixed(0) + '%</span>';
+            var barCell = '<span class="muted">—</span>';
+            if (!timeout) {
+                var pct = Math.max(2, Math.round(avg / maxAvg * 100));
+                var barCls = avg >= 150 ? ' hot' : (avg >= 50 ? ' warm' : '');
+                barCell = '<div class="mtr-bar-wrap"><div class="mtr-bar-track"><div class="mtr-bar' + barCls + '" style="width:' + pct + '%"></div></div>' +
+                    '<span class="mtr-bar-val">' + avg.toFixed(2) + ' ms</span></div>';
+            }
+            var lbw = timeout ? '<span class="muted">—</span>' :
+                '<span class="mtr-sub">' + (h.Last / 1e6).toFixed(1) + ' / ' + (h.Best / 1e6).toFixed(1) + ' / ' + (h.Wrst / 1e6).toFixed(1) + '</span>';
+            var sd = timeout ? '<span class="muted">—</span>' : '<span class="mtr-sub">' + h.StDev.toFixed(2) + ' ms</span>';
+            html += '<tr class="' + rowCls + '"><td><span class="mtr-hopno">' + (i + 1) + '</span></td>' +
+                '<td>' + hostCell + '</td><td>' + lossCell + '</td><td>' + barCell + '</td><td>' + lbw + '</td><td>' + sd + '</td></tr>';
+        });
+        if (trailing > 1) {
+            html += '<tr class="mtr-timeout"><td><span class="mtr-hopno">&#8943;</span></td>' +
+                '<td colspan="5"><span class="muted">后续 ' + trailing + ' 跳均无响应(目标或沿途设备不回 TTL 超时报文, 属常见现象)</span></td></tr>';
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    // 渲染后异步补 ASN 标注
+    function fillMtrAsn(container) {
+        $(container).find('.mtr-asn').each(function () {
+            var el = $(this);
+            asnGet(el.attr('data-h'), function (info) {
+                if (info) el.html('<span class="badge indigo" style="font-size:10px">' + esc(asnShort(info)) + '</span>');
+            });
+        });
+    }
+
     return {
         state: S,
+        renderMtr: renderMtr,
+        fillMtrAsn: fillMtrAsn,
         init: init,
         esc: esc,
         toast: toast,
