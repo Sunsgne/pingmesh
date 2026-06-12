@@ -1128,8 +1128,36 @@ SP.init('config', '系统配置').done(function (ctx) {
 
     /* ----- raw ----- */
     function collectFromForms() {
-        cfg.Name = $.trim($('#f-name').val());
-        cfg.Addr = $.trim($('#f-addr').val());
+        var newName = $.trim($('#f-name').val());
+        var newAddr = $.trim($('#f-addr').val());
+        // 本机 IP 变更: 自动重键节点表并迁移所有引用
+        if (newAddr !== cfg.Addr) {
+            var ipOk = /^(\d{1,3}\.){3}\d{1,3}$/.test(newAddr) ||
+                /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(newAddr);
+            if (!ipOk) throw new Error('本机节点 IP/域名 格式非法: ' + newAddr);
+            if (cfg.Network[newAddr]) throw new Error('本机新地址与现有节点「' + SP.nodeName(cfg, newAddr) + '」冲突');
+            var self = cfg.Network[cfg.Addr];
+            if (self) {
+                delete cfg.Network[cfg.Addr];
+                var oldAddr = cfg.Addr;
+                self.Addr = newAddr;
+                cfg.Network[newAddr] = self;
+                $.each(cfg.Network, function (_, m) {
+                    m.Ping = $.map(m.Ping || [], function (x) { return x === oldAddr ? newAddr : x; });
+                    $.each(m.Topology || [], function (_, t) { if (t['Addr'] === oldAddr) t['Addr'] = newAddr; });
+                });
+            }
+        }
+        cfg.Addr = newAddr;
+        // 本机名称变更: 同步节点表与其他节点的监测引用
+        if (cfg.Network[cfg.Addr] && newName !== '') {
+            var selfNode = cfg.Network[cfg.Addr];
+            selfNode.Name = newName;
+            $.each(cfg.Network, function (_, m) {
+                $.each(m.Topology || [], function (_, t) { if (t['Addr'] === cfg.Addr) t['Name'] = newName; });
+            });
+        }
+        cfg.Name = newName;
         cfg.Base['Timeout'] = parseInt($('#f-timeout').val(), 10) || 5;
         cfg.Base['Archive'] = parseInt($('#f-archive').val(), 10) || 10;
         cfg.Base['Refresh'] = parseInt($('#f-refresh').val(), 10) || 1;

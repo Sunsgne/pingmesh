@@ -65,14 +65,15 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             }
         },
         legend: {
-            show: true, bottom: 0, left: 'center', itemWidth: 14, itemHeight: 10,
+            show: true, top: 0, right: 10, itemWidth: 14, itemHeight: 10,
             icon: 'circle', textStyle: { color: '#64748b', fontSize: 12 },
             data: ['探测节点', '被测目标', '异常']
         },
         animationDuration: 300, animationDurationUpdate: 300,
         series: [{
-            type: 'graph', layout: 'force', roam: true, draggable: true,
-            force: { repulsion: 1600, edgeLength: [140, 240], gravity: .12, layoutAnimation: false },
+            // 环形布局: 所有节点均匀分布在圆环上, 互PING连线交织在中间, mesh 结构一目了然
+            type: 'graph', layout: 'circular', roam: true, draggable: true,
+            circular: { rotateLabel: false },
             scaleLimit: { min: .5, max: 3 },
             categories: [
                 { name: '探测节点', itemStyle: { color: '#6366f1' } },
@@ -80,11 +81,15 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                 { name: '异常', itemStyle: { color: '#f43f5e' } }
             ],
             emphasis: { focus: 'adjacency', lineStyle: { width: 4 }, itemStyle: { shadowBlur: 18 } },
-            label: { show: true, fontSize: 11.5, fontWeight: 600, color: '#fff',
-                     formatter: function (p) { return p.name.length > 8 ? p.name.substring(0, 7) + '…' : p.name; } },
+            // 名称放在节点下方, 完整展示不截断
+            label: {
+                show: true, position: 'bottom', distance: 6,
+                fontSize: 12, fontWeight: 600, color: '#334155',
+                formatter: function (p) { return p.name.length > 14 ? p.name.substring(0, 13) + '…' : p.name; }
+            },
             edgeSymbol: ['none', 'arrow'], edgeSymbolSize: [0, 9],
             data: [], links: [],
-            lineStyle: { opacity: .85, curveness: .18 }
+            lineStyle: { opacity: .85, curveness: .25 }
         }]
     });
 
@@ -138,12 +143,17 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     function draw() {
         var data = [], lns = [];
+        // 「基础设置 - 拓扑节点大小」生效: 探测节点用原值, 被测目标缩小到 72%
+        var baseSize = parseInt(cfg.Topology['Tsymbolsize'] || 56, 10);
+        if (!(baseSize > 0)) baseSize = 56;
+        var baseLine = parseFloat(cfg.Topology['Tline'] || 1.8);
+        if (!(baseLine > 0)) baseLine = 1.8;
         $.each(nodes, function (addr, n) {
             var cat = n.bad ? 2 : (n.source ? 0 : 1);
             var colors = ['#6366f1', '#10b981', '#f43f5e'];
             data.push({
                 name: n.name, category: cat, draggable: true,
-                symbolSize: n.source ? 64 : 46,
+                symbolSize: n.source ? baseSize : Math.max(18, Math.round(baseSize * .72)),
                 _sub: '<span class="mono">' + addr + '</span><br>' +
                       (n.bad ? '节点不可达' : (n.source ? '探测节点' : '被测目标')),
                 itemStyle: {
@@ -158,9 +168,10 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                 source: l.from, target: l.to, _bad: l.bad,
                 lineStyle: {
                     color: l.bad ? '#f43f5e' : (l.pendingStatus ? '#cbd5e1' : '#34d399'),
-                    width: l.bad ? 2.5 : 1.8,
+                    // 「基础设置 - 拓扑连线粗细」生效, 异常连线加粗 40%
+                    width: l.bad ? baseLine * 1.4 : baseLine,
                     type: l.bad ? 'dashed' : 'solid',
-                    curveness: .18, shadowBlur: l.bad ? 6 : 0, shadowColor: 'rgba(244,63,94,.4)'
+                    curveness: .25, shadowBlur: l.bad ? 6 : 0, shadowColor: 'rgba(244,63,94,.4)'
                 }
             });
         });
