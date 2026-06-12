@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -30,7 +32,34 @@ func configClusterRoutes() {
 			"epochtime": v.Time,
 			"mode":      g.Cfg.Mode["Type"],
 			"acting":    g.IsActingMaster(),
+			"userrev":   g.UserRev(),
 		})
+	})
+
+	// 用户表同步(节点间): 登录账户密码随主节点。含 bcrypt 哈希,
+	// 强制 HMAC 验签 + AES-256-GCM 加密传输, 不接受 IP 互信明文访问。
+	http.HandleFunc("/api/users.json", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if !g.VerifySign(r.URL.Path, r.FormValue("ts"), r.FormValue("nonce"), r.FormValue("sign")) {
+			deny(w)
+			return
+		}
+		users, err := g.ListUsersFull()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		payload, _ := json.Marshal(map[string]interface{}{
+			"rev":   g.UserRev(),
+			"users": users,
+		})
+		enc, err := g.EncryptPayload(payload, g.Cfg.Password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+		fmt.Fprintln(w, enc)
 	})
 
 	// 聚合集群态势(界面用): 探测全网节点的在线/纪元/主从角色

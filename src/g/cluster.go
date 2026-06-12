@@ -123,6 +123,20 @@ func IsSelfEndpoint(ep string) bool {
 	return host == Cfg.Addr
 }
 
+// WebUIEnabled 本节点是否开放 Web 管理页面:
+//   - 主节点/独立节点始终开放
+//   - Agent(cloud 模式)默认关闭, 启动参数 -webui 可强制开启
+//   - 容灾接管期间(本节点成为代理主节点)自动开放, 否则主挂时无处可登录
+func WebUIEnabled() bool {
+	if FlagWebUI {
+		return true
+	}
+	if Cfg.Mode == nil || Cfg.Mode["Type"] != "cloud" {
+		return true
+	}
+	return IsActingMaster()
+}
+
 // ClusterActive 是否已组建集群(需要参与容灾同步与选举)
 func ClusterActive() bool {
 	if Cfg.Mode == nil {

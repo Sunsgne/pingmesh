@@ -39,6 +39,7 @@ var (
 	FlagWorkDir string
 	FlagPort    int
 	FlagListen  string
+	FlagWebUI   bool
 
 	// FreshInstall 首次运行(尚无 config.json, 由内置默认配置初始化)
 	FreshInstall bool

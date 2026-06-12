@@ -11,6 +11,7 @@
 #
 #  非交互(Agent 节点, 加入主节点并自动全互联组网):
 #    sudo ./deploy/install.sh --join http://<主节点IP>:8899 --token <接入令牌> --name 上海机房 --yes
+#    (Agent 的 Web 页面默认关闭、账户密码随主节点; 加 --webui 可开启本节点页面)
 #
 #  容灾备选主节点(主挂自动接管, 逗号分隔, 可选):
 #    sudo ./deploy/install.sh --join http://<主IP>:8899 --token xxx --name 节点B --masters 10.0.0.2:8899,10.0.0.3:8899
@@ -33,7 +34,7 @@ INSTALL_DIR=/opt/pingmesh
 SERVICE=pingmesh
 REQUIRED_GO_MINOR=21   # >=1.21 即可: 会按 go.mod 自动拉取所需 Go 工具链
 JOIN="" TOKEN="" NAME="" PORT="" ADDR="" MASTERS=""
-UNINSTALL=0 UPDATE=0 ASSUME_YES=0 ROLE_GIVEN=0
+UNINSTALL=0 UPDATE=0 ASSUME_YES=0 ROLE_GIVEN=0 WEBUI=0
 
 info()  { echo -e "\033[32m[PingMesh]\033[0m $*"; }
 warn()  { echo -e "\033[33m[PingMesh]\033[0m $*"; }
@@ -47,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --port)      PORT="$2";  ROLE_GIVEN=1; shift 2 ;;
     --addr)      ADDR="$2";  shift 2 ;;
     --masters)   MASTERS="$2"; shift 2 ;;
+    --webui)     WEBUI=1; shift ;;
     --dir)       INSTALL_DIR="$2"; shift 2 ;;
     --update)    UPDATE=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -106,6 +108,9 @@ maybe_wizard() {
     done
     printf "  本机对外IP (NAT/多网卡时填写, 否则留空自动识别): " > /dev/tty
     read -r ADDR < /dev/tty || true
+    printf "  开启本节点 Web 页面? (Agent 默认关闭, 统一在主节点管理) [y/N]: " > /dev/tty
+    local wui; read -r wui < /dev/tty || true
+    [[ "${wui:-N}" =~ ^[Yy] ]] && WEBUI=1
   fi
   printf "  容灾备选主节点 host:port(逗号分隔, 可留空自动): " > /dev/tty
   read -r MASTERS < /dev/tty || true
@@ -220,6 +225,7 @@ build_opts() {
     opts+=" -join $JOIN -token $TOKEN"
   fi
   [[ -n "$MASTERS" ]] && opts+=" -masters $MASTERS"
+  [[ $WEBUI -eq 1 ]] && opts+=" -webui"
   echo "${opts# }"
 }
 
@@ -243,7 +249,8 @@ umask 077
 cat > "$ENV_FILE" <<ENV
 # ZENLENET PingMesh 启动参数 (本文件由安装脚本生成)
 # 修改后执行: systemctl restart ${SERVICE}  即可生效。
-# 说明: -p 端口  -name 节点名  -addr 本机对外IP  -join 主节点  -token 接入令牌  -masters 容灾备选(逗号分隔)
+# 说明: -p 端口  -name 节点名  -addr 本机对外IP  -join 主节点  -token 接入令牌
+#       -masters 容灾备选(逗号分隔)  -webui 开启Agent节点的Web页面(默认关闭, 统一在主节点管理)
 # 注意: 节点名称请勿包含空格(systemd 按空格拆分参数); 改名可登录后在「节点管理」中进行。
 PINGMESH_OPTS=${OPTS}
 ENV
@@ -308,8 +315,13 @@ IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo
 info "=============================================="
 info " 部署完成!  (版本: $(${INSTALL_DIR}/pingmesh -v 2>/dev/null || echo '-'))"
-info " 访问地址:  http://${IP:-<本机IP>}:${HTTP_PORT}"
-info " 默认账号:  admin / admin123  (登录后请立即修改)"
+if [[ -n "$JOIN" && $WEBUI -eq 0 ]]; then
+  info " 本节点为 Agent: Web 页面已默认关闭, 登录账户随主节点同步"
+  info " 管理入口:  ${JOIN}  (需开启本节点页面: 在 ${ENV_FILE} 的参数中追加 -webui 后重启)"
+else
+  info " 访问地址:  http://${IP:-<本机IP>}:${HTTP_PORT}"
+  info " 默认账号:  admin / admin123  (登录后请立即修改)"
+fi
 info " 启动参数:  ${ENV_FILE}  (编辑后 systemctl restart ${SERVICE})"
 [[ -n "$JOIN" ]] && info " 本节点为 Agent, 已配置自动加入 ${JOIN}"
 [[ -n "$MASTERS" ]] && info " 容灾备选主节点: ${MASTERS}"

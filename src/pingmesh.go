@@ -30,6 +30,7 @@ func main() {
 	addr := flag.String("addr", "", "node ip used when joining (auto-detect if empty)")
 	group := flag.String("group", "", "node group used when joining (optional)")
 	masters := flag.String("masters", "", "comma-separated standby master endpoints for failover, e.g. 10.0.0.2:8899")
+	webui := flag.Bool("webui", false, "force-enable web UI on agent nodes (agents disable it by default; master always on)")
 	flag.Parse()
 	if *version {
 		fmt.Printf("ZENLENET PingMesh %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
@@ -38,6 +39,7 @@ func main() {
 	g.FlagWorkDir = *workdir
 	g.FlagPort = *port
 	g.FlagListen = *listen
+	g.FlagWebUI = *webui
 	g.ParseConfig(Version)
 	// 首次安装的主节点: 用 -name/-addr 初始化节点身份(仅首次, 不覆盖后续在页面改名)
 	if g.FreshInstall && *join == "" {
