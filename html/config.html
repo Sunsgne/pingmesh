@@ -104,8 +104,11 @@
       <div class="card-body" style="padding-bottom:0">
         <div class="flex mb-2">
           <span class="muted">共 <b id="node-count">0</b> 个节点</span>
+          <span class="muted" id="node-sel-count" style="color:var(--sp-primary)"></span>
           <span class="spacer"></span>
           <input type="text" class="input" id="node-search" placeholder="搜索名称 / IP / 分组..." style="width:220px;padding:6px 10px">
+          <button class="btn sm" id="node-group-sel" disabled title="为勾选的节点统一设置分组">批量分组</button>
+          <button class="btn sm ghost-danger" id="node-del-sel" disabled title="删除勾选的节点">批量删除</button>
           <button class="btn sm" id="plane-wizard-btn">双网口组网向导</button>
           <button class="btn sm" id="node-import-btn">批量导入被测目标</button>
           <button class="btn primary sm" id="node-add-btn">+ 添加节点</button>
@@ -117,7 +120,7 @@
         </div>
       </div>
       <table class="sp-table">
-        <thead><tr><th>节点名称</th><th>IP 地址</th><th>ASN</th><th>分组</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
+        <thead><tr><th style="width:36px;text-align:center"><input type="checkbox" id="node-check-all" title="全选 / 取消全选（当前筛选结果）"></th><th>节点名称</th><th>IP 地址</th><th>ASN</th><th>分组</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
         <tbody id="nodelist"></tbody>
       </table>
     </div>
@@ -248,13 +251,15 @@
           <span class="muted" style="font-size:12.5px">
             地区使用<b>英文国家/地区名</b>（United States、Japan、Singapore...）才能在世界地图着色，线路名称任意（骨干网 / 精品网 / CN2...）
           </span>
+          <span class="muted" id="gm-sel-count" style="color:var(--sp-primary)"></span>
           <span class="spacer"></span>
+          <button class="btn sm ghost-danger" id="gm-del-sel" disabled title="删除勾选的探测点">批量删除</button>
           <button class="btn sm" id="gm-import-btn">批量导入</button>
           <button class="btn primary sm" id="gm-add-btn">+ 添加探测点</button>
         </div>
       </div>
       <table class="sp-table">
-        <thead><tr><th>地区</th><th>线路</th><th>探测 IP</th><th style="width:150px">操作</th></tr></thead>
+        <thead><tr><th style="width:36px;text-align:center"><input type="checkbox" id="gm-check-all" title="全选 / 取消全选"></th><th>地区</th><th>线路</th><th>探测 IP</th><th style="width:150px">操作</th></tr></thead>
         <tbody id="gm-list"></tbody>
       </table>
       <div class="empty-state" id="gm-empty" style="display:none">
@@ -394,6 +399,24 @@
     <div class="m-foot">
       <button class="btn m-cancel">取消</button>
       <button class="btn primary" id="ni-save">解析并导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 节点管理: 批量设置分组 -->
+<div class="sp-modal-mask" id="ngroup-modal">
+  <div class="sp-modal" style="max-width:420px">
+    <div class="m-head"><h3>批量设置分组</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="field" style="margin-bottom:0">
+        <label>分组名称（将应用到已勾选的 <b id="ngroup-count">0</b> 个节点，留空表示清除分组）</label>
+        <input type="text" class="input" id="ngroup-name" list="ngroup-list" placeholder="如: 华东 / 海外 / 核心网">
+        <datalist id="ngroup-list"></datalist>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="ngroup-save">确定</button>
     </div>
   </div>
 </div>
@@ -608,7 +631,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-tsound').val(cfg.Topology['Tsound']);
         $('#f-authiplist').val(cfg.Authiplist);
         $('#f-chinamap').prop('checked', cfg.Base['Chinamap'] !== 0);
-        $('#f-pinginterval').val(cfg.Base['Pinginterval'] || 3000);
+        $('#f-pinginterval').val(cfg.Base['Pinginterval'] || 2500);
         $('#f-pingcount').val(cfg.Base['Pingcount'] || 20);
         $('#f-pingtimeout').val(cfg.Base['Pingtimeout'] || 3000);
         $('#f-pingsize').val(cfg.Base['Pingsize'] || 56);
@@ -643,6 +666,7 @@ SP.init('config', '系统配置').done(function (ctx) {
                 cnt++;
                 var ips = cfg.Chinamap[region][line] || [];
                 box.append('<tr>' +
+                    '<td style="text-align:center"><input type="checkbox" class="gm-check" data-r="' + SP.esc(region) + '" data-l="' + SP.esc(line) + '"></td>' +
                     '<td><b>' + SP.esc(region) + '</b></td>' +
                     '<td><span class="badge indigo">' + SP.esc(line) + '</span></td>' +
                     '<td class="mono" style="font-size:12px">' + SP.esc(ips.join(', ')) + '</td>' +
@@ -652,18 +676,49 @@ SP.init('config', '系统配置').done(function (ctx) {
         });
         $('#gm-empty').toggle(cnt === 0);
         $('.gm-edit').click(function () { openGm($(this).attr('data-r'), $(this).attr('data-l')); });
+        $('.gm-check').change(updateGmSel);
+        $('#gm-check-all').prop('checked', false);
+        updateGmSel();
         $('.gm-del').click(function () {
             var r = $(this).attr('data-r'), l = $(this).attr('data-l');
             SP.confirm('删除探测点', '确定删除「' + r + ' / ' + l + '」吗？', function () {
-                delete cfg.Chinamap[r][l];
-                var empty = true;
-                $.each(cfg.Chinamap[r], function () { empty = false; return false; });
-                if (empty) delete cfg.Chinamap[r];
+                removeGmEntry(r, l);
                 renderGmap();
                 SP.toast('已从工作副本删除，记得点击「保存配置」', 'ok');
             });
         });
     }
+
+    function removeGmEntry(r, l) {
+        if (!cfg.Chinamap[r]) return;
+        delete cfg.Chinamap[r][l];
+        var empty = true;
+        $.each(cfg.Chinamap[r], function () { empty = false; return false; });
+        if (empty) delete cfg.Chinamap[r];
+    }
+
+    /* 全球延迟: 批量勾选与批量删除 */
+    function updateGmSel() {
+        var n = $('#gm-list .gm-check:checked').length;
+        $('#gm-sel-count').text(n > 0 ? '已勾选 ' + n + ' 项' : '');
+        $('#gm-del-sel').attr('disabled', n === 0);
+        var all = $('#gm-list .gm-check');
+        $('#gm-check-all').prop('checked', all.length > 0 && all.filter(':checked').length === all.length);
+    }
+    $('#gm-check-all').change(function () {
+        $('#gm-list .gm-check').prop('checked', this.checked);
+        updateGmSel();
+    });
+    $('#gm-del-sel').click(function () {
+        var sel = [];
+        $('#gm-list .gm-check:checked').each(function () { sel.push([$(this).attr('data-r'), $(this).attr('data-l')]); });
+        if (sel.length === 0) { SP.toast('请先勾选要删除的探测点', 'err'); return; }
+        SP.confirm('批量删除探测点', '确定删除勾选的 ' + sel.length + ' 个探测点吗？', function () {
+            $.each(sel, function (_, rl) { removeGmEntry(rl[0], rl[1]); });
+            renderGmap();
+            SP.toast('已删除 ' + sel.length + ' 个探测点（工作副本），记得点击「保存配置」', 'ok');
+        });
+    });
 
     function openGm(region, line) {
         editingGm = region ? [region, line] : null;
@@ -955,7 +1010,11 @@ SP.init('config', '系统配置').done(function (ctx) {
         });
         $.each(cfg.Network, function (addr, n) {
             cnt++;
+            var checkCell = (addr === cfg.Addr)
+                ? '<td style="text-align:center"><input type="checkbox" disabled title="本机节点不可批量操作"></td>'
+                : '<td style="text-align:center"><input type="checkbox" class="n-check" data-a="' + SP.esc(addr) + '"></td>';
             box.append('<tr data-s="' + SP.esc((n.Name + ' ' + addr + ' ' + (n.Group || '')).toLowerCase()) + '">' +
+                checkCell +
                 '<td><b>' + SP.esc(n.Name) + '</b>' + (addr === cfg.Addr ? ' <span class="badge indigo">本机</span>' : '') + '</td>' +
                 '<td class="mono">' + SP.esc(addr) + '</td>' +
                 '<td class="n-asn" data-a="' + SP.esc(addr) + '"><span class="muted">…</span></td>' +
@@ -978,21 +1037,83 @@ SP.init('config', '系统配置').done(function (ctx) {
             });
         });
         $('.n-edit').click(function () { openNode($(this).attr('data-a')); });
-        $('#node-search').unbind('keyup input').bind('keyup input', applyNodeFilter);
+        $('#node-search').unbind('keyup input').bind('keyup input', function () { applyNodeFilter(); updateNodeSel(); });
+        $('.n-check').change(updateNodeSel);
+        $('#node-check-all').prop('checked', false);
+        updateNodeSel();
         $('.n-del').click(function () {
             var addr = $(this).attr('data-a');
             if (addr === cfg.Addr) { SP.toast('不能删除本机节点', 'err'); return; }
             SP.confirm('删除节点', '确定删除节点「' + SP.nodeName(cfg, addr) + ' (' + addr + ')」吗？其他节点对它的监测也会一并移除。', function () {
-                delete cfg.Network[addr];
-                $.each(cfg.Network, function (_, n) {
-                    n.Ping = $.grep(n.Ping || [], function (t) { return t !== addr; });
-                    n.Topology = $.grep(n.Topology || [], function (t) { return t['Addr'] !== addr; });
-                });
+                removeNodes([addr]);
                 renderNodes();
                 SP.toast('已从工作副本删除，记得点击「保存配置」', 'ok');
             });
         });
     }
+
+    /* 删除一批节点并清理其他节点对它们的监测引用 */
+    function removeNodes(addrs) {
+        var del = {};
+        $.each(addrs, function (_, a) {
+            if (a === cfg.Addr) return; // 本机节点永不删除
+            del[a] = true;
+            delete cfg.Network[a];
+        });
+        $.each(cfg.Network, function (_, n) {
+            n.Ping = $.grep(n.Ping || [], function (t) { return !del[t]; });
+            n.Topology = $.grep(n.Topology || [], function (t) { return !del[t['Addr']]; });
+        });
+    }
+
+    /* 节点批量勾选状态 */
+    function selNodes() {
+        var out = [];
+        $('#nodelist .n-check:checked').each(function () { out.push($(this).attr('data-a')); });
+        return out;
+    }
+    function updateNodeSel() {
+        var n = $('#nodelist .n-check:checked').length;
+        $('#node-sel-count').text(n > 0 ? '已勾选 ' + n + ' 个' : '');
+        $('#node-del-sel, #node-group-sel').attr('disabled', n === 0);
+        var vis = $('#nodelist tr:visible .n-check');
+        $('#node-check-all').prop('checked', vis.length > 0 && vis.filter(':checked').length === vis.length);
+    }
+    // 全选只作用于当前筛选可见的行, 便于先搜索再批量操作
+    $('#node-check-all').change(function () {
+        $('#nodelist tr:visible .n-check').prop('checked', this.checked);
+        updateNodeSel();
+    });
+    $('#node-del-sel').click(function () {
+        var addrs = selNodes();
+        if (addrs.length === 0) { SP.toast('请先勾选要删除的节点', 'err'); return; }
+        SP.confirm('批量删除节点', '确定删除勾选的 ' + addrs.length + ' 个节点吗？其他节点对它们的监测关系会一并移除。', function () {
+            removeNodes(addrs);
+            renderNodes();
+            SP.toast('已删除 ' + addrs.length + ' 个节点（工作副本），记得点击「保存配置」', 'ok');
+        });
+    });
+    $('#node-group-sel').click(function () {
+        var addrs = selNodes();
+        if (addrs.length === 0) { SP.toast('请先勾选要设置分组的节点', 'err'); return; }
+        $('#ngroup-count').text(addrs.length);
+        $('#ngroup-name').val('');
+        var groups = {}, dl = $('#ngroup-list').empty();
+        $.each(cfg.Network, function (_, m) { if (m.Group) groups[m.Group] = 1; });
+        $.each(groups, function (gname) { dl.append('<option value="' + SP.esc(gname) + '">'); });
+        SP.openModal('ngroup-modal');
+    });
+    $('#ngroup-modal .m-cancel').click(function () { SP.closeModal('ngroup-modal'); });
+    $('#ngroup-save').click(function () {
+        var addrs = selNodes();
+        var gname = $.trim($('#ngroup-name').val());
+        $.each(addrs, function (_, a) {
+            if (cfg.Network[a]) cfg.Network[a].Group = gname;
+        });
+        SP.closeModal('ngroup-modal');
+        renderNodes();
+        SP.toast((gname ? '已将 ' + addrs.length + ' 个节点分组设置为「' + gname + '」' : '已清除 ' + addrs.length + ' 个节点的分组') + '（工作副本），记得点击「保存配置」', 'ok');
+    });
 
     function applyNodeFilter() {
         var q = $.trim($('#node-search').val() || '').toLowerCase();
@@ -1116,7 +1237,7 @@ SP.init('config', '系统配置').done(function (ctx) {
                 box.append('<tr class="t-probe-row" data-pa="' + SP.esc(addr) + '" style="display:none;background:#f8fafc">' +
                     '<td></td><td colspan="9" style="padding:8px 12px">' +
                     '<span class="muted" style="font-size:12px;margin-right:6px">本链路探测参数(留空=全局默认):</span>' +
-                    '间隔 <input type="number" class="input p-interval" style="width:90px;padding:3px 8px" placeholder="' + (cfg.Base['Pinginterval'] || 3000) + '" value="' + SP.esc(t['Pinterval'] || '') + '"> ms　' +
+                    '间隔 <input type="number" class="input p-interval" style="width:90px;padding:3px 8px" placeholder="' + (cfg.Base['Pinginterval'] || 2500) + '" value="' + SP.esc(t['Pinterval'] || '') + '"> ms　' +
                     '包数 <input type="number" class="input p-count" style="width:75px;padding:3px 8px" placeholder="' + (cfg.Base['Pingcount'] || 20) + '" value="' + SP.esc(t['Pcount'] || '') + '">　' +
                     '超时 <input type="number" class="input p-timeout" style="width:90px;padding:3px 8px" placeholder="' + (cfg.Base['Pingtimeout'] || 3000) + '" value="' + SP.esc(t['Ptimeout'] || '') + '"> ms　' +
                     '包大小 <input type="number" class="input p-size" style="width:80px;padding:3px 8px" placeholder="' + (cfg.Base['Pingsize'] || 56) + '" value="' + SP.esc(t['Psize'] || '') + '"> 字节' +
@@ -1552,7 +1673,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Archive'] = parseInt($('#f-archive').val(), 10) || 10;
         cfg.Base['Refresh'] = parseInt($('#f-refresh').val(), 10) || 1;
         cfg.Base['Chinamap'] = $('#f-chinamap').is(':checked') ? 1 : 0;
-        cfg.Base['Pinginterval'] = parseInt($('#f-pinginterval').val(), 10) || 3000;
+        cfg.Base['Pinginterval'] = parseInt($('#f-pinginterval').val(), 10) || 2500;
         cfg.Base['Pingcount'] = parseInt($('#f-pingcount').val(), 10) || 20;
         cfg.Base['Pingtimeout'] = parseInt($('#f-pingtimeout').val(), 10) || 3000;
         cfg.Base['Pingsize'] = parseInt($('#f-pingsize').val(), 10) || 56;

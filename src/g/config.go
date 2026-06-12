@@ -55,19 +55,61 @@ func IsExist(fp string) bool {
 	return err == nil || os.IsExist(err)
 }
 
-func ReadConfig(filename string) Config {
-	config := Config{}
-	file, err := os.Open(filename)
-	defer file.Close()
+// healSkipPaths 配置自愈跳过的键:
+//   - 顶层用户数据/身份信息(节点表、探测点、告警通道、本机身份、密码等)绝不从模板注入;
+//   - Base.Apisign 升级时保持代码迁移默认(0, 兼容老集群), 与模板的全新安装默认(1)不同。
+var healSkipPaths = map[string]bool{
+	"Ver": true, "Name": true, "Addr": true, "Port": true,
+	"Password": true, "Authiplist": true,
+	"Network": true, "Chinamap": true, "Channels": true,
+	"Base.Apisign": true,
+}
+
+// HealConfig 配置自愈: 以内嵌的 conf/config-base.json 为模板, 递归补全用户配置中
+// 缺失的配置项(通常由二进制升级引入新功能开关导致), 不覆盖任何已有值。
+// 返回补全后的 JSON 与新增键路径列表; 解析失败时原样返回, 交由后续流程报错。
+func HealConfig(raw []byte) ([]byte, []string) {
+	var user, base map[string]interface{}
+	if err := json.Unmarshal(raw, &user); err != nil {
+		return raw, nil
+	}
+	tpl, err := pingmesh.Assets.ReadFile("conf/config-base.json")
+	if err != nil || json.Unmarshal(tpl, &base) != nil {
+		return raw, nil
+	}
+	added := []string{}
+	for k, v := range base {
+		healMergeMissing(user, k, v, k, &added)
+	}
+	if len(added) == 0 {
+		return raw, nil
+	}
+	sort.Strings(added)
+	out, err := json.Marshal(user)
 	if err != nil {
-		log.Fatal("Config Not Found!")
-	} else {
-		err = json.NewDecoder(file).Decode(&config)
-		if err != nil {
-			log.Fatal(err)
+		return raw, nil
+	}
+	return out, added
+}
+
+// healMergeMissing 把模板里 dst 缺失的键补进去; 两边都是对象时逐层下钻
+func healMergeMissing(dst map[string]interface{}, key string, val interface{}, path string, added *[]string) {
+	if healSkipPaths[path] {
+		return
+	}
+	cur, ok := dst[key]
+	if !ok || cur == nil {
+		dst[key] = val
+		*added = append(*added, path)
+		return
+	}
+	curMap, okCur := cur.(map[string]interface{})
+	valMap, okVal := val.(map[string]interface{})
+	if okCur && okVal {
+		for k, v := range valMap {
+			healMergeMissing(curMap, k, v, path+"."+k, added)
 		}
 	}
-	return config
 }
 
 func GetRoot() string {
@@ -96,13 +138,21 @@ func ensureAssets() {
 	for _, d := range []string{"conf", "db", "logs", "html"} {
 		os.MkdirAll(filepath.Join(Root, d), 0755)
 	}
-	for _, f := range []string{"conf/seelog.xml", "conf/config-base.json"} {
+	for _, f := range []string{"conf/seelog.xml"} {
 		dst := filepath.Join(Root, f)
 		if !IsExist(dst) {
 			if data, err := pingmesh.Assets.ReadFile(f); err == nil {
 				os.WriteFile(dst, data, 0644)
 				log.Println("[init] extracted", f)
 			}
+		}
+	}
+	// config-base.json 是默认配置模板(配置自愈的数据源), 随二进制升级保持最新
+	if data, err := pingmesh.Assets.ReadFile("conf/config-base.json"); err == nil {
+		dst := filepath.Join(Root, "conf", "config-base.json")
+		if old, rerr := os.ReadFile(dst); rerr != nil || !bytes.Equal(old, data) {
+			os.WriteFile(dst, data, 0644)
+			log.Println("[init] refreshed conf/config-base.json template")
 		}
 	}
 	stamp := embeddedHtmlHash()
@@ -213,7 +263,19 @@ func ParseConfig(ver string) {
 		log.Fatalln("[Fault]log config open fail .", err)
 	}
 	seelog.ReplaceLogger(logger)
-	Cfg = ReadConfig(Root + "/conf/" + cfile)
+	raw, err := os.ReadFile(Root + "/conf/" + cfile)
+	if err != nil {
+		log.Fatalln("[Fault]config file read fail.", err)
+	}
+	// 配置自愈: 升级后用内置模板补全新增配置项, 否则新功能因配置缺失无法启用
+	healedKeys := []string{}
+	if cfile == "config.json" {
+		raw, healedKeys = HealConfig(raw)
+	}
+	Cfg = Config{}
+	if err := json.Unmarshal(raw, &Cfg); err != nil {
+		log.Fatalln("[Fault]config file parse fail.", err)
+	}
 	if Cfg.Name == "" {
 		Cfg.Name, _ = os.Hostname()
 	}
@@ -233,7 +295,7 @@ func ParseConfig(ver string) {
 		"Refresh":      1,
 		"Timeout":      5,
 		"Chinamap":     1,
-		"Pinginterval": 3000, // 包间隔(ms)
+		"Pinginterval": 2500, // 包间隔(ms); 间隔×包数 ≤ 55秒(每分钟一轮)
 		"Pingcount":    20,   // 每轮包数
 		"Pingtimeout":  3000, // 单包超时(ms)
 		"Pingsize":     56,   // 探测包大小(字节)
@@ -244,6 +306,25 @@ func ParseConfig(ver string) {
 		if _, ok := Cfg.Base[k]; !ok {
 			Cfg.Base[k] = v
 		}
+	}
+	// 配置自愈: 修复非法探测参数组合。旧版默认 3000ms×20包=60秒 超过55秒上限,
+	// 会导致前后端校验拒绝所有配置保存(看起来就是"升级后什么都改不了/启用不了")。
+	if Cfg.Base["Pingcount"] < 1 || Cfg.Base["Pingcount"] > 1000 {
+		Cfg.Base["Pingcount"] = 20
+		healedKeys = append(healedKeys, "Base.Pingcount(fix)")
+	}
+	if Cfg.Base["Pinginterval"] < 10 || Cfg.Base["Pinginterval"] > 60000 {
+		Cfg.Base["Pinginterval"] = 2500
+		healedKeys = append(healedKeys, "Base.Pinginterval(fix)")
+	}
+	if Cfg.Base["Pinginterval"]*Cfg.Base["Pingcount"] > 55000 {
+		// 保留用户的包数意图, 压缩间隔使一轮能在55秒内发完
+		Cfg.Base["Pinginterval"] = 55000 / Cfg.Base["Pingcount"]
+		if Cfg.Base["Pinginterval"] < 10 {
+			Cfg.Base["Pinginterval"] = 2500
+			Cfg.Base["Pingcount"] = 20
+		}
+		healedKeys = append(healedKeys, "Base.Pinginterval(fix: 间隔×包数>55s)")
 	}
 	// 集群容灾默认值: 纪元从 0 起, 默认开启自动容灾(主挂时备选自动接管)
 	if Cfg.Mode == nil {
@@ -288,6 +369,13 @@ func ParseConfig(ver string) {
 	}
 	if Cfg.Topology["Tsound"] == "/alert.mp3" {
 		Cfg.Topology["Tsound"] = "/alert-soft.wav"
+	}
+	// 配置自愈落盘: 补全/修复的配置写回 config.json, 页面「高级 JSON」与后续升级都能看到完整配置
+	if len(healedKeys) > 0 {
+		log.Println("[init] config healed:", strings.Join(healedKeys, ", "))
+		if err := SaveConfig(); err != nil {
+			log.Println("[init] config heal persist fail:", err)
+		}
 	}
 	seelog.Info("Config loaded")
 	// PRAGMA 写入 DSN: 连接池中每条连接都生效(busy_timeout/synchronous 为连接级,
