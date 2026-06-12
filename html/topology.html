@@ -15,7 +15,7 @@
     <div class="card">
       <div class="card-head">
         <h3>拓扑</h3>
-        <span class="sub">实线 = 监测正常，红色虚线 = 触发阈值，可拖拽节点、滚轮缩放</span>
+        <span class="sub">实线 = 正常，红色虚线 = 告警；<b>点击连线可查看告警判定诊断</b>，可拖拽缩放</span>
         <span class="spacer"></span>
         <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
           <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
@@ -38,6 +38,14 @@
     </div>
   </div>
 
+</div>
+
+<!-- 告警判定诊断 -->
+<div class="sp-modal-mask" id="diag-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3 id="diag-title">告警判定诊断</h3><button class="m-close">&times;</button></div>
+    <div class="m-body" id="diag-body"></div>
+  </div>
 </div>
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
@@ -195,6 +203,54 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             }
             window.__alertAudio = a;
         }
+    }
+
+    // 点击连线: 调用源节点的告警判定诊断
+    chart.on('click', function (p) {
+        if (p.dataType !== 'edge') return;
+        var fromAddr = null, toAddr = null;
+        $.each(nodes, function (a, n) {
+            if (n.name === p.data.source) fromAddr = a;
+            if (n.name === p.data.target) toAddr = a;
+        });
+        if (!fromAddr || !toAddr) return;
+        openDiag(fromAddr, toAddr, p.data.source, p.data.target);
+    });
+
+    function openDiag(fromAddr, toAddr, fromName, toName) {
+        $('#diag-title').text('告警判定诊断: ' + fromName + ' → ' + toName);
+        $('#diag-body').html('<div class="empty-state"><span class="spinner"></span> 正在向源节点查询...</div>');
+        SP.openModal('diag-modal');
+        var base = (fromAddr === cfg.Addr) ? '' : '/api/proxy.json?g=http://' + fromAddr + ':' + cfg.Port;
+        var qs = '?target=' + encodeURIComponent(toAddr);
+        $.getJSON(base + '/api/alertdiag.json' + (base === '' ? qs : qs), function (d) {
+            if (d.status !== 'true') {
+                $('#diag-body').html('<div class="empty-state">' + SP.esc(d.info || '查询失败') + '</div>');
+                return;
+            }
+            var r = d.rule || {};
+            var verdictBadge = d.verdict === 'alerting'
+                ? '<span class="badge red"><span class="dot"></span>判定: 告警中</span>'
+                : '<span class="badge green"><span class="dot"></span>判定: 正常</span>';
+            var rows = [
+                ['规则阈值', '延迟 ≥ ' + r['Thdavgdelay'] + 'ms 或 丢包 ≥ ' + r['Thdloss'] + '%' + (r['Thdjitter'] ? ' 或 抖动 ≥ ' + r['Thdjitter'] + 'ms' : '')],
+                ['检测窗口', d.window_sec + ' 秒(最多容纳 ' + d.capacity + ' 个数据点) · 触发次数 ' + d.occ],
+                ['窗口内数据点', d.total + ' 个'],
+                ['异常分钟数', '<b style="color:' + (d.bad >= d.occ ? 'var(--sp-red)' : 'var(--sp-green)') + '">' + d.bad + '</b> / 触发线 ' + d.occ +
+                 '　<span class="muted">(延迟超标 ' + d.bad_delay + ' · 丢包超标 ' + d.bad_loss + (r['Thdjitter'] ? ' · 抖动超标 ' + d.bad_jitter : '') + ')</span>']
+            ];
+            if (d.muted) rows.push(['屏蔽状态', '<span class="badge yellow">屏蔽中</span> 至 ' + SP.esc(d.mute_until) + (d.mute_reason ? ' · ' + SP.esc(d.mute_reason) : '') + '(不发通知)']);
+            var html = '<div class="mb-4">' + verdictBadge + '</div><table class="sp-table">';
+            $.each(rows, function (_, kv) {
+                html += '<tr><td class="muted" style="white-space:nowrap;width:120px">' + kv[0] + '</td><td>' + kv[1] + '</td></tr>';
+            });
+            html += '</table>';
+            if (d.hint) html += '<div class="hint mt-2" style="color:var(--sp-red)">&#9888; ' + SP.esc(d.hint) + '</div>';
+            html += '<div class="hint mt-2">说明: 每分钟产生一个数据点; 窗口内"异常分钟数"达到"触发次数"即判定告警(状态翻转时通知一次)。</div>';
+            $('#diag-body').html(html);
+        }).fail(function () {
+            $('#diag-body').html('<div class="empty-state">源节点不可达</div>');
+        });
     }
 
     $('#sound-toggle').change(function () {

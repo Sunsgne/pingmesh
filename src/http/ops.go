@@ -111,6 +111,74 @@ func configOpsRoutes() {
 		renderOk(w, nil)
 	})
 
+	// 告警判定诊断: 解释某条链路当前为什么告警/不告警
+	http.HandleFunc("/api/alertdiag.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthData(r) {
+			deny(w)
+			return
+		}
+		r.ParseForm()
+		target := r.FormValue("target")
+		var rule map[string]string
+		for _, t := range g.SelfCfg.Topology {
+			if t["Addr"] == target {
+				rule = t
+				break
+			}
+		}
+		if rule == nil {
+			renderErr(w, "本节点没有对该目标的监测规则")
+			return
+		}
+		sec, _ := strconv.Atoi(rule["Thdchecksec"])
+		occ, _ := strconv.Atoi(rule["Thdoccnum"])
+		since := time.Unix(time.Now().Unix()-int64(sec), 0).Format("2006-01-02 15:04")
+		var total, badDelay, badLoss, badJitter, bad int
+		g.DLock.Lock()
+		row := g.Db.QueryRow(`select count(1),
+			sum(case when cast(avgdelay as double) >= cast(? as double) then 1 else 0 end),
+			sum(case when cast(losspk as double) >= cast(? as double) then 1 else 0 end),
+			sum(case when ? != '' and cast(ifnull(jitter,0) as double) >= cast(? as double) then 1 else 0 end),
+			sum(case when cast(avgdelay as double) >= cast(? as double)
+				or cast(losspk as double) >= cast(? as double)
+				or (? != '' and cast(ifnull(jitter,0) as double) >= cast(? as double)) then 1 else 0 end)
+			from pinglog where logtime > ? and target = ?`,
+			rule["Thdavgdelay"], rule["Thdloss"], rule["Thdjitter"], rule["Thdjitter"],
+			rule["Thdavgdelay"], rule["Thdloss"], rule["Thdjitter"], rule["Thdjitter"],
+			since, target)
+		row.Scan(&total, &badDelay, &badLoss, &badJitter, &bad)
+		g.DLock.Unlock()
+		muted := false
+		var muteUntil, muteReason string
+		g.DLock.Lock()
+		g.Db.QueryRow("SELECT muteduntil, ifnull(reason,'') FROM alertmute WHERE target = ? AND muteduntil > ?",
+			target, time.Now().Format("2006-01-02 15:04:05")).Scan(&muteUntil, &muteReason)
+		g.DLock.Unlock()
+		if muteUntil != "" {
+			muted = true
+		}
+		capacity := sec / 60
+		verdict := "normal"
+		if bad >= occ && occ > 0 {
+			verdict = "alerting"
+		}
+		hint := ""
+		if capacity < occ {
+			hint = "窗口太小: " + strconv.Itoa(sec) + "秒最多累计" + strconv.Itoa(capacity) + "个异常分钟, 永远达不到触发次数" + strconv.Itoa(occ) + ", 请加大窗口或减小次数"
+		} else if total == 0 {
+			hint = "窗口内没有任何探测数据(节点刚启动或探测未运行)"
+		}
+		renderOk(w, map[string]interface{}{
+			"from": g.Cfg.Addr, "fromname": g.Cfg.Name,
+			"target": target, "rule": rule,
+			"window_sec": sec, "capacity": capacity, "occ": occ,
+			"total": total, "bad": bad,
+			"bad_delay": badDelay, "bad_loss": badLoss, "bad_jitter": badJitter,
+			"muted": muted, "mute_until": muteUntil, "mute_reason": muteReason,
+			"verdict": verdict, "hint": hint,
+		})
+	})
+
 	// ASN 查询: 基于 RIPE NCC(权威 RIR)的 RIPEstat 接口, 24h 内存缓存
 	http.HandleFunc("/api/asn.json", func(w http.ResponseWriter, r *http.Request) {
 		if !AuthData(r) {
