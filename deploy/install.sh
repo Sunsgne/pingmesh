@@ -13,6 +13,7 @@
 #    sudo ./deploy/install.sh --port 8899          # 指定端口
 #    sudo ./deploy/install.sh --dir /opt/pingmesh  # 指定安装目录
 #    sudo ./deploy/install.sh --update             # 在线更新到最新版(保留服务配置与数据)
+#    sudo ./deploy/install.sh --update --join ... --token ... --name ...  # 更新并重写启动参数
 #    sudo ./deploy/install.sh --uninstall          # 卸载(保留数据目录)
 #
 #  也支持远程一键安装(无需提前克隆仓库):
@@ -125,6 +126,10 @@ if [[ -n "$JOIN" ]]; then
 fi
 
 # ---------------------------------------------------------- 5. 启动服务 ----
+if [[ $UPDATE -eq 1 && -n "$JOIN$PORT" ]]; then
+  info "更新模式携带了 --join/--port 参数: 将重写服务启动配置"
+  UPDATE=0   # 走完整安装流程重生成 systemd 单元
+fi
 if [[ $UPDATE -eq 1 ]]; then
   info "[5/5] 更新模式: 保留现有服务配置, 仅替换二进制并重启 ..."
   if [[ $HAS_SYSTEMD -eq 1 && -f /etc/systemd/system/${SERVICE}.service ]]; then

@@ -42,6 +42,11 @@ func configJoinRoutes() {
 			RenderJson(w, preout)
 			return
 		}
+		if addr == g.Cfg.Addr {
+			preout["info"] = "节点地址与主节点相同(" + addr + "), 请在加入命令中用 -addr 显式指定本机对外IP"
+			RenderJson(w, preout)
+			return
+		}
 		g.AddMeshNode(name, addr)
 		if group != "" {
 			m := g.Cfg.Network[addr]
