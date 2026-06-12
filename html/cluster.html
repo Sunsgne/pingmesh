@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>集群容灾 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="grid cols-4 mb-4">
+    <div class="card stat-card">
+      <div class="icon ic-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg></div>
+      <div><div class="val" id="st-master">-</div><div class="lbl">当前代理主节点</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div><div class="val" id="st-online">-</div><div class="lbl">在线节点 / 总数</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg></div>
+      <div><div class="val" id="st-epoch">-</div><div class="lbl">配置版本(纪元)</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <div><div class="val" id="st-mode">-</div><div class="lbl">容灾模式</div></div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-head">
+      <h3>集群节点态势</h3>
+      <span class="sub">主挂自动接管 · 配置全网同步收敛 · 任意节点持有完整副本永不丢失</span>
+      <span class="spacer"></span>
+      <span class="muted" id="cl-loading"></span>
+      <button class="btn sm" id="cl-refresh">刷新</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="sp-table">
+        <thead>
+          <tr><th>节点</th><th>角色</th><th>状态</th><th>运行模式</th><th>配置纪元</th><th>最近变更</th></tr>
+        </thead>
+        <tbody id="nodelist"></tbody>
+      </table>
+      <div class="empty-state" id="cl-empty" style="display:none">
+        <div class="big">&#128268;</div>
+        当前为单机模式，尚未组建集群。在其他机器上以 Agent 身份加入即可启用容灾。
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="policy-card">
+    <div class="card-head">
+      <h3>主节点策略</h3>
+      <span class="sub">指定主节点与备选，开启自动容灾后任一节点可在主挂时自动接管写入</span>
+    </div>
+    <div class="card-body">
+      <div class="dr-banner" id="dr-banner" style="display:none"></div>
+      <div class="grid cols-2">
+        <div class="field">
+          <label>主节点 (host:port)</label>
+          <input type="text" class="input mono" id="p-master" placeholder="10.0.0.1:8899">
+          <div class="hint">权威写入节点。集群组网后自动确立，可手动调整。</div>
+        </div>
+        <div class="field">
+          <label>备选主节点（逗号分隔，按优先级排序）</label>
+          <input type="text" class="input mono" id="p-standbys" placeholder="10.0.0.2:8899, 10.0.0.3:8899">
+          <div class="hint">主节点不可达时按顺序接管。开启自动容灾时可留空。</div>
+        </div>
+      </div>
+      <div class="flex" style="margin-top:4px">
+        <label class="switch"><input type="checkbox" id="p-auto"><span class="track"></span></label>
+        <div>
+          <div style="font-weight:600;font-size:13.5px">自动容灾（推荐）</div>
+          <div class="muted" style="font-size:12px">开启后所有探测节点都是主候选，按地址优先级自动接管，无需人工指定备选。</div>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn" id="cfg-export">导出配置备份</button>
+        <button class="btn primary" id="p-save">保存策略</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-head"><h3>容灾说明</h3></div>
+    <div class="card-body" style="font-size:13px;color:var(--sp-text-2);line-height:2">
+      <b>配置永不丢失</b>：每个节点本地都持有一份完整配置副本，任意单点（含主节点）宕机都不会丢失。<br>
+      <b>主挂自动接管</b>：主节点不可达时，下一优先级的在线候选自动成为代理主节点，继续接受配置变更与新节点加入。<br>
+      <b>全网收敛</b>：每条配置带单调递增的纪元；任何节点上的权威改动都会在下一同步周期（≤60秒）被全网采纳（纪元高者胜出）。<br>
+      <b>监控数据去中心化</b>：探测数据分布存储在各自节点，全网矩阵由各节点实时汇总，无中心数据库单点。
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('cluster', '集群容灾').done(function (ctx) {
+    if (ctx.user.role !== 'admin') {
+        $('#sp-content').html('<div class="empty-state"><div class="big">&#128274;</div>没有权限访问该页面</div>');
+        return;
+    }
+    var timer = null;
+    load();
+    $('#cl-refresh').click(load);
+
+    function roleBadge(n, acting) {
+        if (n.endpoint === acting) return '<span class="badge indigo"><span class="dot"></span>代理主节点</span>';
+        if (n.candidate) return '<span class="badge gray">备选主 #' + (n.priority + 1) + '</span>';
+        return '<span class="badge gray">Agent</span>';
+    }
+    function statusBadge(n) {
+        if (n.self) return '<span class="badge green"><span class="dot"></span>本机在线</span>';
+        return n.online ? '<span class="badge green"><span class="dot"></span>在线</span>'
+                        : '<span class="badge red"><span class="dot"></span>离线</span>';
+    }
+
+    function load() {
+        $('#cl-loading').html('<span class="spinner"></span>');
+        $.getJSON('/api/cluster/status.json', function (res) {
+            $('#cl-loading').html('');
+            if (res.status !== 'true') { SP.toast('获取集群状态失败', 'err'); return; }
+            render(res);
+        }).fail(function () {
+            $('#cl-loading').html('');
+            SP.toast('获取集群状态失败', 'err');
+        });
+    }
+
+    function render(res) {
+        var nodes = res.nodes || [];
+        var online = 0, total = nodes.length;
+        $.each(nodes, function (_, n) { if (n.online) online++; });
+        var actingNode = null;
+        $.each(nodes, function (_, n) { if (n.endpoint === res.acting) actingNode = n; });
+
+        $('#st-master').text(actingNode ? actingNode.name : (res.acting || '本机'));
+        $('#st-online').html(online + ' <span class="muted" style="font-size:15px">/ ' + total + '</span>');
+        var ep = '#' + res.maxepoch;
+        $('#st-epoch').html(ep + ' ' + (res.converged
+            ? '<span class="badge green" style="font-size:11px">已收敛</span>'
+            : '<span class="badge yellow" style="font-size:11px">同步中</span>'));
+        $('#st-mode').html(res.masterauto
+            ? '<span class="badge green">自动</span>'
+            : '<span class="badge gray">手动</span>');
+
+        var single = (total <= 1);
+        $('#cl-empty').toggle(single);
+        var box = $('#nodelist').empty();
+        $.each(nodes, function (_, n) {
+            box.append('<tr>' +
+                '<td><b>' + SP.esc(n.name || n.addr) + '</b>' + (n.self ? ' <span class="muted">(当前)</span>' : '') +
+                '<div class="mono muted" style="font-size:11.5px">' + SP.esc(n.endpoint) + '</div></td>' +
+                '<td>' + roleBadge(n, res.acting) + '</td>' +
+                '<td>' + statusBadge(n) + '</td>' +
+                '<td>' + (n.online ? '<span class="badge gray">' + SP.esc(n.mode || '-') + '</span>' : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (n.online ? '<span class="mono">#' + n.epoch + '</span>' +
+                    (n.epoch < res.maxepoch ? ' <span class="badge yellow" style="font-size:10px">落后</span>' : '') : '<span class="muted">—</span>') + '</td>' +
+                '<td class="muted">' + SP.esc(n.epochtime || '—') + '</td>' +
+                '</tr>');
+        });
+
+        // 策略表单
+        $('#p-master').val(res.primary || '');
+        $('#p-standbys').val(res.standbys || '');
+        $('#p-auto').prop('checked', !!res.masterauto);
+
+        // 当前节点不是代理主节点时给出运维提示
+        var selfNode = null;
+        $.each(nodes, function (_, n) { if (n.self) selfNode = n; });
+        if (selfNode && !single && res.acting && res.acting !== res.self) {
+            $('#dr-banner').html('提示：当前节点不是代理主节点，建议在 <b>' +
+                SP.esc(actingNode ? actingNode.name : res.acting) + '</b> (' + SP.esc(res.acting) +
+                ') 上修改配置，以确保改动以最高优先级在全网生效。').show();
+        } else {
+            $('#dr-banner').hide();
+        }
+    }
+
+    $('#p-save').click(function () {
+        var data = {
+            master: $.trim($('#p-master').val()),
+            standbys: $.trim($('#p-standbys').val()),
+            masterauto: $('#p-auto').is(':checked') ? 'true' : 'false'
+        };
+        $.post('/api/cluster/masters.json', data, function (res) {
+            if (res.status === 'true') { SP.toast(res.info || '已保存', 'ok'); load(); }
+            else SP.toast(res.info || '保存失败', 'err');
+        }, 'json');
+    });
+
+    $('#cfg-export').click(function () {
+        window.location.href = '/api/config/export.json';
+    });
+
+    // 每 15 秒自动刷新态势
+    timer = setInterval(load, 15000);
+    $(window).on('beforeunload', function () { if (timer) clearInterval(timer); });
+});
+});
+</script>
+</body>
+</html>

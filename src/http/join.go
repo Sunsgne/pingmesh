@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/cihub/seelog"
 	"github.com/zenlenet/pingmesh/src/funcs"
@@ -53,6 +54,15 @@ func configJoinRoutes() {
 			m.Group = group
 			g.Cfg.Network[addr] = m
 		}
+		// 首个节点加入即确立本节点为集群主节点(权威写入点), 供容灾选举使用
+		if g.Cfg.Mode == nil {
+			g.Cfg.Mode = map[string]string{}
+		}
+		if strings.TrimSpace(g.Cfg.Mode["Master"]) == "" {
+			g.Cfg.Mode["Master"] = g.SelfEndpoint()
+		}
+		// 节点拓扑变更属权威写入: 自增纪元, 确保全网采纳本次组网结果
+		g.BumpEpochInPlace(&g.Cfg)
 		if err := g.SaveConfig(); err != nil {
 			preout["info"] = "保存配置失败: " + err.Error()
 			RenderJson(w, preout)

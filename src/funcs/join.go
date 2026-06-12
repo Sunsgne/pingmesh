@@ -5,10 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func joinMarkerPath() string { return g.Root + "/conf/.join-args" }
 // 不会再覆盖页面上的改名; 改了 -name 等参数则正常执行并生效。
 func JoinMaster(master, token, name, addr, group string) error {
 	fp := joinFingerprint(master, token, name, addr, group)
-	if old, err := ioutil.ReadFile(joinMarkerPath()); err == nil && strings.TrimSpace(string(old)) == fp {
+	if old, err := os.ReadFile(joinMarkerPath()); err == nil && strings.TrimSpace(string(old)) == fp {
 		seelog.Info("[func:JoinMaster] join args unchanged since last successful join, skip re-join")
 		return nil
 	}
@@ -84,7 +85,7 @@ func JoinMasterN(master, token, name, addr, group string, attempts int) error {
 	if err := g.SaveConfig(); err != nil {
 		return err
 	}
-	ioutil.WriteFile(joinMarkerPath(), []byte(joinFingerprint(master, token, name, addr, group)), 0600)
+	os.WriteFile(joinMarkerPath(), []byte(joinFingerprint(master, token, name, addr, group)), 0600)
 	seelog.Info("[func:JoinMaster] joined mesh, config synced from ", endpoint)
 	return nil
 }
@@ -105,7 +106,7 @@ func joinOnce(master, token, name, addr, group string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var out struct {
 		Status string `json:"status"`
 		Info   string `json:"info"`

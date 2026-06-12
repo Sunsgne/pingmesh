@@ -3,7 +3,6 @@ package http
 import (
 	"crypto/tls"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -228,7 +227,7 @@ func toolHttp(target string, out map[string]interface{}) {
 		return
 	}
 	defer resp.Body.Close()
-	n, _ := io.Copy(ioutil.Discard, io.LimitReader(resp.Body, 10<<20))
+	n, _ := io.Copy(io.Discard, io.LimitReader(resp.Body, 10<<20))
 	total := time.Since(start)
 	ms := func(a, b time.Time) float64 {
 		if a.IsZero() || b.IsZero() || b.Before(a) {

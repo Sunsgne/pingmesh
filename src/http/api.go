@@ -7,7 +7,7 @@ import (
 	"github.com/cihub/seelog"
 	"github.com/zenlenet/pingmesh/src/funcs"
 	"github.com/zenlenet/pingmesh/src/g"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -522,6 +522,8 @@ func configApiRoutes() {
 		if nconfig.Alert["SendEmailPassword"] == "samepasswordasbefore" {
 			nconfig.Alert["SendEmailPassword"] = g.Cfg.Alert["SendEmailPassword"]
 		}
+		// 管理员保存属权威写入: 自增纪元, 使本次改动在集群内 LWW 收敛
+		g.BumpEpochInPlace(&nconfig)
 		g.CfgLock.Lock()
 		g.Cfg = nconfig
 		g.SelfCfg = g.Cfg.Network[g.Cfg.Addr]
@@ -534,6 +536,23 @@ func configApiRoutes() {
 		}
 		preout["status"] = "true"
 		RenderJson(w, preout)
+	})
+
+	//导出配置备份(管理员): 下载当前完整配置 JSON, 便于离线留存与跨集群迁移
+	http.HandleFunc("/api/config/export.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthAdmin(r) {
+			deny(w)
+			return
+		}
+		data, err := json.MarshalIndent(g.Cfg, "", "\t")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		fname := "pingmesh-config-" + g.Cfg.Name + "-" + time.Now().Format("20060102-150405") + ".json"
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+fname+"\"")
+		w.Write(data)
 	})
 
 	//测试告警通道
@@ -654,7 +673,7 @@ func configApiRoutes() {
 		}
 		defer resp.Body.Close()
 		resCode := resp.StatusCode
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			o := "Read Remote Data Error:" + err.Error()
 			http.Error(w, o, 503)

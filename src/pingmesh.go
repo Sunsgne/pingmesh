@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"runtime"
 
 	"github.com/jakecoffman/cron"
 	"github.com/zenlenet/pingmesh/src/funcs"
@@ -13,11 +12,14 @@ import (
 	"github.com/zenlenet/pingmesh/src/http"
 )
 
-// Init config
-var Version = "1.0.0"
+// 版本信息(BuildTime / GitCommit 由 -ldflags 注入, 见 deploy/install.sh 与 Dockerfile)
+var (
+	Version   = "2.0.0"
+	BuildTime = "unknown"
+	GitCommit = "dev"
+)
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	version := flag.Bool("v", false, "show version")
 	port := flag.Int("p", 0, "http port (override config)")
 	listen := flag.String("l", "", "listen address, e.g. 127.0.0.1:8899 (override config)")
@@ -27,15 +29,32 @@ func main() {
 	name := flag.String("name", "", "node name used when joining")
 	addr := flag.String("addr", "", "node ip used when joining (auto-detect if empty)")
 	group := flag.String("group", "", "node group used when joining (optional)")
+	masters := flag.String("masters", "", "comma-separated standby master endpoints for failover, e.g. 10.0.0.2:8899")
 	flag.Parse()
 	if *version {
-		fmt.Println(Version)
+		fmt.Printf("ZENLENET PingMesh %s (commit %s, built %s)\n", Version, GitCommit, BuildTime)
 		os.Exit(0)
 	}
 	g.FlagWorkDir = *workdir
 	g.FlagPort = *port
 	g.FlagListen = *listen
 	g.ParseConfig(Version)
+	// 首次安装的主节点: 用 -name/-addr 初始化节点身份(仅首次, 不覆盖后续在页面改名)
+	if g.FreshInstall && *join == "" {
+		if *name != "" {
+			g.Cfg.Name = *name
+		}
+		if *addr != "" {
+			g.Cfg.Addr = *addr
+			g.SelfCfg = g.Cfg.Network[g.Cfg.Addr]
+		}
+		if *name != "" || *addr != "" {
+			g.SaveConfig()
+		}
+	}
+	if *masters != "" {
+		g.SetStandbyMasters(*masters)
+	}
 	if *join != "" {
 		if err := funcs.JoinMaster(*join, *token, *name, *addr, *group); err != nil {
 			log.Fatalln("[Fault]join master fail:", err)
@@ -46,8 +65,9 @@ func main() {
 	c.AddFunc("*/60 * * * * *", func() {
 		go funcs.Ping()
 		go funcs.Mapping()
-		if g.Cfg.Mode["Type"] == "cloud" {
-			go funcs.StartCloudMonitor()
+		// 集群容灾同步: cloud 模式或已组建集群时启用(主挂自动接管 + 配置全网收敛)
+		if g.Cfg.Mode["Type"] == "cloud" || g.ClusterActive() {
+			go funcs.ClusterSync()
 		}
 	}, "ping")
 	c.AddFunc("0 0 * * * *", func() {

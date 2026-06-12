@@ -25,6 +25,67 @@ var (
 	sessionsLock sync.Mutex
 )
 
+// 登录暴力破解防护: 同一来源 IP 在窗口内连续失败达到上限后短时锁定。
+const (
+	loginMaxFails = 8
+	loginWindow   = 10 * time.Minute
+	loginLockout  = 10 * time.Minute
+)
+
+type loginGate struct {
+	fails    int
+	first    time.Time
+	lockedAt time.Time
+}
+
+var (
+	loginFailsMu sync.Mutex
+	loginFails   = map[string]*loginGate{}
+)
+
+func loginClientIP(r *http.Request) string {
+	ip := r.RemoteAddr
+	if i := lastColon(ip); i >= 0 {
+		ip = ip[:i]
+	}
+	return ip
+}
+
+// loginBlocked 该来源当前是否处于锁定期
+func loginBlocked(ip string) bool {
+	loginFailsMu.Lock()
+	defer loginFailsMu.Unlock()
+	g := loginFails[ip]
+	if g == nil {
+		return false
+	}
+	if !g.lockedAt.IsZero() && time.Since(g.lockedAt) < loginLockout {
+		return true
+	}
+	return false
+}
+
+func loginRecordFail(ip string) {
+	loginFailsMu.Lock()
+	defer loginFailsMu.Unlock()
+	g := loginFails[ip]
+	now := time.Now()
+	if g == nil || now.Sub(g.first) > loginWindow {
+		loginFails[ip] = &loginGate{fails: 1, first: now}
+		return
+	}
+	g.fails++
+	if g.fails >= loginMaxFails {
+		g.lockedAt = now
+	}
+}
+
+func loginRecordSuccess(ip string) {
+	loginFailsMu.Lock()
+	delete(loginFails, ip)
+	loginFailsMu.Unlock()
+}
+
 func newToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
@@ -146,6 +207,12 @@ func configAuthRoutes() {
 			return
 		}
 		r.ParseForm()
+		ip := loginClientIP(r)
+		if loginBlocked(ip) {
+			seelog.Info("[func:/api/login.json] too many failed attempts from ", ip)
+			renderErr(w, "失败次数过多, 请稍后再试(约10分钟)")
+			return
+		}
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		if username == "" || password == "" {
@@ -154,10 +221,12 @@ func configAuthRoutes() {
 		}
 		u, err := g.VerifyUser(username, password)
 		if err != nil {
+			loginRecordFail(ip)
 			seelog.Info("[func:/api/login.json] login failed for ", username, " from ", r.RemoteAddr)
 			renderErr(w, "用户名或密码错误")
 			return
 		}
+		loginRecordSuccess(ip)
 		token := newToken()
 		sessionsLock.Lock()
 		sessions[token] = &Session{Username: u.Username, Role: u.Role, Expire: time.Now().Add(sessionTTL)}
