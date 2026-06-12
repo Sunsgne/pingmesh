@@ -1,4 +1,4 @@
-module github.com/smartping/smartping
+module github.com/zenlenet/pingmesh
 
 go 1.25.0
 

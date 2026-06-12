@@ -14,8 +14,8 @@
   <div class="grid" style="grid-template-columns: 1fr 280px;">
     <div class="card">
       <div class="card-head">
-        <h3>互 Ping 拓扑</h3>
-        <span class="sub">绿色 = 正常，红色 = 触发报警阈值，可拖拽节点</span>
+        <h3>拓扑</h3>
+        <span class="sub">实线 = 监测正常，红色虚线 = 触发阈值，可拖拽节点、滚轮缩放</span>
         <span class="spacer"></span>
         <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
           <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
@@ -53,27 +53,49 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     var hasAlert = false;
 
     chart.setOption({
-        tooltip: { show: true, backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 12 } },
-        animation: false,
+        tooltip: {
+            show: true, backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0,
+            padding: [9, 13], textStyle: { color: '#e2e8f0', fontSize: 12 },
+            formatter: function (p) {
+                if (p.dataType === 'edge') {
+                    return p.data.source + ' &rarr; ' + p.data.target + '<br>' +
+                        (p.data._bad ? '<b style="color:#fb7185">触发报警阈值</b>' : '<span style="color:#34d399">监测正常</span>');
+                }
+                return '<b>' + p.name + '</b><br>' + (p.data._sub || '');
+            }
+        },
+        legend: {
+            show: true, bottom: 0, left: 'center', itemWidth: 14, itemHeight: 10,
+            icon: 'circle', textStyle: { color: '#64748b', fontSize: 12 },
+            data: ['探测节点', '被测目标', '异常']
+        },
+        animationDuration: 300, animationDurationUpdate: 300,
         series: [{
-            type: 'graph', layout: 'circular', roam: true,
-            symbolSize: parseInt(cfg.Topology['Tsymbolsize'] || 60, 10),
-            emphasis: { focus: 'adjacency' },
-            label: { show: true, fontSize: 12, fontWeight: 600, color: '#fff' },
-            edgeSymbol: ['circle', 'arrow'], edgeSymbolSize: [3, 11],
+            type: 'graph', layout: 'force', roam: true, draggable: true,
+            force: { repulsion: 1600, edgeLength: [140, 240], gravity: .12, layoutAnimation: false },
+            scaleLimit: { min: .5, max: 3 },
+            categories: [
+                { name: '探测节点', itemStyle: { color: '#6366f1' } },
+                { name: '被测目标', itemStyle: { color: '#10b981' } },
+                { name: '异常', itemStyle: { color: '#f43f5e' } }
+            ],
+            emphasis: { focus: 'adjacency', lineStyle: { width: 4 }, itemStyle: { shadowBlur: 18 } },
+            label: { show: true, fontSize: 11.5, fontWeight: 600, color: '#fff',
+                     formatter: function (p) { return p.name.length > 8 ? p.name.substring(0, 7) + '…' : p.name; } },
+            edgeSymbol: ['none', 'arrow'], edgeSymbolSize: [0, 9],
             data: [], links: [],
-            lineStyle: { opacity: .9, width: parseFloat(cfg.Topology['Tline'] || 1.5), curveness: 0 }
+            lineStyle: { opacity: .85, curveness: .18 }
         }]
     });
 
     // 构建节点与连线
     $.each(cfg.Network, function (addr, n) {
         var isSource = (n.Topology || []).length > 0;
-        nodes[addr] = { name: n.Name, addr: addr, source: isSource, color: isSource ? '#94a3b8' : '#10b981' };
+        nodes[addr] = { name: n.Name, addr: addr, source: isSource, bad: false };
         $.each(n.Topology || [], function (_, topo) {
             links[addr + '-' + topo['Addr']] = {
                 from: n.Name, to: SP.nodeName(cfg, topo['Addr']),
-                color: '#cbd5e1', curveness: .2
+                bad: false, pendingStatus: true
             };
         });
     });
@@ -95,16 +117,17 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             url: '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/topology.json',
             timeout: (cfg.Base['Timeout'] || 5) * 1000
         }).done(function (topodata) {
-            n.color = '#10b981';
+            n.bad = false;
             $('#st-' + addr.replace(/\./g, '-')).html('<span class="badge green"><span class="dot"></span>在线</span>');
             $.each(topodata, function (toAddr, flag) {
                 var l = links[addr + '-' + toAddr];
                 if (!l) return;
-                if (flag === 'true') { l.color = '#10b981'; l.curveness = 0; }
-                else { l.color = '#f43f5e'; l.curveness = .2; hasAlert = true; }
+                l.pendingStatus = false;
+                if (flag === 'true') { l.bad = false; }
+                else { l.bad = true; hasAlert = true; }
             });
         }).fail(function () {
-            n.color = '#f43f5e';
+            n.bad = true;
             hasAlert = true;
             $('#st-' + addr.replace(/\./g, '-')).html('<span class="badge red"><span class="dot"></span>不可达</span>');
         }).always(function () {
@@ -115,11 +138,31 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     function draw() {
         var data = [], lns = [];
-        $.each(nodes, function (_, n) {
-            data.push({ name: n.name, draggable: true, itemStyle: { color: n.color, shadowBlur: 8, shadowColor: 'rgba(15,23,42,.18)' } });
+        $.each(nodes, function (addr, n) {
+            var cat = n.bad ? 2 : (n.source ? 0 : 1);
+            var colors = ['#6366f1', '#10b981', '#f43f5e'];
+            data.push({
+                name: n.name, category: cat, draggable: true,
+                symbolSize: n.source ? 64 : 46,
+                _sub: '<span class="mono">' + addr + '</span><br>' +
+                      (n.bad ? '节点不可达' : (n.source ? '探测节点' : '被测目标')),
+                itemStyle: {
+                    color: colors[cat],
+                    borderColor: '#fff', borderWidth: 3,
+                    shadowBlur: 14, shadowColor: colors[cat] + '66'
+                }
+            });
         });
         $.each(links, function (_, l) {
-            lns.push({ source: l.from, target: l.to, lineStyle: { color: l.color, curveness: l.curveness } });
+            lns.push({
+                source: l.from, target: l.to, _bad: l.bad,
+                lineStyle: {
+                    color: l.bad ? '#f43f5e' : (l.pendingStatus ? '#cbd5e1' : '#34d399'),
+                    width: l.bad ? 2.5 : 1.8,
+                    type: l.bad ? 'dashed' : 'solid',
+                    curveness: .18, shadowBlur: l.bad ? 6 : 0, shadowColor: 'rgba(244,63,94,.4)'
+                }
+            });
         });
         chart.setOption({ series: [{ data: data, links: lns }] });
         if (hasAlert && $('#sound-toggle').is(':checked') && !window.__alertAudio) {

@@ -317,11 +317,11 @@ var SP = (function () {
         return dfd.promise();
     }
 
-    /* 提取互Ping的源节点(开启Smartping且有监测目标) */
+    /* 提取互Ping的源节点(探测节点且有监测目标) */
     function sourceNodes(cfg) {
         var list = [];
         $.each(cfg.Network, function (addr, n) {
-            if (n.Smartping && ((n.Ping && n.Ping.length > 0) || (n.Topology && n.Topology.length > 0))) {
+            if (n.Pingmesh && ((n.Ping && n.Ping.length > 0) || (n.Topology && n.Topology.length > 0))) {
                 list.push(n);
             }
         });

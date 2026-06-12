@@ -56,7 +56,7 @@ SP.init('tools', '检测工具').done(function (ctx) {
     var cfg = ctx.config;
 
     $.each(cfg.Network, function (_, n) {
-        if (!n.Smartping) return;
+        if (!n.Pingmesh) return;
         $('#list').append(
             '<tr data-v="' + SP.esc(n.Addr) + ':' + cfg.Port + '">' +
             '<td><input type="checkbox" checked></td>' +

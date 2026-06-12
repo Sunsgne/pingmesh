@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cihub/seelog"
-	"github.com/smartping/smartping/src/funcs"
-	"github.com/smartping/smartping/src/g"
-	"github.com/smartping/smartping/src/nettools"
+	"github.com/zenlenet/pingmesh/src/funcs"
+	"github.com/zenlenet/pingmesh/src/g"
+	"github.com/zenlenet/pingmesh/src/nettools"
 	"github.com/wcharczuk/go-chart"
 	"github.com/wcharczuk/go-chart/drawing"
 	"io/ioutil"
@@ -107,8 +107,8 @@ func configApiRoutes() {
 			losspk = append(losspk, "0")
 			timeStart = timeStart + 60
 		}
-		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk FROM `pinglog` where target='" + tableip + "' and logtime between '" + timeStartStr + "' and '" + timeEndStr + "' "
-		rows, err := g.Db.Query(querySql)
+		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk FROM pinglog where target=? and logtime between ? and ?"
+		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
 		seelog.Debug("[func:/api/ping.json] Query ", querySql)
 		if err != nil {
 			seelog.Error("[func:/api/ping.json] Query ", err)
@@ -196,8 +196,8 @@ func configApiRoutes() {
 			}
 			rows.Close()
 		}
-		querySql = "select logtime,targetname,targetip,tracert from alertlog where logtime between '" + dtb + " 00:00:00' and '" + dtb + " 23:59:59'"
-		rows, err = g.Db.Query(querySql)
+		querySql = "select logtime,targetname,targetip,tracert from alertlog where logtime between ? and ?"
+		rows, err = g.Db.Query(querySql, dtb+" 00:00:00", dtb+" 23:59:59")
 		seelog.Debug("[func:/api/alert.json] Query ", querySql)
 		if err != nil {
 			seelog.Error("[func:/api/alert.json] Query ", err)
@@ -241,8 +241,8 @@ func configApiRoutes() {
 		chinaMp.Subtext = dataKey
 		chinaMp.Avgdelay = map[string][]g.MapVal{}
 		g.DLock.Lock()
-		querySql := "select mapjson from mappinglog where logtime = '" + dataKey + "'"
-		rows, err := g.Db.Query(querySql)
+		querySql := "select mapjson from mappinglog where logtime = ?"
+		rows, err := g.Db.Query(querySql, dataKey)
 		g.DLock.Unlock()
 		seelog.Debug("[func:/api/mapping.json] Query ", querySql)
 		if err != nil {
@@ -278,14 +278,15 @@ func configApiRoutes() {
 			return
 		}
 		nowtime := int(time.Now().Unix())
-		if _, ok := g.ToolLimit[r.RemoteAddr]; ok {
-			if (nowtime - g.ToolLimit[r.RemoteAddr]) <= g.Cfg.Toollimit {
-				preout.Error = "Time Limit Exceeded!"
-				RenderJson(w, preout)
-				return
-			}
+		g.ToolLimitLock.Lock()
+		if last, ok := g.ToolLimit[r.RemoteAddr]; ok && (nowtime-last) <= g.Cfg.Toollimit {
+			g.ToolLimitLock.Unlock()
+			preout.Error = "Time Limit Exceeded!"
+			RenderJson(w, preout)
+			return
 		}
 		g.ToolLimit[r.RemoteAddr] = nowtime
+		g.ToolLimitLock.Unlock()
 		target := strings.Replace(strings.Replace(r.Form["t"][0], "https://", "", -1), "http://", "", -1)
 		preout.Ping = g.PingSt{}
 		preout.Ping.MinDelay = -1
@@ -505,8 +506,10 @@ func configApiRoutes() {
 		if nconfig.Alert["SendEmailPassword"] == "samepasswordasbefore" {
 			nconfig.Alert["SendEmailPassword"] = g.Cfg.Alert["SendEmailPassword"]
 		}
+		g.CfgLock.Lock()
 		g.Cfg = nconfig
 		g.SelfCfg = g.Cfg.Network[g.Cfg.Addr]
+		g.CfgLock.Unlock()
 		saveerr := g.SaveConfig()
 		if saveerr != nil {
 			preout["info"] = saveerr.Error()
@@ -612,7 +615,7 @@ func configApiRoutes() {
 		}
 		url := r.Form["g"][0]
 		config := g.PingStMini{}
-		timeout := time.Duration(time.Duration(g.Cfg.Base["Timeout"]) * 10 * time.Second)
+		timeout := time.Duration(g.Cfg.Base["Timeout"]) * time.Second
 		client := http.Client{
 			Timeout: timeout,
 		}
@@ -760,7 +763,7 @@ func configApiRoutes() {
 			http.Error(w, o, 406)
 			return
 		}
-		timeout := time.Duration(time.Duration(defaultto) * 10 * time.Second)
+		timeout := time.Duration(defaultto) * time.Second
 		client := http.Client{
 			Timeout: timeout,
 		}

@@ -8,9 +8,9 @@ import (
 	"runtime"
 
 	"github.com/jakecoffman/cron"
-	"github.com/smartping/smartping/src/funcs"
-	"github.com/smartping/smartping/src/g"
-	"github.com/smartping/smartping/src/http"
+	"github.com/zenlenet/pingmesh/src/funcs"
+	"github.com/zenlenet/pingmesh/src/g"
+	"github.com/zenlenet/pingmesh/src/http"
 )
 
 // Init config

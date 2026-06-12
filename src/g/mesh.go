@@ -39,11 +39,11 @@ func hasTopo(list []map[string]string, addr string) bool {
 func AddMeshNode(name, addr string) {
 	member, ok := Cfg.Network[addr]
 	if !ok {
-		member = NetworkMember{Name: name, Addr: addr, Smartping: true, Ping: []string{}, Topology: []map[string]string{}}
+		member = NetworkMember{Name: name, Addr: addr, Pingmesh: true, Ping: []string{}, Topology: []map[string]string{}}
 	}
 	member.Name = name
 	member.Addr = addr
-	member.Smartping = true
+	member.Pingmesh = true
 	if member.Ping == nil {
 		member.Ping = []string{}
 	}
@@ -60,7 +60,7 @@ func AddMeshNode(name, addr string) {
 		if !hasTopo(member.Topology, a) {
 			member.Topology = append(member.Topology, newTopoEntry(a, m.Name))
 		}
-		if m.Smartping {
+		if m.Pingmesh {
 			changed := false
 			if !hasPing(m.Ping, addr) {
 				m.Ping = append(m.Ping, addr)

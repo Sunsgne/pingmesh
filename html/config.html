@@ -120,7 +120,21 @@
       </div>
       <div class="field">
         <label>当前节点模式</label>
-        <div id="join-mode" class="muted" style="font-size:13px"></div>
+        <div id="join-mode" class="muted mb-2" style="font-size:13px"></div>
+        <!-- cloud 模式: 一键切回独立 -->
+        <div id="mode-standalone-box" style="display:none">
+          <button class="btn ghost-danger sm" id="mode-standalone-btn">切换为独立 / 主节点模式</button>
+          <span class="hint" style="display:inline;margin-left:8px">脱离主节点，停止配置同步，本节点配置自此独立维护</span>
+        </div>
+        <!-- local 模式: 加入主节点 -->
+        <div id="mode-join-box" style="display:none">
+          <div class="input-row" style="max-width:680px">
+            <input type="text" class="input mono" id="mode-master" placeholder="主节点地址, 如 http://10.0.0.1:8899">
+            <input type="text" class="input mono" id="mode-token" placeholder="接入令牌" style="max-width:180px">
+            <button class="btn primary sm" id="mode-join-btn" style="flex:none">加入主节点</button>
+          </div>
+          <div class="hint">以当前节点名与 IP 加入对方集群，加入后切换为 Agent 模式并每分钟同步配置</div>
+        </div>
       </div>
     </div>
 
@@ -130,8 +144,25 @@
         <div>
           <h3 style="font-size:14.5px;margin-bottom:14px">邮件通知 (SMTP)</h3>
           <div class="field">
+            <label>邮件服务商（一键填充服务器配置）</label>
+            <select class="input" id="mail-preset">
+              <option value="">手动配置...</option>
+              <option value="smtp.qq.com:465|使用「授权码」而非登录密码（QQ邮箱设置 → 账户 → 开启SMTP服务获取）">QQ 邮箱</option>
+              <option value="smtp.163.com:465|使用「客户端授权密码」（163设置 → POP3/SMTP → 开启服务获取）">网易 163 邮箱</option>
+              <option value="smtp.exmail.qq.com:465|使用成员账号密码；管理员需在后台开启 SMTP">腾讯企业邮</option>
+              <option value="smtp.qiye.aliyun.com:465|使用成员账号密码">阿里企业邮</option>
+              <option value="smtp.gmail.com:587|需开启两步验证并使用「应用专用密码」(App Password)">Gmail</option>
+              <option value="smtp.office365.com:587|Outlook / Microsoft 365 账号；部分租户需管理员启用 SMTP AUTH">Outlook / Microsoft 365</option>
+              <option value="smtp.zoho.com:465|使用 Zoho 账号或应用专用密码">Zoho Mail</option>
+              <option value="smtp.sendgrid.net:587|发件账号固定填 apikey，密码填 SendGrid API Key">SendGrid</option>
+              <option value="email-smtp.us-east-1.amazonaws.com:587|使用 SES SMTP 凭证；按实际区域修改服务器地址">Amazon SES</option>
+            </select>
+            <div class="hint" id="mail-preset-hint"></div>
+          </div>
+          <div class="field">
             <label>SMTP 服务器</label>
-            <input type="text" class="input" id="f-emailhost" placeholder="smtp.example.com:25">
+            <input type="text" class="input" id="f-emailhost" placeholder="smtp.example.com:465">
+            <div class="hint">465 端口自动使用 SSL/TLS 加密，587/25 端口自动协商 STARTTLS</div>
           </div>
           <div class="field">
             <label>发件邮箱</label>
@@ -550,12 +581,53 @@ SP.init('config', '系统配置').done(function (ctx) {
             './pingmesh -join http://' + cfg.Addr + ':' + cfg.Port +
             ' -token ' + token + ' -name <节点名>'
         );
-        if (cfg.Mode && cfg.Mode['Type'] === 'cloud') {
+        var isCloud = cfg.Mode && cfg.Mode['Type'] === 'cloud';
+        if (isCloud) {
             $('#join-mode').html('<span class="badge indigo">Agent 模式</span> 配置同步自 <span class="mono">' +
                 SP.esc(cfg.Mode['Endpoint'] || '') + '</span>，最后同步 ' + SP.esc(cfg.Mode['LastSuccTime'] || '-'));
         } else {
             $('#join-mode').html('<span class="badge green"><span class="dot"></span>主节点 / 独立模式</span> 其他节点可使用上面的命令加入本节点');
         }
+        $('#mode-standalone-box').toggle(isCloud);
+        $('#mode-join-box').toggle(!isCloud);
+    }
+
+    /* ----- 节点模式切换 ----- */
+    $('#mode-standalone-btn').click(function () {
+        SP.confirm('切换为独立模式', '确定脱离主节点吗？本节点将停止同步配置，已有监控配置保持不变。', function () {
+            $.post('/api/mode.json', { action: 'standalone' }, function (res) {
+                if (res.status === 'true') {
+                    SP.toast(res.info, 'ok');
+                    reloadCfg();
+                } else {
+                    SP.toast(res.info || '切换失败', 'err');
+                }
+            }, 'json');
+        });
+    });
+    $('#mode-join-btn').click(function () {
+        var master = $.trim($('#mode-master').val());
+        var token = $.trim($('#mode-token').val());
+        if (!master || !token) { SP.toast('请填写主节点地址与接入令牌', 'err'); return; }
+        var btn = $(this).attr('disabled', true).text('加入中...');
+        $.post('/api/mode.json', { action: 'join', master: master, token: token }, function (res) {
+            if (res.status === 'true') {
+                SP.toast(res.info, 'ok');
+                reloadCfg();
+            } else {
+                SP.toast(res.info || '加入失败', 'err');
+            }
+        }, 'json').fail(function () {
+            SP.toast('请求失败', 'err');
+        }).always(function () {
+            btn.attr('disabled', false).text('加入主节点');
+        });
+    });
+    function reloadCfg() {
+        $.getJSON('/api/config.json', function (ncfg) {
+            cfg = JSON.parse(JSON.stringify(ncfg));
+            fill();
+        });
     }
     $('#f-jointoken').keyup(renderJoin);
     $('#token-regen-btn').click(function () {
@@ -689,7 +761,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         // 统计每个节点被多少探测节点监测
         var watchedBy = {};
         $.each(cfg.Network, function (_, n) {
-            if (!n.Smartping) return;
+            if (!n.Pingmesh) return;
             $.each(n.Ping || [], function (_, t) { watchedBy[t] = (watchedBy[t] || 0) + 1; });
         });
         $.each(cfg.Network, function (addr, n) {
@@ -697,8 +769,8 @@ SP.init('config', '系统配置').done(function (ctx) {
             box.append('<tr>' +
                 '<td><b>' + SP.esc(n.Name) + '</b>' + (addr === cfg.Addr ? ' <span class="badge indigo">本机</span>' : '') + '</td>' +
                 '<td class="mono">' + SP.esc(addr) + '</td>' +
-                '<td>' + (n.Smartping ? '<span class="badge green"><span class="dot"></span>探测节点</span>' : '<span class="badge gray">被测目标</span>') + '</td>' +
-                '<td>' + (n.Smartping ? (n.Ping || []).length + ' 个' : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (n.Pingmesh ? '<span class="badge green"><span class="dot"></span>探测节点</span>' : '<span class="badge gray">被测目标</span>') + '</td>' +
+                '<td>' + (n.Pingmesh ? (n.Ping || []).length + ' 个' : '<span class="muted">—</span>') + '</td>' +
                 '<td>' + (watchedBy[addr] ? watchedBy[addr] + ' 个节点' : '<span class="badge yellow" title="没有任何探测节点监测它">未被监测</span>') + '</td>' +
                 '<td><button class="btn sm n-edit" data-a="' + SP.esc(addr) + '">编辑</button> ' +
                 '<button class="btn sm ghost-danger n-del" data-a="' + SP.esc(addr) + '">删除</button></td></tr>');
@@ -732,14 +804,14 @@ SP.init('config', '系统配置').done(function (ctx) {
 
     function openNode(addr) {
         editingAddr = addr;
-        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Smartping: false, Ping: [], Topology: [] };
+        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Pingmesh: false, Ping: [], Topology: [] };
         $('#node-modal-title').text(addr ? '编辑节点 - ' + n.Name : '添加节点');
         $('#n-name').val(n.Name);
         // 本机节点的 IP 与 Cfg.Addr 绑定, 需在「基础设置」中修改; 其他节点 IP 可直接改
         $('#n-addr').val(n.Addr).attr('disabled', addr === cfg.Addr)
             .attr('title', addr === cfg.Addr ? '本机 IP 请在「基础设置」中修改' : '');
         $('#n-addr-hint').toggle(!!addr && addr !== cfg.Addr);
-        setNodeType(addr ? (n.Smartping ? 'probe' : 'target') : 'probe');
+        setNodeType(addr ? (n.Pingmesh ? 'probe' : 'target') : 'probe');
         renderTargets(n);
         SP.openModal('node-modal');
     }
@@ -753,7 +825,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             var t = topoMap[addr] || {};
             var checked = $.inArray(addr, n.Ping || []) >= 0 || !!topoMap[addr];
             var mutualCell;
-            if (other.Smartping) {
+            if (other.Pingmesh) {
                 var mutualOn = n.Addr !== '' && $.inArray(n.Addr, other.Ping || []) >= 0;
                 mutualCell = '<td style="text-align:center"><input type="checkbox" class="t-mutual"' + (mutualOn ? ' checked' : '') + '></td>';
             } else {
@@ -762,7 +834,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             box.append('<tr data-a="' + SP.esc(addr) + '">' +
                 '<td style="text-align:center"><input type="checkbox" class="t-on"' + (checked ? ' checked' : '') + '></td>' +
                 '<td><b>' + SP.esc(other.Name) + '</b> ' +
-                (other.Smartping ? '<span class="badge indigo" style="font-size:10px">探测节点</span> ' : '') +
+                (other.Pingmesh ? '<span class="badge indigo" style="font-size:10px">探测节点</span> ' : '') +
                 '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
                 mutualCell +
                 '<td><input type="number" class="input t-delay" style="padding:5px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
@@ -814,14 +886,14 @@ SP.init('config', '系统配置').done(function (ctx) {
                 topo.push(topoEntry(ta, SP.nodeName(cfg, ta), $(this)));
             });
         }
-        cfg.Network[addr] = { Name: name, Addr: addr, Smartping: probe, Ping: ping, Topology: topo };
+        cfg.Network[addr] = { Name: name, Addr: addr, Pingmesh: probe, Ping: ping, Topology: topo };
 
         // 互PING: 同步对方节点对本节点的监测关系
         $('#n-targets tr[data-a]').each(function () {
             var mu = $(this).find('.t-mutual');
             if (mu.length === 0) return;
             var other = cfg.Network[$(this).attr('data-a')];
-            if (!other || !other.Smartping) return;
+            if (!other || !other.Pingmesh) return;
             other.Ping = other.Ping || []; other.Topology = other.Topology || [];
             var has = $.inArray(addr, other.Ping) >= 0;
             if (mu.is(':checked') && !has) {
@@ -903,6 +975,15 @@ SP.init('config', '系统配置').done(function (ctx) {
         }).always(function () {
             $('#save-btn').attr('disabled', false).text('保存配置');
         });
+    });
+
+    /* ----- mail presets ----- */
+    $('#mail-preset').change(function () {
+        var v = $(this).val();
+        if (!v) { $('#mail-preset-hint').text(''); return; }
+        var parts = v.split('|');
+        $('#f-emailhost').val(parts[0]);
+        $('#mail-preset-hint').html('&#128161; ' + SP.esc(parts[1] || ''));
     });
 
     /* ----- mail test ----- */

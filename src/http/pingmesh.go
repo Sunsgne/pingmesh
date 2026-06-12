@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/cihub/seelog"
-	"github.com/smartping/smartping/src/g"
+	"github.com/zenlenet/pingmesh/src/g"
 )
 
 // PingmeshCell 网格单元: 本节点 -> 目标 的聚合统计

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"io/ioutil"
@@ -11,12 +12,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cihub/seelog"
-	smartping "github.com/smartping/smartping"
+	pingmesh "github.com/zenlenet/pingmesh"
 )
 
 var (
@@ -35,6 +37,11 @@ var (
 	FlagWorkDir string
 	FlagPort    int
 	FlagListen  string
+
+	// ToolLimit 并发访问保护
+	ToolLimitLock sync.Mutex
+	// 配置热更新保护(整体替换 Cfg/SelfCfg 时持有)
+	CfgLock sync.Mutex
 )
 
 func IsExist(fp string) bool {
@@ -77,7 +84,8 @@ func GetRoot() string {
 	return dir
 }
 
-// ensureAssets 首次启动时从二进制内嵌资源释放默认配置与前端文件
+// ensureAssets 从二进制内嵌资源释放默认配置与前端文件。
+// 前端资源以内容哈希为版本戳: 二进制升级后自动重新释放, 避免页面停留在旧版本。
 func ensureAssets() {
 	for _, d := range []string{"conf", "db", "logs", "html"} {
 		os.MkdirAll(filepath.Join(Root, d), 0755)
@@ -85,31 +93,51 @@ func ensureAssets() {
 	for _, f := range []string{"conf/seelog.xml", "conf/config-base.json"} {
 		dst := filepath.Join(Root, f)
 		if !IsExist(dst) {
-			if data, err := smartping.Assets.ReadFile(f); err == nil {
+			if data, err := pingmesh.Assets.ReadFile(f); err == nil {
 				ioutil.WriteFile(dst, data, 0644)
 				log.Println("[init] extracted", f)
 			}
 		}
 	}
-	if !IsExist(filepath.Join(Root, "html", "index.html")) {
-		cnt := 0
-		fs.WalkDir(smartping.Assets, "html", func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			dst := filepath.Join(Root, p)
-			if d.IsDir() {
-				return os.MkdirAll(dst, 0755)
-			}
-			data, err := smartping.Assets.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			cnt++
-			return ioutil.WriteFile(dst, data, 0644)
-		})
-		log.Println("[init] extracted html assets:", cnt, "files")
+	stamp := embeddedHtmlHash()
+	stampFile := filepath.Join(Root, "html", ".assets-ver")
+	if old, err := ioutil.ReadFile(stampFile); err == nil && string(old) == stamp && IsExist(filepath.Join(Root, "html", "index.html")) {
+		return
 	}
+	cnt := 0
+	fs.WalkDir(pingmesh.Assets, "html", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(Root, p)
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0755)
+		}
+		data, err := pingmesh.Assets.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		cnt++
+		return ioutil.WriteFile(dst, data, 0644)
+	})
+	ioutil.WriteFile(stampFile, []byte(stamp), 0644)
+	log.Println("[init] extracted html assets:", cnt, "files (ver", stamp[:12], ")")
+}
+
+// embeddedHtmlHash 计算内嵌前端资源的内容哈希
+func embeddedHtmlHash() string {
+	h := fnv.New64a()
+	fs.WalkDir(pingmesh.Assets, "html", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		h.Write([]byte(p))
+		if data, err := pingmesh.Assets.ReadFile(p); err == nil {
+			h.Write(data)
+		}
+		return nil
+	})
+	return strconv.FormatUint(h.Sum64(), 16)
 }
 
 // InitDbSchema 创建数据表(替代旧版随包分发的 database-base.db)
@@ -132,6 +160,7 @@ func InitDbSchema() {
 			losspk   INT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pinglog_target_time ON pinglog (target, logtime)`,
+		`CREATE INDEX IF NOT EXISTS idx_pinglog_time ON pinglog (logtime)`,
 		`CREATE TABLE IF NOT EXISTS mappinglog (logtime VARCHAR (16) PRIMARY KEY, mapjson TEXT)`,
 	}
 	DLock.Lock()
@@ -196,6 +225,10 @@ func ParseConfig(ver string) {
 	if err != nil {
 		log.Fatalln("[Fault]db open fail .", err)
 	}
+	// WAL + busy_timeout: 读写并发不再互相阻塞, 避免 database is locked
+	Db.Exec("PRAGMA journal_mode=WAL")
+	Db.Exec("PRAGMA busy_timeout=5000")
+	Db.Exec("PRAGMA synchronous=NORMAL")
 	InitDbSchema()
 	SelfCfg = Cfg.Network[Cfg.Addr]
 	AlertStatus = map[string]bool{}
@@ -221,6 +254,8 @@ func SaveCloudConfig(url string) (Config, error) {
 		config.Name = string(body)
 		return config, err
 	}
+	CfgLock.Lock()
+	defer CfgLock.Unlock()
 	Name := Cfg.Name
 	Addr := Cfg.Addr
 	Ver := Cfg.Ver
