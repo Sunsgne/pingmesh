@@ -41,14 +41,14 @@ type alertMsg struct {
 }
 
 // recentStat 查询目标最近N分钟的实测均值(用于告警附带实际指标)
-func recentStat(target string, mins int) (avg float64, loss float64, ok bool) {
+func recentStat(target string, mins int) (avg float64, loss float64, jitter float64, ok bool) {
 	since := time.Unix(time.Now().Unix()-int64(mins)*60, 0).Format("2006-01-02 15:04")
 	g.DLock.Lock()
-	row := g.Db.QueryRow("select ifnull(avg(avgdelay),0), ifnull(avg(losspk),0), count(1) from pinglog where target = ? and logtime >= ?", target, since)
+	row := g.Db.QueryRow("select ifnull(avg(avgdelay),0), ifnull(avg(losspk),0), ifnull(avg(ifnull(jitter,0)),0), count(1) from pinglog where target = ? and logtime >= ?", target, since)
 	var cnt int
-	err := row.Scan(&avg, &loss, &cnt)
+	err := row.Scan(&avg, &loss, &jitter, &cnt)
 	g.DLock.Unlock()
-	return avg, loss, err == nil && cnt > 0
+	return avg, loss, jitter, err == nil && cnt > 0
 }
 
 func buildAlertMsg(l g.AlertLog, rule map[string]string, recovered bool) alertMsg {
@@ -62,11 +62,15 @@ func buildAlertMsg(l g.AlertLog, rule map[string]string, recovered bool) alertMs
 	m.Fields = append(m.Fields, [2]string{"链路", m.Link})
 	m.Fields = append(m.Fields, [2]string{"源节点", l.Fromname + " (" + l.Fromip + ")"})
 	m.Fields = append(m.Fields, [2]string{"目标", l.Targetname + " (" + l.Targetip + ")"})
-	if avg, loss, ok := recentStat(l.Targetip, 15); ok {
-		m.Fields = append(m.Fields, [2]string{"近15分钟实测", fmt.Sprintf("平均延迟 %.1f ms / 丢包 %.0f%%", avg, loss)})
+	if avg, loss, jitter, ok := recentStat(l.Targetip, 15); ok {
+		m.Fields = append(m.Fields, [2]string{"近15分钟实测", fmt.Sprintf("平均延迟 %.1f ms / 丢包 %.0f%% / 抖动 %.1f ms", avg, loss, jitter)})
 	}
 	if rule != nil && !recovered {
-		m.Fields = append(m.Fields, [2]string{"触发规则", "延迟 > " + rule["Thdavgdelay"] + "ms 或 丢包 > " + rule["Thdloss"] + "%"})
+		ruleTxt := "延迟 > " + rule["Thdavgdelay"] + "ms 或 丢包 > " + rule["Thdloss"] + "%"
+		if rule["Thdjitter"] != "" {
+			ruleTxt += " 或 抖动 > " + rule["Thdjitter"] + "ms"
+		}
+		m.Fields = append(m.Fields, [2]string{"触发规则", ruleTxt})
 	}
 	m.Fields = append(m.Fields, [2]string{"时间", l.Logtime})
 	m.Fields = append(m.Fields, [2]string{"平台", "ZENLENET PingMesh"})

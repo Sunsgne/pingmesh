@@ -180,6 +180,7 @@ func InitDbSchema() {
 	}
 	// 告警确认字段(老库升级, 已存在时报错忽略)
 	for _, s := range []string{
+		`ALTER TABLE pinglog ADD COLUMN jitter FLOAT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ack INT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ackby VARCHAR(64)`,
 		`ALTER TABLE alertlog ADD COLUMN ackreason TEXT`,
@@ -217,10 +218,19 @@ func ParseConfig(ver string) {
 	if FlagPort > 0 {
 		Cfg.Port = FlagPort
 	}
-	// 旧配置迁移: 全国延迟开关默认开启
+	// 旧配置迁移: 功能开关与探测参数默认值
 	if Cfg.Base != nil {
-		if _, ok := Cfg.Base["Chinamap"]; !ok {
-			Cfg.Base["Chinamap"] = 1
+		baseDefaults := map[string]int{
+			"Chinamap":     1,
+			"Pinginterval": 3000, // 包间隔(ms)
+			"Pingcount":    20,   // 每轮包数
+			"Pingtimeout":  3000, // 单包超时(ms)
+			"Pingsize":     56,   // 探测包大小(字节)
+		}
+		for k, v := range baseDefaults {
+			if _, ok := Cfg.Base[k]; !ok {
+				Cfg.Base[k] = v
+			}
 		}
 	}
 	// 兼容旧版: 存在 database-base.db 时沿用拷贝方式, 否则由代码建表

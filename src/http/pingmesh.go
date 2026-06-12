@@ -15,6 +15,7 @@ type PingmeshCell struct {
 	MaxDelay  float64 `json:"maxdelay"`
 	MinDelay  float64 `json:"mindelay"`
 	Loss      float64 `json:"loss"`
+	Jitter    float64 `json:"jitter"`
 	LastCheck string  `json:"lastcheck"`
 	Points    int     `json:"points"`
 }
@@ -65,7 +66,7 @@ func configPingmeshRoutes() {
 		if g.SelfCfg.Ping != nil {
 			row.Targets = g.SelfCfg.Ping
 		}
-		querySql := "select target, avg(avgdelay), max(maxdelay), min(case when mindelay < 0 then 0 else mindelay end), avg(losspk), max(logtime), count(1) from pinglog where logtime >= ? and logtime <= ? group by target"
+		querySql := "select target, avg(avgdelay), max(maxdelay), min(case when mindelay < 0 then 0 else mindelay end), avg(losspk), avg(ifnull(jitter,0)), max(logtime), count(1) from pinglog where logtime >= ? and logtime <= ? group by target"
 		g.DLock.Lock()
 		rows, err := g.Db.Query(querySql, timeStartStr, timeEndStr)
 		g.DLock.Unlock()
@@ -75,7 +76,7 @@ func configPingmeshRoutes() {
 			for rows.Next() {
 				var target string
 				c := PingmeshCell{}
-				if err := rows.Scan(&target, &c.AvgDelay, &c.MaxDelay, &c.MinDelay, &c.Loss, &c.LastCheck, &c.Points); err != nil {
+				if err := rows.Scan(&target, &c.AvgDelay, &c.MaxDelay, &c.MinDelay, &c.Loss, &c.Jitter, &c.LastCheck, &c.Points); err != nil {
 					seelog.Error("[func:/api/pingmesh.json] Rows ", err)
 					continue
 				}

@@ -13,7 +13,11 @@
 		"Archive": 10,
 		"Chinamap": 1,
 		"Refresh": 1,
-		"Timeout": 5
+		"Timeout": 5,
+		"Pinginterval": 3000,
+		"Pingcount": 20,
+		"Pingtimeout": 3000,
+		"Pingsize": 56
 	},
 	"Topology": {
 		"Tline": "1",

@@ -126,7 +126,8 @@ var SP = (function () {
                     { name: '最大延迟', data: data.maxdelay },
                     { name: '最小延迟', data: data.mindelay },
                     { name: '平均延迟', data: data.avgdelay },
-                    { name: '丢包率', data: data.losspk }
+                    { name: '丢包率', data: data.losspk },
+                    { name: '抖动', data: data.jitter || [] }
                 ]
             });
         }).fail(function () {
@@ -150,7 +151,7 @@ var SP = (function () {
                     axisPointer: { type: 'cross', label: { backgroundColor: '#4f46e5' } }
                 },
                 legend: {
-                    data: ['最大延迟', '平均延迟', '最小延迟', '丢包率'],
+                    data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
                     selected: { '最大延迟': false, '最小延迟': false },
                     icon: 'roundRect', itemWidth: 14, itemHeight: 8,
                     textStyle: { color: '#475569', fontSize: 12 }
@@ -179,7 +180,9 @@ var SP = (function () {
                           { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
                       data: [] },
                     { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false,
-                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] }
+                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
+                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true,
+                      itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
                 ]
             });
         } else {

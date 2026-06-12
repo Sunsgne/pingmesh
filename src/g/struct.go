@@ -61,6 +61,8 @@ type PingSt struct {
 	MinDelay float64
 	AvgDelay float64
 	MaxDelay float64
+	// Jitter 相邻样本RTT差的平均值(ms), 专线(IPLC/IEPL)质量核心指标
+	Jitter float64
 }
 
 //Ping mini graph Struct
@@ -76,6 +78,7 @@ type PingLog struct {
 	Mindelay string
 	Avgdelay string
 	Losspk   string
+	Jitter   string
 }
 
 type AlertLog struct {
