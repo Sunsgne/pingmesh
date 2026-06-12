@@ -294,6 +294,10 @@ func SaveCloudConfig(url string) (Config, error) {
 	Cfg = config
 	Cfg.Name = Name
 	Cfg.Addr = Addr
+	// 集群模式以主节点的节点列表为命名权威: 主节点改名后 Agent 自动采用
+	if m, ok := Cfg.Network[Addr]; ok && m.Name != "" {
+		Cfg.Name = m.Name
+	}
 	Cfg.Ver = Ver
 	Cfg.Port = Port
 	Cfg.Password = Password
