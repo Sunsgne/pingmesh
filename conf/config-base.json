@@ -11,12 +11,13 @@
 	},
 	"Base": {
 		"Archive": 10,
+		"Chinamap": 1,
 		"Refresh": 1,
 		"Timeout": 5
 	},
 	"Topology": {
 		"Tline": "1",
-		"Tsound": "/alert.mp3",
+		"Tsound": "/alert-soft.wav",
 		"Tsymbolsize": "70"
 	},
 	"Alert": {

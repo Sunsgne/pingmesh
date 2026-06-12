@@ -1,12 +1,12 @@
 [Unit]
-Description=SmartPing - network quality monitor
+Description=ZENLENET PingMesh - network quality monitor
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/smartping
-ExecStart=/opt/smartping/smartping
+WorkingDirectory=/opt/pingmesh
+ExecStart=/opt/pingmesh/pingmesh
 Restart=always
 RestartSec=5
 # ICMP 原始套接字所需权限(无需 root 运行)

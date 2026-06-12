@@ -95,7 +95,7 @@ func buildMessage(l g.AlertLog, rule map[string]string, recovered bool) (string,
 	if !recovered && reason != "" {
 		text += "\n" + reason
 	}
-	text += "\n来自 SmartPing"
+	text += "\n来自 ZENLENET PingMesh"
 	return title, text
 }
 

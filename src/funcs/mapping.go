@@ -20,6 +20,10 @@ var (
 )
 
 func Mapping() {
+	// 全国延迟功能可在配置中关闭
+	if g.Cfg.Base["Chinamap"] == 0 {
+		return
+	}
 	var wg sync.WaitGroup
 	MapStatus = map[string][]g.MapVal{}
 	seelog.Debug("[func:Mapping]", g.Cfg.Chinamap)

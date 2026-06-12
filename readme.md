@@ -1,56 +1,39 @@
 <p align="center">
-    <a href="http://smartping.org">
-        <img src="http://smartping.org/logo.png">
-    </a>
-    <h3 align="center">SmartPing | 开源、高效、便捷的网络质量监控神器</h3>
+    <img src="html/assets/img/logo.png" width="96" alt="ZENLENET PingMesh">
+    <h3 align="center">ZENLENET PingMesh | 全网互 PING · 网络质量监控平台</h3>
     <p align="center">
-        一个综合性网络质量(PING)检测工具，支持正/反向PING绘图、互PING拓扑绘图与报警、全国PING延迟地图与在线检测工具等功能
-        <br>
-        <a href="http://smartping.org"><strong>-- Browse website --</strong></a>
-        <br>
-        <br>
-        <a href="https://www.travis-ci.org/smartping/smartping">
-            <img src="https://www.travis-ci.org/smartping/smartping.svg?branch=master" >
-        </a>
-        <a href="https://goreportcard.com/report/github.com/smartping/smartping">
-            <img src="https://goreportcard.com/badge/github.com/smartping/smartping" >
-        </a>
-         <a href="https://github.com/smartping/smartping/releases">
-             <img src="https://img.shields.io/github/release/smartping/smartping.svg" >
-         </a>
-         <a href="https://github.com/smartping/smartping/blob/master/LICENSE">
-             <img src="https://img.shields.io/hexpm/l/plug.svg" >
-         </a>
-    </p>    
+        开箱即用的网络质量(PING)监控平台：Pingmesh 互PING矩阵、正/反向PING曲线、拓扑告警、
+        多通道告警(钉钉/企微/飞书/Telegram/Slack/Discord/Webhook/邮件)、全国延迟地图与多节点检测工具
+    </p>
 </p>
+
+> 基于开源项目 SmartPing 深度重构（Go 模块路径沿用 `github.com/smartping/smartping`）。
 
 ## 功能 ##
 
-- 用户登录与权限管理（管理员/只读用户，默认账号 `admin / admin123`，首次登录后请修改密码）
-- Pingmesh 全网互PING矩阵（借鉴 Flashcat Pingmesh，行=源节点、列=目标，延迟/丢包热力着色，点击查看历史曲线）
-- 多通道告警：邮件 / 钉钉 / 企业微信 / 飞书 / Telegram / Slack / Discord / 通用Webhook，告警与恢复均通知，支持页面内一键测试
-- 主节点 + 一键加入组网：新节点一条命令加入，自动全互联组成 Pingmesh，配置每分钟自动从主节点同步
-- 正向PING，反向Ping绘图（现代化界面，ECharts 实时曲线）
-- 互PING间机器的状态拓扑，自定义延迟、丢包阈值报警，报警时MTR检测
-- 全国PING延迟地图（各省份可分电信、联通、移动三条线路）
-- 检测工具，支持使用SmartPing各节点进行网络相关检测
-- 可视化系统配置（基础设置/节点管理/节点接入/报警通道/全国延迟/高级JSON）
-- 单二进制部署：前端资源与默认配置内嵌，首次启动自动初始化，亦提供 Docker 与 systemd 一键安装
+- **Pingmesh 互PING矩阵**：行=源节点、列=目标的紧凑热力网格，预设/自定义时间窗口，延迟/丢包切换，点击查看历史曲线
+- **用户与权限**：登录会话、管理员/只读角色、用户管理（默认账号 `admin / admin123`，请尽快修改）
+- **多通道告警**：邮件 / 钉钉(加签) / 企业微信 / 飞书(签名) / Telegram / Slack / Discord / 通用Webhook，告警与恢复均通知，页面内一键测试
+- **一键组网**：主节点 + `-join` 一条命令加入，自动全互联组网，配置每分钟自动同步
+- 正/反向 PING 曲线（ECharts 5 现代化图表）、互PING拓扑（柔和声音告警）、阈值报警与 MTR 快照
+- 全国PING延迟地图（电信/联通/移动三线路，可在配置中开启/关闭）
+- 多节点检测工具、可视化系统配置（Bootstrap 5 + 自研设计系统）
+- **单二进制部署**：前端资源内嵌，首次启动自动初始化；提供 Docker 与 systemd 一键安装
 
 ## 快速开始 ##
 
 ### 方式一：单二进制 ###
 
 ```bash
-go build -o smartping ./src
-sudo setcap cap_net_raw+ep ./smartping   # ICMP 需要 raw socket 权限(或用 root 运行)
-./smartping                              # 默认端口 8899, 首次启动自动生成 conf/db/html/logs
+go build -o pingmesh ./src
+sudo setcap cap_net_raw+ep ./pingmesh    # ICMP 需要 raw socket 权限(或用 root 运行)
+./pingmesh                               # 默认端口 8899, 首次启动自动生成 conf/db/html/logs
 ```
 
 ### 方式二：Docker ###
 
 ```bash
-docker compose up -d                     # 或 docker build -t smartping . && docker run --net=host --cap-add=NET_RAW smartping
+docker compose up -d                     # 或 docker build -t pingmesh . && docker run --net=host --cap-add=NET_RAW pingmesh
 ```
 
 ### 方式三：systemd 一键安装 ###
@@ -67,7 +50,7 @@ sudo ./deploy/install.sh                 # 安装为系统服务并开机自启
 
 ```bash
 # 接入令牌与完整命令可在主节点「系统配置 - 节点接入」页面直接复制
-./smartping -join http://<主节点IP>:8899 -token <接入令牌> -name 北京机房
+./pingmesh -join http://<主节点IP>:8899 -token <接入令牌> -name 北京机房
 # 或使用安装脚本
 sudo ./deploy/install.sh --join http://<主节点IP>:8899 --token <接入令牌> --name 北京机房
 ```
@@ -82,27 +65,18 @@ sudo ./deploy/install.sh --join http://<主节点IP>:8899 --token <接入令牌>
 | --- | --- |
 | `-p 8899` | 覆盖配置中的HTTP端口 |
 | `-l 0.0.0.0:8899` | 指定监听地址 |
-| `-w /data/smartping` | 指定工作目录(默认二进制所在目录) |
+| `-w /data/pingmesh` | 指定工作目录(默认二进制所在目录) |
 | `-join / -token / -name / -addr` | 以Agent身份加入主节点(addr留空自动识别) |
 
 ## 设计思路 ##
 
-本系统的定位为轻量级工具，即使组多点成互Ping网络可以遵守无中心化原则，所有的数据均存储自身节点中，每个节点提供出方向的数据，从任意节点查询数据均会通过Ajax请求关联节点的API接口获取并组装全部数据。
-## 项目截图 ##
+本系统的定位为轻量级工具，组成互Ping网络时遵守无中心化原则：所有数据均存储在自身节点中，每个节点提供出方向的数据，从任意节点查询数据均会通过Ajax请求关联节点的API接口获取并组装全部数据。主节点仅承担配置分发与节点注册职责。
 
-![app-bg.jpg](http://smartping.org/assets/img/app-bg.png "")
+## 项目贡献 ##
 
-## 技术交流
+欢迎参与项目贡献！比如提交PR修复一个bug，或者新建 Issue 讨论新特性或者变更。
 
-<a target="_blank" href="//shang.qq.com/wpa/qunwpa?idkey=dd689e43fd8ecfeb28bffc31d53cb058c6ea23263aa1a34fc032efaf91aae924"><img border="0" src="http://pub.idqqimg.com/wpa/images/group.png" alt="SmartPing" title="SmartPing"></a>
+## 致谢 ##
 
-## 项目贡献
-
-欢迎参与项目贡献！比如提交PR修复一个bug，或者新建 [Issue](https://github.com/smartping/smartping/issues/) 讨论新特性或者变更。
-
-## 其他资料 ##
-
-- 官网： http://smartping.org
-- 文档： https://docs.smartping.org
-- - 下载安装：https://docs.smartping.org/install/
-- - API文档：https://docs.smartping.org/api/
+- 原始项目：[SmartPing](https://github.com/smartping/smartping) (Apache-2.0)
+- Pingmesh 矩阵交互参考：快猫星云 Flashcat Pingmesh 与微软 Pingmesh 论文

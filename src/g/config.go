@@ -171,6 +171,12 @@ func ParseConfig(ver string) {
 	if FlagPort > 0 {
 		Cfg.Port = FlagPort
 	}
+	// 旧配置迁移: 全国延迟开关默认开启
+	if Cfg.Base != nil {
+		if _, ok := Cfg.Base["Chinamap"]; !ok {
+			Cfg.Base["Chinamap"] = 1
+		}
+	}
 	// 兼容旧版: 存在 database-base.db 时沿用拷贝方式, 否则由代码建表
 	if !IsExist(Root+"/db/"+"database.db") && IsExist(Root+"/db/"+"database-base.db") {
 		src, err := os.Open(Root + "/db/" + "database-base.db")

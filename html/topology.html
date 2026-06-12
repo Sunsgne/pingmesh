@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>网络拓扑 - SmartPing</title>
+<title>网络拓扑 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
 <link href="assets/css/modern.css" rel="stylesheet">
 </head>
 <body>
@@ -16,10 +17,10 @@
         <h3>互 Ping 拓扑</h3>
         <span class="sub">绿色 = 正常，红色 = 触发报警阈值，可拖拽节点</span>
         <span class="spacer"></span>
-        <label class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
-          <span class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></span>
+        <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
+          <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
           声音报警
-        </label>
+        </span>
       </div>
       <div class="card-body">
         <div id="topo-chart" style="width:100%;height:560px"></div>
@@ -52,16 +53,16 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     var hasAlert = false;
 
     chart.setOption({
-        tooltip: { show: true },
+        tooltip: { show: true, backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 12 } },
         animation: false,
         series: [{
             type: 'graph', layout: 'circular', roam: true,
             symbolSize: parseInt(cfg.Topology['Tsymbolsize'] || 60, 10),
-            focusNodeAdjacency: true,
-            label: { normal: { show: true, textStyle: { fontSize: 12 } } },
+            emphasis: { focus: 'adjacency' },
+            label: { show: true, fontSize: 12, fontWeight: 600, color: '#fff' },
             edgeSymbol: ['circle', 'arrow'], edgeSymbolSize: [3, 11],
             data: [], links: [],
-            lineStyle: { normal: { opacity: .9, width: parseFloat(cfg.Topology['Tline'] || 1.5), curveness: 0 } }
+            lineStyle: { opacity: .9, width: parseFloat(cfg.Topology['Tline'] || 1.5), curveness: 0 }
         }]
     });
 
@@ -100,10 +101,10 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                 var l = links[addr + '-' + toAddr];
                 if (!l) return;
                 if (flag === 'true') { l.color = '#10b981'; l.curveness = 0; }
-                else { l.color = '#ef4444'; l.curveness = .2; hasAlert = true; }
+                else { l.color = '#f43f5e'; l.curveness = .2; hasAlert = true; }
             });
         }).fail(function () {
-            n.color = '#ef4444';
+            n.color = '#f43f5e';
             hasAlert = true;
             $('#st-' + addr.replace(/\./g, '-')).html('<span class="badge red"><span class="dot"></span>不可达</span>');
         }).always(function () {
@@ -115,19 +116,34 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     function draw() {
         var data = [], lns = [];
         $.each(nodes, function (_, n) {
-            data.push({ name: n.name, draggable: true, itemStyle: { normal: { color: n.color } } });
+            data.push({ name: n.name, draggable: true, itemStyle: { color: n.color, shadowBlur: 8, shadowColor: 'rgba(15,23,42,.18)' } });
         });
         $.each(links, function (_, l) {
-            lns.push({ source: l.from, target: l.to, lineStyle: { normal: { color: l.color, curveness: l.curveness } } });
+            lns.push({ source: l.from, target: l.to, lineStyle: { color: l.color, curveness: l.curveness } });
         });
         chart.setOption({ series: [{ data: data, links: lns }] });
-        if (hasAlert && $('#sound-toggle').is(':checked') && $('#alert-audio').length === 0) {
-            $('body').append('<audio id="alert-audio" autoplay loop style="display:none"><source src="' + (cfg.Topology['Tsound'] || '/alert.mp3') + '" type="audio/mp3"></audio>');
+        if (hasAlert && $('#sound-toggle').is(':checked') && !window.__alertAudio) {
+            // 柔和双音提示, 降低音量避免刺耳
+            var a = new Audio(cfg.Topology['Tsound'] || '/alert-soft.wav');
+            a.loop = true; a.volume = 0.35;
+            var p = a.play();
+            if (p && p.catch) {
+                p.catch(function () {
+                    // 浏览器自动播放策略: 等待首次交互后再播放
+                    $(document).one('click keydown', function () {
+                        if (window.__alertAudio) window.__alertAudio.play();
+                    });
+                });
+            }
+            window.__alertAudio = a;
         }
     }
 
     $('#sound-toggle').change(function () {
-        if (!$(this).is(':checked')) $('#alert-audio').remove();
+        if (!$(this).is(':checked') && window.__alertAudio) {
+            window.__alertAudio.pause();
+            window.__alertAudio = null;
+        }
     });
 
     // 自动刷新
