@@ -106,8 +106,25 @@ SP.init('cluster', '集群容灾').done(function (ctx) {
         return;
     }
     var timer = null;
+    var loading = false;
+
+    // 先用已加载的节点配置填充策略表单: 即使状态接口异常, 表单与保存仍可用
+    var md = (ctx.config && ctx.config.Mode) || {};
+    $('#p-master').val(md.Master || '');
+    $('#p-standbys').val(md.Standbys || '');
+    $('#p-auto').prop('checked', md.MasterAuto !== 'false');
+
     load();
     $('#cl-refresh').click(load);
+
+    function apiErrMsg(prefix, xhr, st) {
+        var msg = prefix;
+        if (st === 'timeout') return msg + '：请求超时，集群节点较多时请稍后重试';
+        if (xhr && xhr.status === 404) return msg + '：本节点程序版本过旧（没有集群接口），请重新编译/升级本节点后重试';
+        if (xhr && xhr.status === 401) return msg + '：登录已过期，请刷新页面重新登录';
+        if (xhr && xhr.status) return msg + ' (HTTP ' + xhr.status + ')';
+        return msg + '：无法连接服务';
+    }
 
     function roleBadge(n, acting) {
         if (n.endpoint === acting) return '<span class="badge indigo"><span class="dot"></span>代理主节点</span>';
@@ -116,19 +133,26 @@ SP.init('cluster', '集群容灾').done(function (ctx) {
     }
     function statusBadge(n) {
         if (n.self) return '<span class="badge green"><span class="dot"></span>本机在线</span>';
-        return n.online ? '<span class="badge green"><span class="dot"></span>在线</span>'
-                        : '<span class="badge red"><span class="dot"></span>离线</span>';
+        if (!n.online) return '<span class="badge red"><span class="dot"></span>离线</span>';
+        if (n.legacy) return '<span class="badge yellow"><span class="dot"></span>在线 · 旧版本</span>';
+        return '<span class="badge green"><span class="dot"></span>在线</span>';
     }
 
     function load() {
+        if (loading) return;
+        loading = true;
         $('#cl-loading').html('<span class="spinner"></span>');
-        $.getJSON('/api/cluster/status.json', function (res) {
-            $('#cl-loading').html('');
-            if (res.status !== 'true') { SP.toast('获取集群状态失败', 'err'); return; }
+        $.ajax({ url: '/api/cluster/status.json', dataType: 'json', timeout: 30000 })
+        .done(function (res) {
+            if (!res || res.status !== 'true') { SP.toast('获取集群状态失败', 'err'); return; }
             render(res);
-        }).fail(function () {
+        })
+        .fail(function (xhr, st) {
+            SP.toast(apiErrMsg('获取集群状态失败', xhr, st), 'err');
+        })
+        .always(function () {
+            loading = false;
             $('#cl-loading').html('');
-            SP.toast('获取集群状态失败', 'err');
         });
     }
 
@@ -158,8 +182,8 @@ SP.init('cluster', '集群容灾').done(function (ctx) {
                 '<div class="mono muted" style="font-size:11.5px">' + SP.esc(n.endpoint) + '</div></td>' +
                 '<td>' + roleBadge(n, res.acting) + '</td>' +
                 '<td>' + statusBadge(n) + '</td>' +
-                '<td>' + (n.online ? '<span class="badge gray">' + SP.esc(n.mode || '-') + '</span>' : '<span class="muted">—</span>') + '</td>' +
-                '<td>' + (n.online ? '<span class="mono">#' + n.epoch + '</span>' +
+                '<td>' + (n.online && !n.legacy ? '<span class="badge gray">' + SP.esc(n.mode || '-') + '</span>' : '<span class="muted">—</span>') + '</td>' +
+                '<td>' + (n.online && !n.legacy ? '<span class="mono">#' + n.epoch + '</span>' +
                     (n.epoch < res.maxepoch ? ' <span class="badge yellow" style="font-size:10px">落后</span>' : '') : '<span class="muted">—</span>') + '</td>' +
                 '<td class="muted">' + SP.esc(n.epochtime || '—') + '</td>' +
                 '</tr>');
@@ -183,15 +207,23 @@ SP.init('cluster', '集群容灾').done(function (ctx) {
     }
 
     $('#p-save').click(function () {
+        var btn = $(this).attr('disabled', true).text('保存中...');
         var data = {
             master: $.trim($('#p-master').val()),
             standbys: $.trim($('#p-standbys').val()),
             masterauto: $('#p-auto').is(':checked') ? 'true' : 'false'
         };
-        $.post('/api/cluster/masters.json', data, function (res) {
+        $.ajax({ url: '/api/cluster/masters.json', type: 'POST', data: data, dataType: 'json', timeout: 15000 })
+        .done(function (res) {
             if (res.status === 'true') { SP.toast(res.info || '已保存', 'ok'); load(); }
             else SP.toast(res.info || '保存失败', 'err');
-        }, 'json');
+        })
+        .fail(function (xhr, st) {
+            SP.toast(apiErrMsg('保存失败', xhr, st), 'err');
+        })
+        .always(function () {
+            btn.attr('disabled', false).text('保存策略');
+        });
     });
 
     $('#cfg-export').click(function () {

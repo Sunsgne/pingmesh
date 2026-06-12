@@ -22,13 +22,18 @@ type clusterPeerInfo struct {
 	EpochTime string `json:"epochtime"`
 	Mode      string `json:"mode"`
 	Acting    bool   `json:"acting"`
+	// Legacy: 节点 HTTP 可达但不支持集群接口(旧版本二进制/未互信),
+	// 滚动升级期间视为"在线但不参与容灾", 避免误判离线触发接管。
+	Legacy bool `json:"-"`
 }
 
-// probeClusterInfo 拉取某候选节点的集群信息(带 HMAC 签名, 短超时)
-func probeClusterInfo(endpoint string) (clusterPeerInfo, bool) {
+// probeClusterInfo 拉取某候选节点的集群信息(带 HMAC 签名, 短超时)。
+// 返回值 ok 表示节点 HTTP 可达; 旧版本节点(404/鉴权失败/响应不可解析)
+// 标记 Legacy=true, 不作为配置同步源, 但参与"在线"判定。
+func probeClusterInfo(endpoint string, timeout time.Duration) (clusterPeerInfo, bool) {
 	info := clusterPeerInfo{Endpoint: endpoint}
 	url := "http://" + endpoint + "/api/clusterinfo.json"
-	client := http.Client{Timeout: 4 * time.Second}
+	client := http.Client{Timeout: timeout}
 	resp, err := client.Get(g.SignURL(url, g.Cfg.Password))
 	if err != nil {
 		return info, false
@@ -36,10 +41,12 @@ func probeClusterInfo(endpoint string) (clusterPeerInfo, bool) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode != 200 {
-		return info, false
+		info.Legacy = true
+		return info, true
 	}
 	if err := json.Unmarshal(body, &info); err != nil {
-		return info, false
+		info.Legacy = true
+		return info, true
 	}
 	info.Endpoint = endpoint
 	return info, true
@@ -69,7 +76,7 @@ func ClusterSync() {
 	}
 
 	// 并发探测其他候选(限流, 避免大集群瞬时压力)
-	infos := probeAll(others)
+	infos := probeAll(others, 4*time.Second)
 
 	// 选举代理主节点: 候选列表中优先级最高且可达者(自己始终视为可达)
 	acting := ""
@@ -86,11 +93,14 @@ func ClusterSync() {
 	selfActing := acting == "" || g.IsSelfEndpoint(acting)
 	g.SetActingMaster(selfActing)
 
-	// LWW: 在可达候选中挑选最新配置源
+	// LWW: 在可达候选中挑选最新配置源(旧版本节点无纪元概念, 不作为同步源)
 	local := g.LocalVersion()
 	bestEp := ""
 	best := local
 	for ep, info := range infos {
+		if info.Legacy {
+			continue
+		}
 		v := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime}
 		if g.Fresher(v, best) {
 			best = v
@@ -111,7 +121,7 @@ func ClusterSync() {
 }
 
 // probeAll 并发探测候选节点, 返回可达者的信息(endpoint -> info)
-func probeAll(eps []string) map[string]clusterPeerInfo {
+func probeAll(eps []string, timeout time.Duration) map[string]clusterPeerInfo {
 	out := map[string]clusterPeerInfo{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -121,7 +131,7 @@ func probeAll(eps []string) map[string]clusterPeerInfo {
 		sem <- struct{}{}
 		go func(endpoint string) {
 			defer func() { <-sem; wg.Done() }()
-			if info, ok := probeClusterInfo(endpoint); ok {
+			if info, ok := probeClusterInfo(endpoint, timeout); ok {
 				mu.Lock()
 				out[endpoint] = info
 				mu.Unlock()
@@ -167,6 +177,7 @@ type ClusterNode struct {
 	Acting    bool   `json:"acting"`    // 该节点自报为代理主节点
 	Candidate bool   `json:"candidate"` // 是否为主候选
 	Priority  int    `json:"priority"`  // 候选优先级(越小越高), -1 表示非候选
+	Legacy    bool   `json:"legacy"`    // 在线但运行旧版本(不支持集群接口), 升级后消失
 }
 
 // ClusterStatus 聚合全集群容灾态势: 本节点 + 所有主候选/ mesh 节点的可达性与纪元。
@@ -196,7 +207,8 @@ func ClusterStatus() map[string]interface{} {
 	for ep := range targetSet {
 		targets = append(targets, ep)
 	}
-	infos := probeAll(targets)
+	// 界面查询用较短超时, 保证页面秒级可用(离线节点不拖慢整页)
+	infos := probeAll(targets, 2*time.Second)
 
 	nodes := []ClusterNode{}
 	// 本节点
@@ -229,6 +241,7 @@ func ClusterStatus() map[string]interface{} {
 		}
 		if info, ok := infos[ep]; ok {
 			n.Online = true
+			n.Legacy = info.Legacy
 			n.Epoch = info.Epoch
 			n.EpochTime = info.EpochTime
 			n.Mode = info.Mode
@@ -252,13 +265,13 @@ func ClusterStatus() map[string]interface{} {
 			break
 		}
 	}
-	// 收敛判定: 在线节点纪元是否一致
+	// 收敛判定: 在线节点纪元是否一致(旧版本节点无纪元概念, 不参与判定)
 	maxEpoch := local.Epoch
 	converged := true
 	first := true
 	var firstEpoch int64
 	for _, n := range nodes {
-		if !n.Online {
+		if !n.Online || n.Legacy {
 			continue
 		}
 		if n.Epoch > maxEpoch {
