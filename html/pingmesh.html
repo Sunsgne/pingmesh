@@ -55,14 +55,20 @@
           <button class="btn primary sm" id="cr-apply">应用</button>
         </span>
         <span class="spacer"></span>
-        <span class="muted" style="font-size:12.5px">指标</span>
+        <span class="muted" style="font-size:12.5px">缩放</span>
+        <div class="seg" id="zoom-seg">
+          <button data-v="std" class="active">标准</button>
+          <button data-v="compact">紧凑</button>
+          <button data-v="heat" title="纯色块密度图, 悬浮查看详情, 适合数百条链路一屏总览">热力图</button>
+        </div>
+        <span class="muted" style="font-size:12.5px;margin-left:10px">指标</span>
         <div class="seg" id="metric-seg">
           <button data-v="delay" class="active">延迟</button>
           <button data-v="loss">丢包</button>
         </div>
       </div>
 
-      <div class="mesh-wrap">
+      <div class="mesh-wrap" id="mesh-wrap">
         <table class="mesh-table" id="mesh"></table>
       </div>
 
@@ -132,6 +138,18 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         render();
     });
     $('#refresh-btn').click(load);
+    /* 缩放档位: 标准/紧凑/热力图(纯色块), 记忆选择 */
+    function applyZoom(z) {
+        $('#mesh-wrap').removeClass('mesh-zoom-compact mesh-zoom-heat');
+        if (z === 'compact') $('#mesh-wrap').addClass('mesh-zoom-compact');
+        if (z === 'heat') $('#mesh-wrap').addClass('mesh-zoom-heat');
+        $('#zoom-seg button').removeClass('active');
+        $('#zoom-seg button[data-v="' + z + '"]').addClass('active');
+        try { localStorage.setItem('mesh-zoom', z); } catch (e) {}
+    }
+    $('#zoom-seg button').click(function () { applyZoom($(this).attr('data-v')); });
+    try { applyZoom(localStorage.getItem('mesh-zoom') || 'std'); } catch (e) {}
+
     /* 大屏全屏: 全屏内容区(概要+矩阵), 自动刷新持续工作 */
     $('#fs-btn').click(function () {
         var el = document.getElementById('sp-content');
