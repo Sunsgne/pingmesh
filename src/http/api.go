@@ -39,6 +39,14 @@ func configApiRoutes() {
 		}
 		//fmt.Print(g.Cfg.Alert["SendEmailPassword"])
 		onconf, _ := json.Marshal(nconf)
+		// 节点签名请求且声明 enc=1: 配置同步走 AES-256-GCM 加密载荷
+		if AgentSigned(r) {
+			if enc, err := g.EncryptPayload(onconf, g.Cfg.Password); err == nil {
+				w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+				fmt.Fprintln(w, enc)
+				return
+			}
+		}
 		var out bytes.Buffer
 		json.Indent(&out, onconf, "", "\t")
 		o := out.String()
@@ -576,7 +584,7 @@ func configApiRoutes() {
 			GraphText(83, 70, "GET PARAM ERROR").Save(w)
 			return
 		}
-		url := r.Form["g"][0]
+		url := g.SignURL(r.Form["g"][0], g.Cfg.Password)
 		config := g.PingStMini{}
 		timeout := time.Duration(g.Cfg.Base["Timeout"]) * time.Second
 		client := http.Client{
@@ -720,6 +728,7 @@ func configApiRoutes() {
 			to = r.Form["t"][0]
 		}
 		url := strings.Replace(strings.Replace(r.Form["g"][0], "%26", "&", -1), " ", "%20", -1)
+		url = g.SignURL(url, g.Cfg.Password) // 节点间出站请求附加 HMAC 签名
 		defaultto, err := strconv.Atoi(to)
 		if err != nil {
 			o := "Timeout Param Error!"

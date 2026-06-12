@@ -52,7 +52,8 @@ func JoinMasterN(master, token, name, addr, group string, attempts int) error {
 	if lastErr != nil {
 		return lastErr
 	}
-	// 注册成功, 切换为 cloud 模式并同步配置
+	// 注册成功: 统一集群令牌(签名/加密密钥对齐), 切换为 cloud 模式并同步配置
+	g.Cfg.Password = token
 	g.Cfg.Name = name
 	g.Cfg.Addr = addr
 	endpoint := master + "/api/config.json"
@@ -72,12 +73,16 @@ func JoinMasterN(master, token, name, addr, group string, attempts int) error {
 
 func joinOnce(master, token, name, addr, group string) error {
 	client := http.Client{Timeout: 10 * time.Second}
-	resp, err := client.PostForm(master+"/api/join.json", url.Values{
-		"token": {token},
+	form := url.Values{
 		"name":  {name},
 		"addr":  {addr},
 		"group": {group},
-	})
+	}
+	// HMAC 签名代替明文令牌传输
+	for k, v := range g.SignFormFields("/api/join.json", token) {
+		form.Set(k, v)
+	}
+	resp, err := client.PostForm(master+"/api/join.json", form)
 	if err != nil {
 		return err
 	}

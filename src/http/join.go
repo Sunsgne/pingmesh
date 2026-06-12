@@ -20,12 +20,14 @@ func configJoinRoutes() {
 			return
 		}
 		r.ParseForm()
-		token := r.FormValue("token")
 		name := r.FormValue("name")
 		addr := r.FormValue("addr")
 		group := r.FormValue("group")
-		if token == "" || token != g.Cfg.Password {
-			seelog.Info("[func:/api/join.json] invalid token from ", r.RemoteAddr)
+		// 优先 HMAC 签名(令牌不出网); 兼容旧版明文令牌
+		signed := g.VerifySign(r.URL.Path, r.FormValue("ts"), r.FormValue("nonce"), r.FormValue("sign"))
+		legacy := r.FormValue("token") != "" && r.FormValue("token") == g.Cfg.Password
+		if !signed && !legacy {
+			seelog.Info("[func:/api/join.json] invalid token/signature from ", r.RemoteAddr)
 			preout["info"] = "接入令牌错误"
 			RenderJson(w, preout)
 			return
