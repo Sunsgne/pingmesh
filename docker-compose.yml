@@ -1,0 +1,32 @@
+# SmartPing 部署示例
+#   主节点:  docker compose up -d smartping
+#   加入主节点的 Agent 节点: 修改 smartping-agent 的 -join/-token/-name 后
+#            docker compose --profile agent up -d
+services:
+  smartping:
+    build: .
+    container_name: smartping
+    # ICMP 探测与互 PING 组网建议使用 host 网络(容器直接使用宿主机 IP)
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - ./data/conf:/app/conf
+      - ./data/db:/app/db
+      - ./data/logs:/app/logs
+    restart: unless-stopped
+
+  smartping-agent:
+    build: .
+    container_name: smartping-agent
+    profiles: ["agent"]
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    # 启动时自动注册到主节点并组成全互联 Pingmesh, 配置每分钟自动同步
+    command: ["-join", "http://10.0.0.1:8899", "-token", "smartping", "-name", "节点B"]
+    volumes:
+      - ./data-agent/conf:/app/conf
+      - ./data-agent/db:/app/db
+      - ./data-agent/logs:/app/logs
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+[Unit]
+Description=SmartPing - network quality monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/smartping
+ExecStart=/opt/smartping/smartping
+Restart=always
+RestartSec=5
+# ICMP 原始套接字所需权限(无需 root 运行)
+AmbientCapabilities=CAP_NET_RAW
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

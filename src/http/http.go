@@ -79,9 +79,13 @@ func StartHttp() {
 	configAuthRoutes()
 	configApiRoutes()
 	configPingmeshRoutes()
+	configJoinRoutes()
 	configIndexRoutes()
-	seelog.Info("[func:StartHttp] starting to listen on ", g.Cfg.Port)
-	s := fmt.Sprintf(":%d", g.Cfg.Port)
+	s := g.FlagListen
+	if s == "" {
+		s = fmt.Sprintf(":%d", g.Cfg.Port)
+	}
+	seelog.Info("[func:StartHttp] starting to listen on ", s)
 	err := http.ListenAndServe(s, nil)
 	if err != nil {
 		log.Fatalln("[StartHttp]", err)

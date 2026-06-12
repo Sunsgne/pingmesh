@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"github.com/cihub/seelog"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cihub/seelog"
+	smartping "github.com/smartping/smartping"
 )
 
 var (
@@ -27,6 +30,11 @@ var (
 	ToolLimit      map[string]int
 	Db             *sql.DB
 	DLock          sync.Mutex
+
+	// 命令行参数(main 中赋值)
+	FlagWorkDir string
+	FlagPort    int
+	FlagListen  string
 )
 
 func IsExist(fp string) bool {
@@ -50,22 +58,96 @@ func ReadConfig(filename string) Config {
 }
 
 func GetRoot() string {
-	//return "D:\\gopath\\src\\github.com\\smartping\\smartping"
+	if FlagWorkDir != "" {
+		abs, err := filepath.Abs(FlagWorkDir)
+		if err != nil {
+			log.Fatal("Get Root Path Error:", err)
+		}
+		return strings.Replace(abs, "\\", "/", -1)
+	}
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
 		log.Fatal("Get Root Path Error:", err)
 	}
-	dirctory := strings.Replace(dir, "\\", "/", -1)
-	runes := []rune(dirctory)
-	l := 0 + strings.LastIndex(dirctory, "/")
-	if l > len(runes) {
-		l = len(runes)
+	dir = strings.Replace(dir, "\\", "/", -1)
+	// 传统目录结构: 二进制位于 <root>/bin/ 下; 否则以二进制所在目录为工作目录(单文件部署)
+	if filepath.Base(dir) == "bin" {
+		return filepath.Dir(dir)
 	}
-	return string(runes[0:l])
+	return dir
+}
+
+// ensureAssets 首次启动时从二进制内嵌资源释放默认配置与前端文件
+func ensureAssets() {
+	for _, d := range []string{"conf", "db", "logs", "html"} {
+		os.MkdirAll(filepath.Join(Root, d), 0755)
+	}
+	for _, f := range []string{"conf/seelog.xml", "conf/config-base.json"} {
+		dst := filepath.Join(Root, f)
+		if !IsExist(dst) {
+			if data, err := smartping.Assets.ReadFile(f); err == nil {
+				ioutil.WriteFile(dst, data, 0644)
+				log.Println("[init] extracted", f)
+			}
+		}
+	}
+	if !IsExist(filepath.Join(Root, "html", "index.html")) {
+		cnt := 0
+		fs.WalkDir(smartping.Assets, "html", func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			dst := filepath.Join(Root, p)
+			if d.IsDir() {
+				return os.MkdirAll(dst, 0755)
+			}
+			data, err := smartping.Assets.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			cnt++
+			return ioutil.WriteFile(dst, data, 0644)
+		})
+		log.Println("[init] extracted html assets:", cnt, "files")
+	}
+}
+
+// InitDbSchema 创建数据表(替代旧版随包分发的 database-base.db)
+func InitDbSchema() {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS alertlog (
+			logtime    VARCHAR (16),
+			targetip   VARCHAR (16),
+			targetname VARCHAR (15),
+			tracert    TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS pinglog (
+			logtime  VARCHAR (16),
+			target   VARCHAR (15),
+			maxdelay FLOAT,
+			mindelay FLOAT,
+			avgdelay FLOAT,
+			sendpk   INT,
+			revcpk   INT,
+			losspk   INT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pinglog_target_time ON pinglog (target, logtime)`,
+		`CREATE TABLE IF NOT EXISTS mappinglog (logtime VARCHAR (16) PRIMARY KEY, mapjson TEXT)`,
+	}
+	DLock.Lock()
+	defer DLock.Unlock()
+	for _, s := range stmts {
+		if _, err := Db.Exec(s); err != nil {
+			log.Fatalln("[Fault]db schema init fail.", err)
+		}
+	}
 }
 
 func ParseConfig(ver string) {
 	Root = GetRoot()
+	ensureAssets()
+	// seelog 中的日志路径为相对路径, 切换到工作目录保证日志落在 <root>/logs 下
+	os.Chdir(Root)
 	cfile := "config.json"
 	if !IsExist(Root + "/conf/" + "config.json") {
 		if !IsExist(Root + "/conf/" + "config-base.json") {
@@ -86,10 +168,11 @@ func ParseConfig(ver string) {
 		Cfg.Addr = "127.0.0.1"
 	}
 	Cfg.Ver = ver
-	if !IsExist(Root + "/db/" + "database.db") {
-		if !IsExist(Root + "/db/" + "database-base.db") {
-			log.Fatalln("[Fault]db file:", Root+"/db/"+"database(-base).db", "both not existent.")
-		}
+	if FlagPort > 0 {
+		Cfg.Port = FlagPort
+	}
+	// 兼容旧版: 存在 database-base.db 时沿用拷贝方式, 否则由代码建表
+	if !IsExist(Root+"/db/"+"database.db") && IsExist(Root+"/db/"+"database-base.db") {
 		src, err := os.Open(Root + "/db/" + "database-base.db")
 		if err != nil {
 			log.Fatalln("[Fault]db-base file open error.")
@@ -107,6 +190,7 @@ func ParseConfig(ver string) {
 	if err != nil {
 		log.Fatalln("[Fault]db open fail .", err)
 	}
+	InitDbSchema()
 	SelfCfg = Cfg.Network[Cfg.Addr]
 	AlertStatus = map[string]bool{}
 	ToolLimit = map[string]int{}
