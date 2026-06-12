@@ -144,12 +144,12 @@ SP.init('index', '概览').done(function (ctx) {
                     { type: 'value', min: 0, max: 100, show: false }
                 ],
                 series: [
-                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                       itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
                       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                           { offset: 0, color: 'rgba(99,102,241,.28)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
                       data: [] },
-                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false,
+                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
                       itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: [] }
                 ]
             });

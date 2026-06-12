@@ -170,18 +170,18 @@ var SP = (function () {
                       axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11 }, splitLine: { show: false } }
                 ],
                 series: [
-                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                       itemStyle: { color: '#a5b4fc' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                       itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                       itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
                       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                           { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
                       data: [] },
-                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false,
+                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
                       itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
-                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true,
+                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                       itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
                 ]
             });
