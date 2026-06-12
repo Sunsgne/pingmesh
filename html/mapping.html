@@ -29,9 +29,6 @@
       <div class="flex mb-2" style="flex-wrap:wrap">
         <span class="muted" style="font-size:12.5px">探测节点</span>
         <div class="chips" id="agent-chips"></div>
-        <span class="spacer"></span>
-        <span class="muted" style="font-size:12.5px">线路</span>
-        <div class="chips" id="line-chips"></div>
       </div>
       <div id="echarts-map" style="width:100%;height:560px"></div>
       <div class="mesh-legend">
@@ -124,7 +121,7 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
         if (!v) { SP.toast('请选择时间', 'err'); return; }
         load(v.replace('T', ' '));
     });
-    $('#now-btn').click(function () { $('#pick-time').val(''); load(''); });
+    $('#now-btn').click(function () { $('#pick-time').val(''); activeLine = '全部'; load(''); });
     $('#search').bind('keyup input', renderList);
     $('#sort-delay').click(function () { sortDesc = !sortDesc; $('#sort-arrow').html(sortDesc ? '&darr;' : '&uarr;'); renderList(); });
 
@@ -147,27 +144,8 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
                 SP.toast('该时间点暂无探测数据(每分钟采集一次)', 'err');
                 return;
             }
+            // 地图默认聚合「全部」线路; 查看单条线路通过列表的「地图定位」进入
             if (!activeLine || (activeLine !== '全部' && $.inArray(activeLine, lines) < 0)) activeLine = '全部';
-            var lb = $('#line-chips').empty();
-            // 默认「全部」: 各地区取所有可达线路的平均延迟
-            var allChip = $('<span class="chip' + (activeLine === '全部' ? ' active' : '') + '">全部</span>');
-            allChip.click(function () {
-                activeLine = '全部';
-                $('#line-chips .chip').removeClass('active');
-                allChip.addClass('active');
-                renderMap(); renderList();
-            });
-            lb.append(allChip);
-            $.each(lines, function (_, line) {
-                var chip = $('<span class="chip' + (line === activeLine ? ' active' : '') + '">' + SP.esc(line) + '</span>');
-                chip.click(function () {
-                    activeLine = line;
-                    $('#line-chips .chip').removeClass('active');
-                    chip.addClass('active');
-                    renderMap(); renderList();
-                });
-                lb.append(chip);
-            });
             renderMap(); renderList();
         }).fail(function () {
             $('#loading').html('');
@@ -298,9 +276,6 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
             $(this).addClass('active');
             if (line !== activeLine) {
                 activeLine = line;
-                $('#line-chips .chip').removeClass('active').each(function () {
-                    if ($(this).text() === line) $(this).addClass('active');
-                });
                 renderMap();
             }
             $('html, body').animate({ scrollTop: $('#map-card').offset().top - 10 }, 200);
