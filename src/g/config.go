@@ -227,7 +227,7 @@ func ParseConfig(ver string) {
 			"Pingtimeout":  3000, // 单包超时(ms)
 			"Pingsize":     56,   // 探测包大小(字节)
 			"Apisign":      0,    // 老集群默认关闭, 全部升级并统一令牌后可开启
-			"Remindmin":    0,    // 持续故障重复提醒间隔(分钟), 0=不重复提醒
+			"Remindmin":    60,   // 持续故障重复提醒间隔(分钟), 0=关闭; 默认每小时提醒未确认的持续故障
 		}
 		for k, v := range baseDefaults {
 			if _, ok := Cfg.Base[k]; !ok {
