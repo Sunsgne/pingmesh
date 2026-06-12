@@ -178,7 +178,8 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
     function render() {
         var html = '<tr><th class="row-h">源 \\ 目标</th>';
         $.each(targets, function (_, t) {
-            html += '<th class="col-h" title="' + SP.esc(t) + '">' + SP.esc(SP.nodeName(cfg, t)) +
+            html += '<th class="col-h" title="' + SP.esc(SP.nodeName(cfg, t)) + ' · ' + SP.esc(t) + '">' +
+                '<span class="col-name">' + SP.esc(SP.nodeName(cfg, t)) + '</span>' +
                 '<span class="col-ip mono">' + SP.esc(t) + '</span></th>';
         });
         html += '</tr>';
