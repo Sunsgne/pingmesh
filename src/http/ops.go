@@ -2,7 +2,7 @@ package http
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -247,7 +247,7 @@ func asnLookup(ip string) (asnInfo, bool) {
 		return asnInfo{}, false
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	var out struct {
 		Data struct {
 			Resource string `json:"resource"`

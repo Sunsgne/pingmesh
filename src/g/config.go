@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/fnv"
+	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +39,9 @@ var (
 	FlagWorkDir string
 	FlagPort    int
 	FlagListen  string
+
+	// FreshInstall 首次运行(尚无 config.json, 由内置默认配置初始化)
+	FreshInstall bool
 
 	// ToolLimit 并发访问保护
 	ToolLimitLock sync.Mutex
@@ -95,14 +99,14 @@ func ensureAssets() {
 		dst := filepath.Join(Root, f)
 		if !IsExist(dst) {
 			if data, err := pingmesh.Assets.ReadFile(f); err == nil {
-				ioutil.WriteFile(dst, data, 0644)
+				os.WriteFile(dst, data, 0644)
 				log.Println("[init] extracted", f)
 			}
 		}
 	}
 	stamp := embeddedHtmlHash()
 	stampFile := filepath.Join(Root, "html", ".assets-ver")
-	if old, err := ioutil.ReadFile(stampFile); err == nil && string(old) == stamp && IsExist(filepath.Join(Root, "html", "index.html")) {
+	if old, err := os.ReadFile(stampFile); err == nil && string(old) == stamp && IsExist(filepath.Join(Root, "html", "index.html")) {
 		return
 	}
 	cnt := 0
@@ -119,9 +123,9 @@ func ensureAssets() {
 			return err
 		}
 		cnt++
-		return ioutil.WriteFile(dst, data, 0644)
+		return os.WriteFile(dst, data, 0644)
 	})
-	ioutil.WriteFile(stampFile, []byte(stamp), 0644)
+	os.WriteFile(stampFile, []byte(stamp), 0644)
 	log.Println("[init] extracted html assets:", cnt, "files (ver", stamp[:12], ")")
 }
 
@@ -201,6 +205,7 @@ func ParseConfig(ver string) {
 			log.Fatalln("[Fault]config file:", Root+"/conf/"+"config(-base).json", "both not existent.")
 		}
 		cfile = "config-base.json"
+		FreshInstall = true
 	}
 	logger, err := seelog.LoggerFromConfigAsFile(Root + "/conf/" + "seelog.xml")
 	if err != nil {
@@ -235,19 +240,33 @@ func ParseConfig(ver string) {
 			}
 		}
 	}
+	// 集群容灾默认值: 纪元从 0 起, 默认开启自动容灾(主挂时备选自动接管)
+	if Cfg.Mode == nil {
+		Cfg.Mode = map[string]string{}
+	}
+	if _, ok := Cfg.Mode["Epoch"]; !ok {
+		Cfg.Mode["Epoch"] = "0"
+	}
+	if _, ok := Cfg.Mode["MasterAuto"]; !ok {
+		Cfg.Mode["MasterAuto"] = "true"
+	}
 	// 旧配置迁移: 已删除的旧提示音文件改为内置柔和提示音
 	if Cfg.Topology != nil && Cfg.Topology["Tsound"] == "/alert.mp3" {
 		Cfg.Topology["Tsound"] = "/alert-soft.wav"
 	}
 	seelog.Info("Config loaded")
-	Db, err = sql.Open("sqlite", Root+"/db/database.db")
+	// PRAGMA 写入 DSN: 连接池中每条连接都生效(busy_timeout/synchronous 为连接级,
+	// 旧写法仅作用于单条连接, 池化后其余连接仍可能 database is locked)。
+	dsn := "file:" + Root + "/db/database.db" +
+		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+	Db, err = sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatalln("[Fault]db open fail .", err)
 	}
-	// WAL + busy_timeout: 读写并发不再互相阻塞, 避免 database is locked
-	Db.Exec("PRAGMA journal_mode=WAL")
-	Db.Exec("PRAGMA busy_timeout=5000")
-	Db.Exec("PRAGMA synchronous=NORMAL")
+	// 连接池上限: 兼顾读并发与 SQLite 写串行, 避免句柄无限增长
+	Db.SetMaxOpenConns(8)
+	Db.SetMaxIdleConns(8)
+	Db.SetConnMaxIdleTime(5 * time.Minute)
 	InitDbSchema()
 	SelfCfg = Cfg.Network[Cfg.Addr]
 	AlertStatus = map[string]bool{}
@@ -272,7 +291,7 @@ func SaveCloudConfig(url string) (Config, error) {
 		return config, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if IsEncryptedPayload(body) {
 		body, err = DecryptPayload(body, Cfg.Password)
 		if err != nil {
@@ -320,12 +339,46 @@ func SaveConfig() error {
 		seelog.Error("[func:SaveConfig] Json Parse ", errjson)
 		return errjson
 	}
-	err := ioutil.WriteFile(Root+"/conf/"+"config.json", []byte(out.String()), 0644)
+	err := os.WriteFile(Root+"/conf/"+"config.json", []byte(out.String()), 0644)
 	if err != nil {
 		seelog.Error("[func:SaveConfig] Config File Write", err)
 		return err
 	}
+	// 自动快照: 保留最近若干份配置历史, 误改/故障后可回滚, 兼作本地灾备
+	go snapshotConfig([]byte(out.String()))
 	return nil
+}
+
+const maxConfigSnapshots = 30
+
+// snapshotConfig 将配置写入 conf/backups/ 并滚动保留最近 maxConfigSnapshots 份
+func snapshotConfig(data []byte) {
+	dir := filepath.Join(Root, "conf", "backups")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	name := "config-" + time.Now().Format("20060102-150405") + ".json"
+	if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+		seelog.Error("[func:snapshotConfig] write snapshot", err)
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	names := []string{}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "config-") && strings.HasSuffix(e.Name(), ".json") {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) <= maxConfigSnapshots {
+		return
+	}
+	sort.Strings(names) // 文件名按时间戳排序, 删除最旧的
+	for _, old := range names[:len(names)-maxConfigSnapshots] {
+		os.Remove(filepath.Join(dir, old))
+	}
 }
 
 func saveAuth() {
