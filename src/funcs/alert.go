@@ -166,8 +166,9 @@ func CheckAlertStatus(v map[string]string) bool {
 	}
 	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
 	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
-	// 达到阈值即计为异常分钟(>=): 丢包阈值设为100时, 100%丢包同样触发
-	querysql := "SELECT count(1) cnt FROM pinglog where logtime > ? and target = ? and (cast(avgdelay as double) >= cast(? as double) or cast(losspk as double) >= cast(? as double)"
+	// 达到阈值即计为异常分钟(>=); 窗口起点用 >=(起点截断到分钟, 严格大于会把
+	// 边界分钟排除, 小窗口在一分钟的大部分时间内会变成空窗口 → 误判正常)
+	querysql := "SELECT count(1) cnt FROM pinglog where logtime >= ? and target = ? and (cast(avgdelay as double) >= cast(? as double) or cast(losspk as double) >= cast(? as double)"
 	args := []interface{}{timeStartStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"]}
 	// 抖动阈值为可选项, 配置后参与告警判定(IPLC/IEPL 场景)
 	if v["Thdjitter"] != "" {

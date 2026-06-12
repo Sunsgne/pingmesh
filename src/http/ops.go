@@ -149,7 +149,7 @@ func configOpsRoutes() {
 			sum(case when cast(avgdelay as double) >= cast(? as double)
 				or cast(losspk as double) >= cast(? as double)
 				or (? != '' and cast(ifnull(jitter,0) as double) >= cast(? as double)) then 1 else 0 end)
-			from pinglog where logtime > ? and target = ?`,
+			from pinglog where logtime >= ? and target = ?`,
 			rule["Thdavgdelay"], rule["Thdloss"], rule["Thdjitter"], rule["Thdjitter"],
 			rule["Thdavgdelay"], rule["Thdloss"], rule["Thdjitter"], rule["Thdjitter"],
 			since, target)
