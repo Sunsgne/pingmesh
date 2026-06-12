@@ -235,13 +235,11 @@ func configApiRoutes() {
 		type Mapjson struct {
 			Mapjson string
 		}
+		// 线路名称由配置动态决定(全球化: 地区 -> 线路 -> 探测IP)
 		chinaMp := g.ChinaMp{}
 		chinaMp.Text = g.Cfg.Name
 		chinaMp.Subtext = dataKey
 		chinaMp.Avgdelay = map[string][]g.MapVal{}
-		chinaMp.Avgdelay["ctcc"] = []g.MapVal{}
-		chinaMp.Avgdelay["cucc"] = []g.MapVal{}
-		chinaMp.Avgdelay["cmcc"] = []g.MapVal{}
 		g.DLock.Lock()
 		querySql := "select mapjson from mappinglog where logtime = '" + dataKey + "'"
 		rows, err := g.Db.Query(querySql)
