@@ -1,11 +1,11 @@
 # ZENLENET PingMesh - 多阶段构建, 产出单文件镜像
 FROM golang:1.22-alpine AS build
-RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /out/pingmesh ./src
+# 纯 Go SQLite 驱动, 无需 CGO, 支持交叉编译
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/pingmesh ./src
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata

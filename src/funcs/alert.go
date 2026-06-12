@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/cihub/seelog"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"github.com/smartping/smartping/src/g"
 	"github.com/smartping/smartping/src/nettools"
 )
