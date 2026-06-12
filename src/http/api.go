@@ -99,11 +99,12 @@ func configApiRoutes() {
 			ntime := time.Unix(timeStart, 0).Format("2006-01-02 15:04")
 			timwwnum[ntime] = i
 			lastcheck = append(lastcheck, ntime)
-			maxdelay = append(maxdelay, "0")
-			mindelay = append(mindelay, "0")
-			avgdelay = append(avgdelay, "0")
-			losspk = append(losspk, "0")
-			jitter = append(jitter, "0")
+			// 无数据的分钟使用 "-" (ECharts 空值), 图表呈现真实空洞而非画成 0
+			maxdelay = append(maxdelay, "-")
+			mindelay = append(mindelay, "-")
+			avgdelay = append(avgdelay, "-")
+			losspk = append(losspk, "-")
+			jitter = append(jitter, "-")
 			timeStart = timeStart + 60
 		}
 		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"

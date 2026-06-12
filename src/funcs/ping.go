@@ -90,46 +90,62 @@ func PingTask(addr string) g.PingSt {
 		seelog.Debug("[func:PingTask] ", addr, " unable to resolve")
 		return stat
 	}
-	rtts := make([]float64, 0, count)
+	// 按间隔节拍异步发包: 发送节奏不受超时影响,
+	// 整轮耗时 ≈ (count-1)×interval + timeout, 丢包不会拖长周期导致跳轮断点
+	rtts := make([]float64, count)
+	var pwg sync.WaitGroup
 	for i := 0; i < count; i++ {
-		starttime := time.Now().UnixNano()
-		delay, err := nettools.RunPingSize(ipaddr, time.Duration(timeout)*time.Millisecond, size)
-		if err == nil {
-			rtts = append(rtts, delay)
-			stat.AvgDelay = stat.AvgDelay + delay
+		pwg.Add(1)
+		go func(idx int) {
+			defer pwg.Done()
+			delay, err := nettools.RunPingSize(ipaddr, time.Duration(timeout)*time.Millisecond, size)
+			if err == nil {
+				rtts[idx] = delay
+			} else {
+				rtts[idx] = -1
+			}
+		}(i)
+		if i < count-1 {
+			time.Sleep(time.Duration(interval) * time.Millisecond)
+		}
+	}
+	pwg.Wait()
+	prev := -1.0
+	var jitterSum float64
+	jitterCnt := 0
+	for _, delay := range rtts {
+		stat.SendPk++
+		if delay >= 0 {
+			stat.AvgDelay += delay
 			if stat.MaxDelay < delay {
 				stat.MaxDelay = delay
 			}
 			if stat.MinDelay == -1 || stat.MinDelay > delay {
 				stat.MinDelay = delay
 			}
-			stat.RevcPk = stat.RevcPk + 1
+			stat.RevcPk++
+			// 抖动: 相邻成功样本 RTT 差
+			if prev >= 0 {
+				d := delay - prev
+				if d < 0 {
+					d = -d
+				}
+				jitterSum += d
+				jitterCnt++
+			}
+			prev = delay
 		} else {
-			lossPK = lossPK + 1
-		}
-		stat.SendPk = stat.SendPk + 1
-		stat.LossPk = int((float64(lossPK) / float64(stat.SendPk)) * 100)
-		duringtime := time.Now().UnixNano() - starttime
-		if sleep := int64(interval)*1000000 - duringtime; sleep > 0 {
-			time.Sleep(time.Duration(sleep) * time.Nanosecond)
+			lossPK++
 		}
 	}
+	stat.LossPk = int((float64(lossPK) / float64(stat.SendPk)) * 100)
 	if stat.RevcPk > 0 {
 		stat.AvgDelay = stat.AvgDelay / float64(stat.RevcPk)
 	} else {
 		stat.AvgDelay = 0.0
 	}
-	// 抖动: 相邻成功样本 RTT 差的平均值
-	if len(rtts) >= 2 {
-		var sum float64
-		for i := 1; i < len(rtts); i++ {
-			d := rtts[i] - rtts[i-1]
-			if d < 0 {
-				d = -d
-			}
-			sum += d
-		}
-		stat.Jitter = sum / float64(len(rtts)-1)
+	if jitterCnt > 0 {
+		stat.Jitter = jitterSum / float64(jitterCnt)
 	}
 	seelog.Debug("[func:PingTask] finish ", addr, " avg:", stat.AvgDelay, " loss:", stat.LossPk, " jitter:", stat.Jitter)
 	return stat
