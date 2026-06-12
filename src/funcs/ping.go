@@ -56,9 +56,31 @@ type targetResult struct {
 	Stat g.PingSt
 }
 
-// PingTask 对单个目标连续探测20次(3s间隔), 返回统计
+// probeParams 探测引擎参数(毫秒级, 适配 IPLC/IEPL 专线监控)
+func probeParams() (interval, count, timeout, size int) {
+	interval = g.Cfg.Base["Pinginterval"]
+	count = g.Cfg.Base["Pingcount"]
+	timeout = g.Cfg.Base["Pingtimeout"]
+	size = g.Cfg.Base["Pingsize"]
+	if interval < 10 {
+		interval = 3000
+	}
+	if count < 1 {
+		count = 20
+	}
+	if timeout < 50 {
+		timeout = 3000
+	}
+	if size < 24 {
+		size = 56
+	}
+	return
+}
+
+// PingTask 对单个目标按配置的间隔/包数/超时/包长连续探测, 返回统计(含抖动)
 func PingTask(addr string) g.PingSt {
 	seelog.Debug("[func:PingTask] start ", addr)
+	interval, count, timeout, size := probeParams()
 	stat := g.PingSt{}
 	stat.MinDelay = -1
 	lossPK := 0
@@ -68,10 +90,12 @@ func PingTask(addr string) g.PingSt {
 		seelog.Debug("[func:PingTask] ", addr, " unable to resolve")
 		return stat
 	}
-	for i := 0; i < 20; i++ {
+	rtts := make([]float64, 0, count)
+	for i := 0; i < count; i++ {
 		starttime := time.Now().UnixNano()
-		delay, err := nettools.RunPing(ipaddr, 3*time.Second, 64, i)
+		delay, err := nettools.RunPingSize(ipaddr, time.Duration(timeout)*time.Millisecond, size)
 		if err == nil {
+			rtts = append(rtts, delay)
 			stat.AvgDelay = stat.AvgDelay + delay
 			if stat.MaxDelay < delay {
 				stat.MaxDelay = delay
@@ -86,7 +110,7 @@ func PingTask(addr string) g.PingSt {
 		stat.SendPk = stat.SendPk + 1
 		stat.LossPk = int((float64(lossPK) / float64(stat.SendPk)) * 100)
 		duringtime := time.Now().UnixNano() - starttime
-		if sleep := 3000*1000000 - duringtime; sleep > 0 {
+		if sleep := int64(interval)*1000000 - duringtime; sleep > 0 {
 			time.Sleep(time.Duration(sleep) * time.Nanosecond)
 		}
 	}
@@ -95,7 +119,19 @@ func PingTask(addr string) g.PingSt {
 	} else {
 		stat.AvgDelay = 0.0
 	}
-	seelog.Debug("[func:PingTask] finish ", addr, " avg:", stat.AvgDelay, " loss:", stat.LossPk)
+	// 抖动: 相邻成功样本 RTT 差的平均值
+	if len(rtts) >= 2 {
+		var sum float64
+		for i := 1; i < len(rtts); i++ {
+			d := rtts[i] - rtts[i-1]
+			if d < 0 {
+				d = -d
+			}
+			sum += d
+		}
+		stat.Jitter = sum / float64(len(rtts)-1)
+	}
+	seelog.Debug("[func:PingTask] finish ", addr, " avg:", stat.AvgDelay, " loss:", stat.LossPk, " jitter:", stat.Jitter)
 	return stat
 }
 
@@ -112,14 +148,14 @@ func PingStorageBatch(batch []targetResult) {
 		seelog.Error("[func:PingStorageBatch] Begin ", err)
 		return
 	}
-	stmt, err := tx.Prepare("INSERT INTO pinglog (logtime, target, maxdelay, mindelay, avgdelay, sendpk, revcpk, losspk) values(?,?,?,?,?,?,?,?)")
+	stmt, err := tx.Prepare("INSERT INTO pinglog (logtime, target, maxdelay, mindelay, avgdelay, sendpk, revcpk, losspk, jitter) values(?,?,?,?,?,?,?,?,?)")
 	if err != nil {
 		seelog.Error("[func:PingStorageBatch] Prepare ", err)
 		tx.Rollback()
 		return
 	}
 	for _, r := range batch {
-		if _, err := stmt.Exec(logtime, r.Addr, r.Stat.MaxDelay, r.Stat.MinDelay, r.Stat.AvgDelay, r.Stat.SendPk, r.Stat.RevcPk, r.Stat.LossPk); err != nil {
+		if _, err := stmt.Exec(logtime, r.Addr, r.Stat.MaxDelay, r.Stat.MinDelay, r.Stat.AvgDelay, r.Stat.SendPk, r.Stat.RevcPk, r.Stat.LossPk, r.Stat.Jitter); err != nil {
 			seelog.Error("[func:PingStorageBatch] Exec ", r.Addr, " ", err)
 		}
 	}

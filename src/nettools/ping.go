@@ -78,17 +78,30 @@ func pingReadLoop() {
 // RunPing 发送一个 ICMP echo 并等待应答, 返回毫秒级延迟。
 // 保持旧签名兼容; seq 参数仅作参考, 内部使用全局唯一序号防串包。
 func RunPing(IpAddr *net.IPAddr, maxrtt time.Duration, maxttl int, seq int) (float64, error) {
+	return RunPingSize(IpAddr, maxrtt, 56)
+}
+
+// RunPingSize 指定 payload 大小(字节)的探测, 用于 IPLC/IEPL 等需要
+// 验证不同包长表现的场景(如 64/512/1400 字节)。
+func RunPingSize(IpAddr *net.IPAddr, maxrtt time.Duration, size int) (float64, error) {
 	initPingSocket()
 	if pingInitErr != nil {
 		return 0, pingInitErr
+	}
+	if size < 8 {
+		size = 8
+	}
+	if size > 1472 {
+		size = 1472
 	}
 	// 唯一 (id,seq): 高 16 位做 id, 低 16 位做 seq
 	v := atomic.AddUint32(&pingSeq, 1)
 	id := int(uint16(v >> 16)) | 0x1
 	sq := int(uint16(v))
 
+	payload := bytes.Repeat([]byte("ZENLENET-PingMesh!"), size/18+1)[:size]
 	msg := icmp.Message{Type: ipv4.ICMPTypeEcho, Code: 0,
-		Body: &icmp.Echo{ID: id, Seq: sq, Data: bytes.Repeat([]byte("ZENLENET PingMesh!"), 3)}}
+		Body: &icmp.Echo{ID: id, Seq: sq, Data: payload}}
 	wire, err := msg.Marshal(nil)
 	if err != nil {
 		return 0, err

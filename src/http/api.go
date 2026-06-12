@@ -96,6 +96,7 @@ func configApiRoutes() {
 		var mindelay []string
 		var avgdelay []string
 		var losspk []string
+		var jitter []string
 		timwwnum := map[string]int{}
 		for i := 0; i < cnt+1; i++ {
 			ntime := time.Unix(timeStart, 0).Format("2006-01-02 15:04")
@@ -105,9 +106,10 @@ func configApiRoutes() {
 			mindelay = append(mindelay, "0")
 			avgdelay = append(avgdelay, "0")
 			losspk = append(losspk, "0")
+			jitter = append(jitter, "0")
 			timeStart = timeStart + 60
 		}
-		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk FROM pinglog where target=? and logtime between ? and ?"
+		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"
 		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
 		seelog.Debug("[func:/api/ping.json] Query ", querySql)
 		if err != nil {
@@ -115,7 +117,7 @@ func configApiRoutes() {
 		} else {
 			for rows.Next() {
 				l := new(g.PingLog)
-				err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk)
+				err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk, &l.Jitter)
 				if err != nil {
 					seelog.Error("[/api/ping.json] Rows", err)
 					continue
@@ -126,6 +128,7 @@ func configApiRoutes() {
 						mindelay[n] = l.Mindelay
 						avgdelay[n] = l.Avgdelay
 						losspk[n] = l.Losspk
+						jitter[n] = l.Jitter
 						break
 					}
 				}
@@ -138,6 +141,7 @@ func configApiRoutes() {
 			"mindelay":  mindelay,
 			"avgdelay":  avgdelay,
 			"losspk":    losspk,
+			"jitter":    jitter,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		RenderJson(w, preout)
@@ -421,6 +425,32 @@ func configApiRoutes() {
 			RenderJson(w, preout)
 			return
 		}
+		//探测参数(毫秒级)
+		if v := nconfig.Base["Pinginterval"]; v < 10 || v > 60000 {
+			preout["info"] = "非法探测间隔!(10~60000 毫秒)"
+			RenderJson(w, preout)
+			return
+		}
+		if v := nconfig.Base["Pingcount"]; v < 1 || v > 1000 {
+			preout["info"] = "非法每轮包数!(1~1000)"
+			RenderJson(w, preout)
+			return
+		}
+		if nconfig.Base["Pinginterval"]*nconfig.Base["Pingcount"] > 55000 {
+			preout["info"] = "探测间隔×包数不能超过55秒(每分钟一轮), 请调小间隔或包数"
+			RenderJson(w, preout)
+			return
+		}
+		if v := nconfig.Base["Pingtimeout"]; v < 50 || v > 10000 {
+			preout["info"] = "非法单包超时!(50~10000 毫秒)"
+			RenderJson(w, preout)
+			return
+		}
+		if v := nconfig.Base["Pingsize"]; v < 24 || v > 1472 {
+			preout["info"] = "非法探测包大小!(24~1472 字节)"
+			RenderJson(w, preout)
+			return
+		}
 		//Channels
 		if err := funcs.ValidateChannels(nconfig.Channels); err != nil {
 			preout["info"] = err.Error()
@@ -472,6 +502,13 @@ func configApiRoutes() {
 					Thdavgdelay, err := strconv.Atoi(topology["Thdavgdelay"])
 					if err != nil || Thdavgdelay <= 0 {
 						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法拓扑报警规则，> 0 ms  ) "
+						RenderJson(w, preout)
+						return
+					}
+				}
+				if tj, ok := topology["Thdjitter"]; ok && tj != "" {
+					if jv, err := strconv.ParseFloat(tj, 64); err != nil || jv <= 0 {
+						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法抖动阈值, > 0 ms 或留空 ) "
 						RenderJson(w, preout)
 						return
 					}

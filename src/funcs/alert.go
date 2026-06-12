@@ -86,8 +86,15 @@ func CheckAlertStatus(v map[string]string) bool {
 	}
 	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
 	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
-	querysql := "SELECT count(1) cnt FROM pinglog where logtime > ? and target = ? and (cast(avgdelay as double) > cast(? as double) or cast(losspk as double) > cast(? as double))"
-	rows, err := g.Db.Query(querysql, timeStartStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"])
+	querysql := "SELECT count(1) cnt FROM pinglog where logtime > ? and target = ? and (cast(avgdelay as double) > cast(? as double) or cast(losspk as double) > cast(? as double)"
+	args := []interface{}{timeStartStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"]}
+	// 抖动阈值为可选项, 配置后参与告警判定(IPLC/IEPL 场景)
+	if v["Thdjitter"] != "" {
+		querysql += " or cast(ifnull(jitter,0) as double) > cast(? as double)"
+		args = append(args, v["Thdjitter"])
+	}
+	querysql += ")"
+	rows, err := g.Db.Query(querysql, args...)
 	defer rows.Close()
 	seelog.Debug("[func:StartAlert] ", querysql)
 	if err != nil {

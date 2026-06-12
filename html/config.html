@@ -67,6 +67,30 @@
           <input type="text" class="input mono" id="f-authiplist" placeholder="为空则只允许登录用户访问">
           <div class="hint">逗号分隔。白名单中的 IP 无需登录即可访问（兼容旧版）</div>
         </div>
+        <div class="field" style="grid-column:1 / -1;margin-bottom:0">
+          <label style="font-size:14px">探测参数（毫秒级，适配 IPLC / IEPL 专线监控）</label>
+          <div class="hint">专线建议: 间隔 200~500ms、超时 500~1000ms、包数 50~100；普通互联网链路保持默认即可。间隔×包数 ≤ 55 秒（每分钟一轮聚合入库）</div>
+        </div>
+        <div class="field">
+          <label>探测间隔 (毫秒)</label>
+          <input type="number" class="input" id="f-pinginterval" min="10" max="60000">
+          <div class="hint">相邻两个探测包之间的间隔</div>
+        </div>
+        <div class="field">
+          <label>每轮包数</label>
+          <input type="number" class="input" id="f-pingcount" min="1" max="1000">
+          <div class="hint">每分钟向每个目标发送的探测包数量</div>
+        </div>
+        <div class="field">
+          <label>单包超时 (毫秒)</label>
+          <input type="number" class="input" id="f-pingtimeout" min="50" max="10000">
+          <div class="hint">超过该时间未收到应答按丢包计</div>
+        </div>
+        <div class="field">
+          <label>探测包大小 (字节)</label>
+          <input type="number" class="input" id="f-pingsize" min="24" max="1472">
+          <div class="hint">ICMP payload 大小，可用 512 / 1400 验证大包表现</div>
+        </div>
         <div class="field">
           <label>全球延迟功能</label>
           <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-chinamap"><span class="track"></span></label>
@@ -379,6 +403,8 @@
           <span class="muted" style="font-size:11px">ms</span>
           <input type="number" class="input" id="ta-loss" value="30" style="width:75px;padding:4px 8px" title="丢包阈值(%)">
           <span class="muted" style="font-size:11px">%</span>
+          <input type="number" class="input" id="ta-jitter" placeholder="抖动" style="width:75px;padding:4px 8px" title="抖动阈值(ms), 留空不套用">
+          <span class="muted" style="font-size:11px">ms抖</span>
           <input type="number" class="input" id="ta-sec" value="900" style="width:90px;padding:4px 8px" title="检测窗口(秒)">
           <span class="muted" style="font-size:11px">秒</span>
           <input type="number" class="input" id="ta-num" value="3" style="width:70px;padding:4px 8px" title="触发次数">
@@ -391,7 +417,7 @@
           <thead><tr>
             <th style="width:64px">我监测它</th><th>目标节点</th>
             <th style="width:100px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING</th>
-            <th>延迟(ms)</th><th>丢包(%)</th><th>窗口(秒)</th><th>次数</th>
+            <th>延迟(ms)</th><th>丢包(%)</th><th title="抖动阈值, 留空不检查; IPLC/IEPL 专线建议 5~20ms">抖动(ms)</th><th>窗口(秒)</th><th>次数</th>
           </tr></thead>
           <tbody id="n-targets"></tbody>
         </table>
@@ -470,6 +496,10 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-tsound').val(cfg.Topology['Tsound']);
         $('#f-authiplist').val(cfg.Authiplist);
         $('#f-chinamap').prop('checked', cfg.Base['Chinamap'] !== 0);
+        $('#f-pinginterval').val(cfg.Base['Pinginterval'] || 3000);
+        $('#f-pingcount').val(cfg.Base['Pingcount'] || 20);
+        $('#f-pingtimeout').val(cfg.Base['Pingtimeout'] || 3000);
+        $('#f-pingsize').val(cfg.Base['Pingsize'] || 56);
         $('#f-emailhost').val(cfg.Alert['EmailHost']);
         $('#f-emailaccount').val(cfg.Alert['SendEmailAccount']);
         $('#f-emailpassword').val(cfg.Alert['SendEmailPassword']);
@@ -934,7 +964,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             });
             box.append('<tr class="t-group" data-g="' + SP.esc(gname) + '" style="background:#f8fafc">' +
                 '<td style="text-align:center"><input type="checkbox" class="g-on" title="勾选整组"></td>' +
-                '<td colspan="6"><b style="font-size:12px">' + SP.esc(gname) + '</b> <span class="muted" style="font-size:11px">' + rows.length + ' 个节点</span></td></tr>');
+                '<td colspan="7"><b style="font-size:12px">' + SP.esc(gname) + '</b> <span class="muted" style="font-size:11px">' + rows.length + ' 个节点</span></td></tr>');
             $.each(rows, function (_, pair) {
                 var addr = pair[0], other = pair[1];
                 var t = topoMap[addr] || {};
@@ -954,12 +984,13 @@ SP.init('config', '系统配置').done(function (ctx) {
                     mutualCell +
                     '<td><input type="number" class="input t-delay" style="padding:4px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
                     '<td><input type="number" class="input t-loss" style="padding:4px 8px" value="' + (t['Thdloss'] || 30) + '"></td>' +
+                    '<td><input type="number" class="input t-jitter" style="padding:4px 8px" placeholder="可空" value="' + (t['Thdjitter'] || '') + '"></td>' +
                     '<td><input type="number" class="input t-sec" style="padding:4px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
                     '<td><input type="number" class="input t-num" style="padding:4px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td></tr>');
             });
         });
         if (box.children().length === 0) {
-            box.append('<tr><td colspan="7" class="muted" style="padding:14px">暂无其他节点，请先添加</td></tr>');
+            box.append('<tr><td colspan="8" class="muted" style="padding:14px">暂无其他节点，请先添加</td></tr>');
         }
         syncGroupChecks();
         updateCount();
@@ -1025,11 +1056,13 @@ SP.init('config', '系统配置').done(function (ctx) {
     $('#n-targets').on('change', '.t-on', function () { syncGroupChecks(); updateCount(); });
     $('#ta-apply').click(function () {
         var d = $('#ta-delay').val(), l = $('#ta-loss').val(), s = $('#ta-sec').val(), c = $('#ta-num').val();
+        var j = $.trim($('#ta-jitter').val());
         var n = 0;
         $('#n-targets tr[data-a]').each(function () {
             if (!$(this).find('.t-on').is(':checked')) return;
             $(this).find('.t-delay').val(d); $(this).find('.t-loss').val(l);
             $(this).find('.t-sec').val(s); $(this).find('.t-num').val(c);
+            if (j !== '') $(this).find('.t-jitter').val(j);
             n++;
         });
         SP.toast('已套用阈值到 ' + n + ' 个目标', 'ok');
@@ -1045,6 +1078,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             'Addr': addr, 'Name': name,
             'Thdavgdelay': String(tr ? (tr.find('.t-delay').val() || 200) : 200),
             'Thdloss': String(tr ? (tr.find('.t-loss').val() || 30) : 30),
+            'Thdjitter': $.trim(tr ? (tr.find('.t-jitter').val() || '') : ''),
             'Thdchecksec': String(tr ? (tr.find('.t-sec').val() || 900) : 900),
             'Thdoccnum': String(tr ? (tr.find('.t-num').val() || 3) : 3)
         };
@@ -1162,6 +1196,13 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Archive'] = parseInt($('#f-archive').val(), 10) || 10;
         cfg.Base['Refresh'] = parseInt($('#f-refresh').val(), 10) || 1;
         cfg.Base['Chinamap'] = $('#f-chinamap').is(':checked') ? 1 : 0;
+        cfg.Base['Pinginterval'] = parseInt($('#f-pinginterval').val(), 10) || 3000;
+        cfg.Base['Pingcount'] = parseInt($('#f-pingcount').val(), 10) || 20;
+        cfg.Base['Pingtimeout'] = parseInt($('#f-pingtimeout').val(), 10) || 3000;
+        cfg.Base['Pingsize'] = parseInt($('#f-pingsize').val(), 10) || 56;
+        if (cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] > 55000) {
+            throw new Error('探测间隔×包数不能超过55秒, 请调小间隔或包数');
+        }
         cfg.Toollimit = parseInt($('#f-toollimit').val(), 10) || 0;
         cfg.Topology['Tline'] = String($('#f-tline').val() || '1');
         cfg.Topology['Tsymbolsize'] = String($('#f-tsymbolsize').val() || '70');

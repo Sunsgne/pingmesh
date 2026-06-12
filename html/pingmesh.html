@@ -207,7 +207,7 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
                 if (c.loss >= 99.5) main = '&#10005;'; // 完全不通显示 ✕
                 var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
                     '\n平均 ' + SP.fmtMs(c.avgdelay) + 'ms · 最大 ' + SP.fmtMs(c.maxdelay) + 'ms' +
-                    '\n丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次\n' + c.lastcheck;
+                    '\n抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次\n' + c.lastcheck;
                 html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +
                     main + '</div></td>';
             });
