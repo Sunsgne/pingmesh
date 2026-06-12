@@ -221,6 +221,22 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         $('#ms-bad').text(stBad);
         $('#ms-avg').text(stCnt > 0 ? SP.fmtMs(stSum / stCnt) + ' ms' : '-');
 
+        // 异步回填 ASN 到悬浮提示与列头
+        $.each(targets, function (_, t) {
+            SP.asn(t, function (info) {
+                if (!info) return;
+                var line = '\nASN: ' + SP.asnShort(info);
+                $('#mesh .mesh-cell[data-dst="' + t + '"]').each(function () {
+                    if (($(this).attr('title') || '').indexOf('ASN:') < 0) {
+                        $(this).attr('title', $(this).attr('title') + line);
+                    }
+                });
+                $('#mesh th.col-h').each(function () {
+                    if ($(this).attr('title') === t) $(this).attr('title', t + ' · ' + SP.asnShort(info));
+                });
+            });
+        });
+
         $('#mesh .mesh-cell[data-src]').click(function () {
             var src = $(this).attr('data-src'), dst = $(this).attr('data-dst');
             var apiurl = (src === cfg.Addr)

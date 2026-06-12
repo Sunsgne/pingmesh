@@ -61,7 +61,10 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                     return p.data.source + ' &rarr; ' + p.data.target + '<br>' +
                         (p.data._bad ? '<b style="color:#fb7185">触发报警阈值</b>' : '<span style="color:#34d399">监测正常</span>');
                 }
-                return '<b>' + p.name + '</b><br>' + (p.data._sub || '');
+                var html = '<b>' + p.name + '</b><br>' + (p.data._sub || '');
+                var info = SP.asnCached(p.data._addr || '');
+                if (info) html += '<br><span style="color:#a5b4fc">' + SP.asnShort(info) + '</span>';
+                return html;
             }
         },
         legend: {
@@ -151,8 +154,9 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         $.each(nodes, function (addr, n) {
             var cat = n.bad ? 2 : (n.source ? 0 : 1);
             var colors = ['#6366f1', '#10b981', '#f43f5e'];
+            SP.asn(addr, function () {}); // 预取, 悬浮时从缓存即时读取
             data.push({
-                name: n.name, category: cat, draggable: true,
+                name: n.name, category: cat, draggable: true, _addr: addr,
                 symbolSize: n.source ? baseSize : Math.max(18, Math.round(baseSize * .72)),
                 _sub: '<span class="mono">' + addr + '</span><br>' +
                       (n.bad ? '节点不可达' : (n.source ? '探测节点' : '被测目标')),
