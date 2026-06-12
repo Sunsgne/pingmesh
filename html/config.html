@@ -17,7 +17,7 @@
       <button data-t="nodes">节点管理</button>
       <button data-t="join">节点接入</button>
       <button data-t="alert">报警通道</button>
-      <button data-t="chinamap">全国延迟</button>
+      <button data-t="chinamap">全球延迟</button>
       <button data-t="raw">高级 (JSON)</button>
     </div>
 
@@ -68,7 +68,7 @@
           <div class="hint">逗号分隔。白名单中的 IP 无需登录即可访问（兼容旧版）</div>
         </div>
         <div class="field">
-          <label>全国延迟功能</label>
+          <label>全球延迟功能</label>
           <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-chinamap"><span class="track"></span></label>
           <span class="hint" style="display:inline;margin-left:8px">关闭后停止探测并隐藏菜单入口</span>
         </div>
@@ -162,7 +162,8 @@
     <!-- 全国延迟 -->
     <div class="tab-pane card-body" id="tab-chinamap">
       <div class="muted mb-4" style="font-size:13px">
-        各省份按运营商配置探测 IP。格式: { "省份": { "ctcc": ["电信IP"], "cucc": ["联通IP"], "cmcc": ["移动IP"] } }
+        各地区按线路配置探测 IP。格式: { "地区": { "线路名": ["探测IP"] } }。<br>
+        地区使用<b>英文国家/地区名</b>(如 United States、Japan、Singapore)才能在世界地图上着色; 线路名称任意(如 骨干网、精品网)。
       </div>
       <textarea class="input" id="f-chinamap" rows="18" spellcheck="false"></textarea>
     </div>

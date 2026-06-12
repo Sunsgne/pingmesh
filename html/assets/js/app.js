@@ -19,7 +19,7 @@ var SP = (function () {
         { id: 'pingmesh', href: 'pingmesh.html', title: 'Pingmesh 矩阵', icon: 'mesh' },
         { id: 'reverse', href: 'reverse.html', title: '反向 Ping', icon: 'reverse' },
         { id: 'topology', href: 'topology.html', title: '网络拓扑', icon: 'topo' },
-        { id: 'mapping', href: 'mapping.html', title: '全国延迟', icon: 'map' },
+        { id: 'mapping', href: 'mapping.html', title: '全球延迟', icon: 'map' },
         { group: '运维' },
         { id: 'tools', href: 'tools.html', title: '检测工具', icon: 'tools' },
         { id: 'alerts', href: 'alerts.html', title: '报警记录', icon: 'alert' },
