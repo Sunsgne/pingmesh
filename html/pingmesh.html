@@ -35,6 +35,7 @@
         自动刷新
       </span>
       <button class="btn sm" id="refresh-btn">刷新</button>
+      <button class="btn sm" id="fs-btn" title="投屏到监控大屏, ESC 退出">&#x26F6; 全屏</button>
     </div>
     <div class="card-body">
       <div class="flex mb-4" style="flex-wrap:wrap">
@@ -131,6 +132,19 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         render();
     });
     $('#refresh-btn').click(load);
+    /* 大屏全屏: 全屏内容区(概要+矩阵), 自动刷新持续工作 */
+    $('#fs-btn').click(function () {
+        var el = document.getElementById('sp-content');
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else {
+            (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        }
+    });
+    $(document).bind('fullscreenchange webkitfullscreenchange', function () {
+        var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        $('#fs-btn').html(on ? '&#x2716; 退出全屏' : '&#x26F6; 全屏');
+    });
     $('#auto-refresh').change(setupTimer);
     setupTimer();
     load();
