@@ -9,11 +9,21 @@ type Config struct {
 	Base       map[string]int
 	Topology   map[string]string
 	Alert      map[string]string
+	Channels   []AlertChannel
 	Network    map[string]NetworkMember
 	Chinamap   map[string]map[string][]string
 	Toollimit  int
 	Authiplist string
 	Password   string
+}
+
+// AlertChannel 告警通道配置
+// Type: webhook | dingtalk | wecom | feishu | telegram | slack | discord
+type AlertChannel struct {
+	Type    string            `json:"Type"`
+	Name    string            `json:"Name"`
+	Enabled bool              `json:"Enabled"`
+	Params  map[string]string `json:"Params"`
 }
 
 type NetworkMember struct {

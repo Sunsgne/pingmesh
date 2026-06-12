@@ -31,7 +31,10 @@ func configApiRoutes() {
 		nconf := g.Config{}
 		cfgJson, _ := json.Marshal(g.Cfg)
 		json.Unmarshal(cfgJson, &nconf)
-		nconf.Password = ""
+		// 管理员可见配置密码(即节点接入令牌), 其他请求一律隐藏
+		if !AuthAdmin(r) {
+			nconf.Password = ""
+		}
 		if !AuthAgentIp(r.RemoteAddr, false) {
 			if nconf.Alert["SendEmailPassword"] != "" {
 				nconf.Alert["SendEmailPassword"] = "samepasswordasbefore"
@@ -414,6 +417,12 @@ func configApiRoutes() {
 			RenderJson(w, preout)
 			return
 		}
+		//Channels
+		if err := funcs.ValidateChannels(nconfig.Channels); err != nil {
+			preout["info"] = err.Error()
+			RenderJson(w, preout)
+			return
+		}
 		//Network
 		for k, network := range nconfig.Network {
 			if !ValidIP4(network.Addr) || !ValidIP4(k) {
@@ -491,7 +500,10 @@ func configApiRoutes() {
 		}
 		nconfig.Ver = g.Cfg.Ver
 		nconfig.Port = g.Cfg.Port
-		nconfig.Password = g.Cfg.Password
+		// 密码(接入令牌)仅在显式提供时更新
+		if nconfig.Password == "" {
+			nconfig.Password = g.Cfg.Password
+		}
 		if nconfig.Alert["SendEmailPassword"] == "samepasswordasbefore" {
 			nconfig.Alert["SendEmailPassword"] = g.Cfg.Alert["SendEmailPassword"]
 		}
@@ -504,6 +516,47 @@ func configApiRoutes() {
 			return
 		}
 		preout["status"] = "true"
+		RenderJson(w, preout)
+	})
+
+	//测试告警通道
+	http.HandleFunc("/api/alerttest.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthAdmin(r) {
+			deny(w)
+			return
+		}
+		preout := make(map[string]string)
+		preout["status"] = "false"
+		r.ParseForm()
+		if len(r.Form["channel"]) == 0 {
+			preout["info"] = "参数错误!"
+			RenderJson(w, preout)
+			return
+		}
+		ch := g.AlertChannel{}
+		if err := json.Unmarshal([]byte(r.Form["channel"][0]), &ch); err != nil {
+			preout["info"] = "通道配置解析错误: " + err.Error()
+			RenderJson(w, preout)
+			return
+		}
+		now := time.Now().Format("2006-01-02 15:04:05")
+		title := "【测试】SmartPing 告警通道测试"
+		text := title + "\n时间: " + now + "\n节点: " + g.Cfg.Name + " (" + g.Cfg.Addr + ")\n如收到此消息说明通道配置正确。"
+		payload := map[string]interface{}{
+			"event": "test", "title": title, "content": text,
+			"fromname": g.Cfg.Name, "fromip": g.Cfg.Addr, "time": now,
+		}
+		body, err := funcs.SendChannelMessage(ch, title, text, payload)
+		if err != nil {
+			preout["info"] = err.Error()
+			if body != "" {
+				preout["info"] += " | " + body
+			}
+			RenderJson(w, preout)
+			return
+		}
+		preout["status"] = "true"
+		preout["info"] = body
 		RenderJson(w, preout)
 	})
 

@@ -19,20 +19,20 @@ func StartAlert() {
 	seelog.Info("[func:StartAlert] ", "starting run AlertCheck ")
 	for _, v := range g.SelfCfg.Topology {
 		if v["Addr"] != g.SelfCfg.Addr {
+			old, haskey := g.AlertStatus[v["Addr"]]
 			sFlag := CheckAlertStatus(v)
 			if sFlag {
 				g.AlertStatus[v["Addr"]] = true
-			}
-			_, haskey := g.AlertStatus[v["Addr"]]
-			if (!haskey && !sFlag) || (!sFlag && g.AlertStatus[v["Addr"]]) {
+				// 状态由异常恢复为正常: 发送恢复通知
+				if haskey && !old {
+					seelog.Debug("[func:StartAlert] ", v["Addr"]+" Recovered!")
+					l := newAlertLog(v)
+					go NotifyAll(l, v, true)
+				}
+			} else if !haskey || old {
 				seelog.Debug("[func:StartAlert] ", v["Addr"]+" Alert!")
 				g.AlertStatus[v["Addr"]] = false
-				l := g.AlertLog{}
-				l.Fromname = g.SelfCfg.Name
-				l.Fromip = g.SelfCfg.Addr
-				l.Logtime = time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04")
-				l.Targetname = v["Name"]
-				l.Targetip = v["Addr"]
+				l := newAlertLog(v)
 				mtrString := ""
 				hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
 				if nil != err {
@@ -48,14 +48,22 @@ func StartAlert() {
 				}
 				l.Tracert = mtrString
 				go AlertStorage(l)
-				if g.Cfg.Alert["SendEmailAccount"] != "" && g.Cfg.Alert["SendEmailPassword"] != "" && g.Cfg.Alert["EmailHost"] != "" && g.Cfg.Alert["RevcEmailList"] != "" {
-					go AlertSendMail(l)
-				}
+				go NotifyAll(l, v, false)
 			}
 
 		}
 	}
 	seelog.Info("[func:StartAlert] ", "AlertCheck finish ")
+}
+
+func newAlertLog(v map[string]string) g.AlertLog {
+	l := g.AlertLog{}
+	l.Fromname = g.SelfCfg.Name
+	l.Fromip = g.SelfCfg.Addr
+	l.Logtime = time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04")
+	l.Targetname = v["Name"]
+	l.Targetip = v["Addr"]
+	return l
 }
 
 func CheckAlertStatus(v map[string]string) bool {
