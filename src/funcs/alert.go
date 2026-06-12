@@ -86,11 +86,12 @@ func CheckAlertStatus(v map[string]string) bool {
 	}
 	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
 	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
-	querysql := "SELECT count(1) cnt FROM pinglog where logtime > ? and target = ? and (cast(avgdelay as double) > cast(? as double) or cast(losspk as double) > cast(? as double)"
+	// 达到阈值即计为异常分钟(>=): 丢包阈值设为100时, 100%丢包同样触发
+	querysql := "SELECT count(1) cnt FROM pinglog where logtime > ? and target = ? and (cast(avgdelay as double) >= cast(? as double) or cast(losspk as double) >= cast(? as double)"
 	args := []interface{}{timeStartStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"]}
 	// 抖动阈值为可选项, 配置后参与告警判定(IPLC/IEPL 场景)
 	if v["Thdjitter"] != "" {
-		querysql += " or cast(ifnull(jitter,0) as double) > cast(? as double)"
+		querysql += " or cast(ifnull(jitter,0) as double) >= cast(? as double)"
 		args = append(args, v["Thdjitter"])
 	}
 	querysql += ")"
@@ -109,11 +110,11 @@ func CheckAlertStatus(v map[string]string) bool {
 			return false
 		}
 		Thdoccnum, _ := strconv.Atoi(v["Thdoccnum"])
-		if l.Cnt <= Thdoccnum {
-			return true
-		} else {
+		// 异常分钟数"达到"触发次数即告警(与界面文案一致)
+		if l.Cnt >= Thdoccnum {
 			return false
 		}
+		return true
 	}
 	return false
 }
