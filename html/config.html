@@ -462,7 +462,7 @@
           <thead><tr>
             <th style="width:64px">我监测它</th><th>目标节点</th>
             <th style="width:100px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING</th>
-            <th>延迟(ms)</th><th>丢包(%)</th><th title="抖动阈值, 留空不检查; IPLC/IEPL 专线建议 5~20ms">抖动(ms)</th><th>窗口(秒)</th><th>次数</th>
+            <th>延迟(ms)</th><th>丢包(%)</th><th title="抖动阈值, 留空不检查; IPLC/IEPL 专线建议 5~20ms">抖动(ms)</th><th title="判定告警时回看多久的数据(秒), 数据每分钟1个点, 需 ≥ 次数×60; 与探测频率无关">窗口(秒) &#9432;</th><th title="窗口内出现几个异常分钟才告警">次数</th>
             <th title="双网口分路监控: 指定从本节点哪个网口IP发起探测(公网口/专线口), 留空走系统默认路由">源IP</th>
             <th title="按链路覆盖探测间隔/包数/超时/包大小, 未设置时使用基础设置中的全局默认">探测参数</th>
           </tr></thead>
@@ -471,7 +471,7 @@
         </div>
         <div class="hint mt-2">
           按分组批量勾选：点击分组行的复选框。单向监测：勾选「我监测它」。互 PING：目标也是探测节点时再勾选「互PING」（对方用默认阈值）。<br>
-          报警规则：「窗口」时间内，延迟/丢包/抖动<b>达到阈值</b>的分钟数<b>达到「次数」</b>即报警（每分钟产生一个数据点，故需满足 窗口秒数 ≥ 次数×60；丢包阈值设 100 表示完全不通才报）。
+          报警规则：「窗口」= 判定告警时回看多久的数据（与探测频率无关，探测频率在「探测参数」里调）。窗口内延迟/丢包/抖动<b>达到阈值</b>的分钟数<b>达到「次数」</b>即报警；每分钟 1 个数据点，故 窗口秒数 ≥ 次数×60；丢包阈值设 100 表示完全不通才报。
         </div>
       </div>
 
@@ -1044,7 +1044,7 @@ SP.init('config', '系统配置').done(function (ctx) {
                     '<td><input type="number" class="input t-delay" style="padding:4px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
                     '<td><input type="number" class="input t-loss" style="padding:4px 8px" value="' + (t['Thdloss'] || 30) + '"></td>' +
                     '<td><input type="number" class="input t-jitter" style="padding:4px 8px" placeholder="可空" value="' + (t['Thdjitter'] || '') + '"></td>' +
-                    '<td><input type="number" class="input t-sec" style="padding:4px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
+                    '<td><input type="number" class="input t-sec" style="padding:4px 8px" min="60" step="60" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
                     '<td><input type="number" class="input t-num" style="padding:4px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td>' +
                     '<td><input type="text" class="input mono t-src" style="padding:4px 8px;min-width:110px" placeholder="默认" value="' + SP.esc(t['Srcip'] || '') + '"></td>' +
                     '<td style="white-space:nowrap"><a class="t-probe-toggle">' + probeSummary(t) + '</a></td></tr>');
@@ -1300,7 +1300,8 @@ SP.init('config', '系统配置').done(function (ctx) {
                 var entry = topoEntry(ta, SP.nodeName(cfg, ta), $(this));
                 var sec = parseInt(entry['Thdchecksec'], 10), num = parseInt(entry['Thdoccnum'], 10);
                 if (num > 0 && Math.floor(sec / 60) < num) {
-                    ruleErr = SP.nodeName(cfg, ta) + ': 检测窗口 ' + sec + '秒 最多累计 ' + Math.floor(sec / 60) + ' 个异常分钟, 达不到触发次数 ' + num + '(需 窗口 ≥ 次数×60)';
+                    ruleErr = SP.nodeName(cfg, ta) + ' 的告警规则无效: 检测窗口是"判定告警时回看多久的数据"(数据每分钟1个点), ' +
+                        sec + ' 秒装不下 ' + num + ' 个异常分钟。建议: 窗口 900 / 次数 3(15分钟内3个异常分钟告警); 若想调高探测频率, 请改「探测参数」里的探测间隔';
                     return false;
                 }
                 ping.push(ta);
