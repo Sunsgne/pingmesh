@@ -164,7 +164,7 @@ type ClusterNode struct {
 	Mode      string `json:"mode"`
 	Online    bool   `json:"online"`
 	Self      bool   `json:"self"`
-	Acting    bool   `json:"acting"`   // 该节点自报为代理主节点
+	Acting    bool   `json:"acting"`    // 该节点自报为代理主节点
 	Candidate bool   `json:"candidate"` // 是否为主候选
 	Priority  int    `json:"priority"`  // 候选优先级(越小越高), -1 表示非候选
 }
