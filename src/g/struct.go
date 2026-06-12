@@ -31,6 +31,7 @@ type AlertChannel struct {
 type NetworkMember struct {
 	Name     string
 	Addr     string
+	Group    string // 分组(机房/地域), 便于大规模节点管理
 	Pingmesh bool
 	Ping     []string
 	Topology []map[string]string

@@ -26,6 +26,7 @@ func main() {
 	token := flag.String("token", "", "join token (master's config password)")
 	name := flag.String("name", "", "node name used when joining")
 	addr := flag.String("addr", "", "node ip used when joining (auto-detect if empty)")
+	group := flag.String("group", "", "node group used when joining (optional)")
 	flag.Parse()
 	if *version {
 		fmt.Println(Version)
@@ -36,7 +37,7 @@ func main() {
 	g.FlagListen = *listen
 	g.ParseConfig(Version)
 	if *join != "" {
-		if err := funcs.JoinMaster(*join, *token, *name, *addr); err != nil {
+		if err := funcs.JoinMaster(*join, *token, *name, *addr, *group); err != nil {
 			log.Fatalln("[Fault]join master fail:", err)
 		}
 	}

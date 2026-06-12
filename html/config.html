@@ -81,6 +81,7 @@
         <div class="flex mb-2">
           <span class="muted">共 <b id="node-count">0</b> 个节点</span>
           <span class="spacer"></span>
+          <input type="text" class="input" id="node-search" placeholder="搜索名称 / IP / 分组..." style="width:220px;padding:6px 10px">
           <button class="btn primary sm" id="node-add-btn">+ 添加节点</button>
         </div>
         <div class="muted mb-4" style="font-size:12.5px;background:var(--sp-primary-soft);border-radius:8px;padding:10px 14px;line-height:1.8">
@@ -89,7 +90,7 @@
         </div>
       </div>
       <table class="sp-table">
-        <thead><tr><th>节点名称</th><th>IP 地址</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
+        <thead><tr><th>节点名称</th><th>IP 地址</th><th>分组</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
         <tbody id="nodelist"></tbody>
       </table>
     </div>
@@ -327,7 +328,7 @@
   <div class="sp-modal lg">
     <div class="m-head"><h3 id="node-modal-title">添加节点</h3><button class="m-close">&times;</button></div>
     <div class="m-body">
-      <div class="grid cols-2 mb-2">
+      <div class="grid cols-3 mb-2">
         <div class="field" style="margin-bottom:0">
           <label>节点名称</label>
           <input type="text" class="input" id="n-name" placeholder="如: 北京机房 / 核心网关">
@@ -336,6 +337,11 @@
           <label>IP 地址</label>
           <input type="text" class="input mono" id="n-addr" placeholder="如: 10.0.0.1">
           <div class="hint" id="n-addr-hint" style="display:none">修改 IP 后，其他节点对它的监测关系会自动跟随更新</div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label>分组（可选）</label>
+          <input type="text" class="input" id="n-group" list="n-group-list" placeholder="如: 华东 / 海外 / 核心网">
+          <datalist id="n-group-list"></datalist>
         </div>
       </div>
 
@@ -356,19 +362,57 @@
       </div>
 
       <div id="n-targets-box">
-        <label style="display:block;font-size:13px;font-weight:600;color:var(--sp-text-2);margin:8px 0">本节点监测哪些目标</label>
+        <div class="flex mb-2" style="flex-wrap:wrap">
+          <label style="font-size:13px;font-weight:600;color:var(--sp-text-2);margin:0">本节点监测哪些目标</label>
+          <span class="spacer"></span>
+          <input type="text" class="input" id="t-search" placeholder="搜索名称 / IP / 分组..." style="width:200px;padding:5px 10px">
+          <button class="btn sm" id="t-all">全选</button>
+          <button class="btn sm" id="t-none">全不选</button>
+          <button class="btn sm" id="t-invert">反选</button>
+          <button class="btn sm" id="t-probes">仅探测节点</button>
+          <button class="btn sm" id="t-mutual-all">互PING全选</button>
+        </div>
+        <div class="flex mb-2" style="background:var(--sp-bg);border-radius:8px;padding:8px 12px">
+          <span class="muted" style="font-size:12.5px">阈值批量套用:</span>
+          <input type="number" class="input" id="ta-delay" value="200" style="width:90px;padding:4px 8px" title="延迟阈值(ms)">
+          <span class="muted" style="font-size:11px">ms</span>
+          <input type="number" class="input" id="ta-loss" value="30" style="width:75px;padding:4px 8px" title="丢包阈值(%)">
+          <span class="muted" style="font-size:11px">%</span>
+          <input type="number" class="input" id="ta-sec" value="900" style="width:90px;padding:4px 8px" title="检测窗口(秒)">
+          <span class="muted" style="font-size:11px">秒</span>
+          <input type="number" class="input" id="ta-num" value="3" style="width:70px;padding:4px 8px" title="触发次数">
+          <span class="muted" style="font-size:11px">次</span>
+          <button class="btn primary sm" id="ta-apply">套用到已勾选</button>
+          <span class="muted" id="t-count" style="font-size:12px;margin-left:auto"></span>
+        </div>
+        <div style="max-height:360px;overflow-y:auto;border:1px solid var(--sp-border);border-radius:10px">
         <table class="sp-table">
           <thead><tr>
             <th style="width:64px">我监测它</th><th>目标节点</th>
-            <th style="width:110px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING <span class="muted">(它也监测我)</span></th>
-            <th>延迟阈值(ms)</th><th>丢包阈值(%)</th><th>检测窗口(秒)</th><th>触发次数</th>
+            <th style="width:100px" title="勾选后对方节点也会监测本节点, 形成互PING">互PING</th>
+            <th>延迟(ms)</th><th>丢包(%)</th><th>窗口(秒)</th><th>次数</th>
           </tr></thead>
           <tbody id="n-targets"></tbody>
         </table>
-        <div class="hint mt-2">
-          单向监测：勾选「我监测它」即可。互 PING：目标也是探测节点时，再勾选「互PING」，双方会互相监测（对方使用默认阈值）。<br>
-          报警规则：在「检测窗口」时间内，延迟或丢包超过阈值的次数达到「触发次数」即报警。
         </div>
+        <div class="hint mt-2">
+          按分组批量勾选：点击分组行的复选框。单向监测：勾选「我监测它」。互 PING：目标也是探测节点时再勾选「互PING」（对方用默认阈值）。<br>
+          报警规则：「窗口」时间内，延迟或丢包超阈值的次数达到「次数」即报警。
+        </div>
+      </div>
+
+      <!-- 被测目标: 反向视图 -->
+      <div id="n-watchers-box" style="display:none">
+        <div class="flex mb-2">
+          <label style="font-size:13px;font-weight:600;color:var(--sp-text-2);margin:0">哪些探测节点监测它</label>
+          <span class="spacer"></span>
+          <button class="btn sm" id="w-all">全选</button>
+          <button class="btn sm" id="w-none">清空</button>
+        </div>
+        <div style="max-height:320px;overflow-y:auto;border:1px solid var(--sp-border);border-radius:10px;padding:6px 0">
+          <table class="sp-table"><tbody id="n-watchers"></tbody></table>
+        </div>
+        <div class="hint mt-2">在这里直接选择由哪些探测节点来监测本目标（新勾选的使用默认阈值 200ms/30%），不必再逐个编辑探测节点。</div>
       </div>
     </div>
     <div class="m-foot">
@@ -579,7 +623,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         var token = $('#f-jointoken').val() || '<接入令牌>';
         $('#join-cmd').val(
             './pingmesh -join http://' + cfg.Addr + ':' + cfg.Port +
-            ' -token ' + token + ' -name <节点名>'
+            ' -token ' + token + ' -name <节点名> [-group <分组>]'
         );
         var isCloud = cfg.Mode && cfg.Mode['Type'] === 'cloud';
         if (isCloud) {
@@ -766,17 +810,20 @@ SP.init('config', '系统配置').done(function (ctx) {
         });
         $.each(cfg.Network, function (addr, n) {
             cnt++;
-            box.append('<tr>' +
+            box.append('<tr data-s="' + SP.esc((n.Name + ' ' + addr + ' ' + (n.Group || '')).toLowerCase()) + '">' +
                 '<td><b>' + SP.esc(n.Name) + '</b>' + (addr === cfg.Addr ? ' <span class="badge indigo">本机</span>' : '') + '</td>' +
                 '<td class="mono">' + SP.esc(addr) + '</td>' +
+                '<td>' + (n.Group ? '<span class="badge gray">' + SP.esc(n.Group) + '</span>' : '<span class="muted">—</span>') + '</td>' +
                 '<td>' + (n.Pingmesh ? '<span class="badge green"><span class="dot"></span>探测节点</span>' : '<span class="badge gray">被测目标</span>') + '</td>' +
                 '<td>' + (n.Pingmesh ? (n.Ping || []).length + ' 个' : '<span class="muted">—</span>') + '</td>' +
                 '<td>' + (watchedBy[addr] ? watchedBy[addr] + ' 个节点' : '<span class="badge yellow" title="没有任何探测节点监测它">未被监测</span>') + '</td>' +
                 '<td><button class="btn sm n-edit" data-a="' + SP.esc(addr) + '">编辑</button> ' +
                 '<button class="btn sm ghost-danger n-del" data-a="' + SP.esc(addr) + '">删除</button></td></tr>');
         });
+        applyNodeFilter();
         $('#node-count').text(cnt);
         $('.n-edit').click(function () { openNode($(this).attr('data-a')); });
+        $('#node-search').unbind('keyup input').bind('keyup input', applyNodeFilter);
         $('.n-del').click(function () {
             var addr = $(this).attr('data-a');
             if (addr === cfg.Addr) { SP.toast('不能删除本机节点', 'err'); return; }
@@ -792,6 +839,13 @@ SP.init('config', '系统配置').done(function (ctx) {
         });
     }
 
+    function applyNodeFilter() {
+        var q = $.trim($('#node-search').val() || '').toLowerCase();
+        $('#nodelist tr').each(function () {
+            $(this).toggle(q === '' || ($(this).attr('data-s') || '').indexOf(q) >= 0);
+        });
+    }
+
     /* ----- node modal ----- */
     function nodeType() { return $('input[name="n-type"]:checked').val() || 'target'; }
     function setNodeType(t) {
@@ -799,53 +853,165 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('.type-opt').removeClass('active');
         $('#type-' + t).addClass('active');
         $('#n-targets-box').toggle(t === 'probe');
+        $('#n-watchers-box').toggle(t !== 'probe');
     }
     $('input[name="n-type"]').change(function () { setNodeType($(this).val()); });
 
+    function groupOf(n) { return (n && n.Group) ? n.Group : '未分组'; }
+
     function openNode(addr) {
         editingAddr = addr;
-        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Pingmesh: false, Ping: [], Topology: [] };
+        var n = addr ? cfg.Network[addr] : { Name: '', Addr: '', Group: '', Pingmesh: false, Ping: [], Topology: [] };
         $('#node-modal-title').text(addr ? '编辑节点 - ' + n.Name : '添加节点');
         $('#n-name').val(n.Name);
+        $('#n-group').val(n.Group || '');
+        // 分组联想
+        var groups = {}, dl = $('#n-group-list').empty();
+        $.each(cfg.Network, function (_, m) { if (m.Group) groups[m.Group] = 1; });
+        $.each(groups, function (gname) { dl.append('<option value="' + SP.esc(gname) + '">'); });
         // 本机节点的 IP 与 Cfg.Addr 绑定, 需在「基础设置」中修改; 其他节点 IP 可直接改
         $('#n-addr').val(n.Addr).attr('disabled', addr === cfg.Addr)
             .attr('title', addr === cfg.Addr ? '本机 IP 请在「基础设置」中修改' : '');
         $('#n-addr-hint').toggle(!!addr && addr !== cfg.Addr);
+        $('#t-search').val('');
         setNodeType(addr ? (n.Pingmesh ? 'probe' : 'target') : 'probe');
         renderTargets(n);
+        renderWatchers(n);
         SP.openModal('node-modal');
     }
 
+    /* 监测目标列表: 按分组渲染, 支持搜索/批量 */
     function renderTargets(n) {
         var box = $('#n-targets').empty();
         var topoMap = {};
         $.each(n.Topology || [], function (_, t) { topoMap[t['Addr']] = t; });
+
+        // 按分组归类
+        var byGroup = {};
         $.each(cfg.Network, function (addr, other) {
             if (addr === n.Addr && n.Addr !== '') return;
-            var t = topoMap[addr] || {};
-            var checked = $.inArray(addr, n.Ping || []) >= 0 || !!topoMap[addr];
-            var mutualCell;
-            if (other.Pingmesh) {
-                var mutualOn = n.Addr !== '' && $.inArray(n.Addr, other.Ping || []) >= 0;
-                mutualCell = '<td style="text-align:center"><input type="checkbox" class="t-mutual"' + (mutualOn ? ' checked' : '') + '></td>';
-            } else {
-                mutualCell = '<td style="text-align:center"><span class="muted" title="对方是被测目标, 无法反向监测">—</span></td>';
-            }
-            box.append('<tr data-a="' + SP.esc(addr) + '">' +
-                '<td style="text-align:center"><input type="checkbox" class="t-on"' + (checked ? ' checked' : '') + '></td>' +
-                '<td><b>' + SP.esc(other.Name) + '</b> ' +
-                (other.Pingmesh ? '<span class="badge indigo" style="font-size:10px">探测节点</span> ' : '') +
-                '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
-                mutualCell +
-                '<td><input type="number" class="input t-delay" style="padding:5px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
-                '<td><input type="number" class="input t-loss" style="padding:5px 8px" value="' + (t['Thdloss'] || 30) + '"></td>' +
-                '<td><input type="number" class="input t-sec" style="padding:5px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
-                '<td><input type="number" class="input t-num" style="padding:5px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td></tr>');
+            var gname = groupOf(other);
+            (byGroup[gname] = byGroup[gname] || []).push([addr, other]);
+        });
+        var groups = [];
+        $.each(byGroup, function (gname) { groups.push(gname); });
+        groups.sort(function (a, b) {
+            if (a === '未分组') return 1;
+            if (b === '未分组') return -1;
+            return a < b ? -1 : 1;
+        });
+
+        $.each(groups, function (_, gname) {
+            var rows = byGroup[gname];
+            // 探测节点排前, 其余按名称
+            rows.sort(function (a, b) {
+                if (a[1].Pingmesh !== b[1].Pingmesh) return a[1].Pingmesh ? -1 : 1;
+                return a[1].Name < b[1].Name ? -1 : 1;
+            });
+            box.append('<tr class="t-group" data-g="' + SP.esc(gname) + '" style="background:#f8fafc">' +
+                '<td style="text-align:center"><input type="checkbox" class="g-on" title="勾选整组"></td>' +
+                '<td colspan="6"><b style="font-size:12px">' + SP.esc(gname) + '</b> <span class="muted" style="font-size:11px">' + rows.length + ' 个节点</span></td></tr>');
+            $.each(rows, function (_, pair) {
+                var addr = pair[0], other = pair[1];
+                var t = topoMap[addr] || {};
+                var checked = $.inArray(addr, n.Ping || []) >= 0 || !!topoMap[addr];
+                var mutualCell;
+                if (other.Pingmesh) {
+                    var mutualOn = n.Addr !== '' && $.inArray(n.Addr, other.Ping || []) >= 0;
+                    mutualCell = '<td style="text-align:center"><input type="checkbox" class="t-mutual"' + (mutualOn ? ' checked' : '') + '></td>';
+                } else {
+                    mutualCell = '<td style="text-align:center"><span class="muted" title="对方是被测目标, 无法反向监测">—</span></td>';
+                }
+                box.append('<tr data-a="' + SP.esc(addr) + '" data-g="' + SP.esc(gname) + '" data-probe="' + (other.Pingmesh ? 1 : 0) + '" data-s="' + SP.esc((other.Name + ' ' + addr + ' ' + gname).toLowerCase()) + '">' +
+                    '<td style="text-align:center"><input type="checkbox" class="t-on"' + (checked ? ' checked' : '') + '></td>' +
+                    '<td><b>' + SP.esc(other.Name) + '</b> ' +
+                    (other.Pingmesh ? '<span class="badge indigo" style="font-size:10px">探测节点</span> ' : '') +
+                    '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
+                    mutualCell +
+                    '<td><input type="number" class="input t-delay" style="padding:4px 8px" value="' + (t['Thdavgdelay'] || 200) + '"></td>' +
+                    '<td><input type="number" class="input t-loss" style="padding:4px 8px" value="' + (t['Thdloss'] || 30) + '"></td>' +
+                    '<td><input type="number" class="input t-sec" style="padding:4px 8px" value="' + (t['Thdchecksec'] || 900) + '"></td>' +
+                    '<td><input type="number" class="input t-num" style="padding:4px 8px" value="' + (t['Thdoccnum'] || 3) + '"></td></tr>');
+            });
         });
         if (box.children().length === 0) {
-            box.append('<tr><td colspan="7" class="muted">暂无其他节点，请先添加</td></tr>');
+            box.append('<tr><td colspan="7" class="muted" style="padding:14px">暂无其他节点，请先添加</td></tr>');
         }
+        syncGroupChecks();
+        updateCount();
     }
+
+    /* 被测目标的反向视图: 哪些探测节点监测它 */
+    function renderWatchers(n) {
+        var box = $('#n-watchers').empty();
+        var cnt = 0;
+        $.each(cfg.Network, function (addr, other) {
+            if (!other.Pingmesh || (addr === n.Addr && n.Addr !== '')) return;
+            cnt++;
+            var watching = n.Addr !== '' && $.inArray(n.Addr, other.Ping || []) >= 0;
+            box.append('<tr><td style="width:40px;text-align:center"><input type="checkbox" class="w-on" data-p="' + SP.esc(addr) + '"' + (watching ? ' checked' : '') + '></td>' +
+                '<td><b>' + SP.esc(other.Name) + '</b> <span class="badge indigo" style="font-size:10px">' + SP.esc(groupOf(other)) + '</span> ' +
+                '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td></tr>');
+        });
+        if (cnt === 0) box.append('<tr><td class="muted" style="padding:14px">暂无探测节点</td></tr>');
+    }
+
+    /* 搜索过滤 */
+    $('#t-search').bind('keyup input', function () {
+        var q = $.trim($(this).val()).toLowerCase();
+        $('#n-targets tr[data-a]').each(function () {
+            $(this).toggle(q === '' || ($(this).attr('data-s') || '').indexOf(q) >= 0);
+        });
+        // 组内全部隐藏时隐藏组头
+        $('#n-targets tr.t-group').each(function () {
+            var gname = $(this).attr('data-g');
+            var vis = $('#n-targets tr[data-a][data-g="' + gname + '"]:visible').length;
+            $(this).toggle(vis > 0);
+        });
+    });
+
+    /* 批量操作(只作用于当前可见行) */
+    function visTargets() { return $('#n-targets tr[data-a]:visible'); }
+    function updateCount() {
+        var total = $('#n-targets tr[data-a]').length;
+        var on = $('#n-targets tr[data-a] .t-on:checked').length;
+        $('#t-count').text('已勾选 ' + on + ' / ' + total);
+    }
+    function syncGroupChecks() {
+        $('#n-targets tr.t-group').each(function () {
+            var gname = $(this).attr('data-g');
+            var rows = $('#n-targets tr[data-a][data-g="' + gname + '"]');
+            var on = rows.find('.t-on:checked').length;
+            $(this).find('.g-on').prop('checked', on > 0 && on === rows.length);
+        });
+    }
+    $('#t-all').click(function () { visTargets().find('.t-on').prop('checked', true); syncGroupChecks(); updateCount(); });
+    $('#t-none').click(function () { visTargets().find('.t-on').prop('checked', false); syncGroupChecks(); updateCount(); });
+    $('#t-invert').click(function () { visTargets().find('.t-on').each(function () { this.checked = !this.checked; }); syncGroupChecks(); updateCount(); });
+    $('#t-probes').click(function () {
+        visTargets().each(function () { $(this).find('.t-on').prop('checked', $(this).attr('data-probe') === '1'); });
+        syncGroupChecks(); updateCount();
+    });
+    $('#t-mutual-all').click(function () { visTargets().find('.t-mutual').prop('checked', true); });
+    $('#n-targets').on('change', '.g-on', function () {
+        var gname = $(this).closest('tr').attr('data-g');
+        $('#n-targets tr[data-a][data-g="' + gname + '"]:visible').find('.t-on').prop('checked', this.checked);
+        updateCount();
+    });
+    $('#n-targets').on('change', '.t-on', function () { syncGroupChecks(); updateCount(); });
+    $('#ta-apply').click(function () {
+        var d = $('#ta-delay').val(), l = $('#ta-loss').val(), s = $('#ta-sec').val(), c = $('#ta-num').val();
+        var n = 0;
+        $('#n-targets tr[data-a]').each(function () {
+            if (!$(this).find('.t-on').is(':checked')) return;
+            $(this).find('.t-delay').val(d); $(this).find('.t-loss').val(l);
+            $(this).find('.t-sec').val(s); $(this).find('.t-num').val(c);
+            n++;
+        });
+        SP.toast('已套用阈值到 ' + n + ' 个目标', 'ok');
+    });
+    $('#w-all').click(function () { $('#n-watchers .w-on').prop('checked', true); });
+    $('#w-none').click(function () { $('#n-watchers .w-on').prop('checked', false); });
 
     $('#node-add-btn').click(function () { openNode(null); });
     $('#node-modal .m-cancel').click(function () { SP.closeModal('node-modal'); });
@@ -863,6 +1029,7 @@ SP.init('config', '系统配置').done(function (ctx) {
     $('#n-save').click(function () {
         var name = $.trim($('#n-name').val());
         var addr = $.trim($('#n-addr').val());
+        var group = $.trim($('#n-group').val());
         var probe = nodeType() === 'probe';
         if (!name) { SP.toast('请输入节点名称', 'err'); return; }
         if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) { SP.toast('请输入合法的 IPv4 地址', 'err'); return; }
@@ -886,24 +1053,41 @@ SP.init('config', '系统配置').done(function (ctx) {
                 topo.push(topoEntry(ta, SP.nodeName(cfg, ta), $(this)));
             });
         }
-        cfg.Network[addr] = { Name: name, Addr: addr, Pingmesh: probe, Ping: ping, Topology: topo };
+        cfg.Network[addr] = { Name: name, Addr: addr, Group: group, Pingmesh: probe, Ping: ping, Topology: topo };
 
-        // 互PING: 同步对方节点对本节点的监测关系
-        $('#n-targets tr[data-a]').each(function () {
-            var mu = $(this).find('.t-mutual');
-            if (mu.length === 0) return;
-            var other = cfg.Network[$(this).attr('data-a')];
-            if (!other || !other.Pingmesh) return;
-            other.Ping = other.Ping || []; other.Topology = other.Topology || [];
-            var has = $.inArray(addr, other.Ping) >= 0;
-            if (mu.is(':checked') && !has) {
-                other.Ping.push(addr);
-                other.Topology.push(topoEntry(addr, name, null));
-            } else if (!mu.is(':checked') && has) {
-                other.Ping = $.grep(other.Ping, function (x) { return x !== addr; });
-                other.Topology = $.grep(other.Topology, function (t) { return t['Addr'] !== addr; });
-            }
-        });
+        if (probe) {
+            // 互PING: 同步对方节点对本节点的监测关系
+            $('#n-targets tr[data-a]').each(function () {
+                var mu = $(this).find('.t-mutual');
+                if (mu.length === 0) return;
+                var other = cfg.Network[$(this).attr('data-a')];
+                if (!other || !other.Pingmesh) return;
+                other.Ping = other.Ping || []; other.Topology = other.Topology || [];
+                var has = $.inArray(addr, other.Ping) >= 0;
+                if (mu.is(':checked') && !has) {
+                    other.Ping.push(addr);
+                    other.Topology.push(topoEntry(addr, name, null));
+                } else if (!mu.is(':checked') && has) {
+                    other.Ping = $.grep(other.Ping, function (x) { return x !== addr; });
+                    other.Topology = $.grep(other.Topology, function (t) { return t['Addr'] !== addr; });
+                }
+            });
+        } else {
+            // 被测目标: 反向视图直接写入各探测节点的监测列表
+            $('#n-watchers .w-on').each(function () {
+                var other = cfg.Network[$(this).attr('data-p')];
+                if (!other || !other.Pingmesh) return;
+                other.Ping = other.Ping || []; other.Topology = other.Topology || [];
+                var has = $.inArray(addr, other.Ping) >= 0;
+                if (this.checked && !has) {
+                    other.Ping.push(addr);
+                    other.Topology.push(topoEntry(addr, name, null));
+                } else if (!this.checked && has) {
+                    other.Ping = $.grep(other.Ping, function (x) { return x !== addr; });
+                    other.Topology = $.grep(other.Topology, function (t) { return t['Addr'] !== addr; });
+                }
+            });
+        }
 
         // 同步其他节点 Topology 中的名称
         $.each(cfg.Network, function (_, m) {
