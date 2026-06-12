@@ -18,10 +18,11 @@ import (
 // 读循环按 (id,seq) 把应答派发给等待者, 包处理量回到 O(N)。
 
 var (
-	pingInitOnce sync.Once
-	pingInitErr  error
-	pingConn     net.PacketConn
-	pingSeq      uint32 // 全局自增, 生成唯一 (id,seq)
+	pingSeq uint32 // 全局自增, 生成唯一 (id,seq)
+
+	// 按源IP维护探测 socket(""=系统默认路由), 支持多网口(公网/专线)分开探测
+	socketsMu sync.Mutex
+	sockets   = map[string]net.PacketConn{}
 
 	pendingMu sync.Mutex
 	pending   = map[uint64]chan time.Duration{}
@@ -31,22 +32,30 @@ func pingKey(id, seq int) uint64 {
 	return uint64(uint16(id))<<16 | uint64(uint16(seq))
 }
 
-func initPingSocket() {
-	pingInitOnce.Do(func() {
-		conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
-		if err != nil {
-			pingInitErr = err
-			return
-		}
-		pingConn = conn
-		go pingReadLoop()
-	})
+// getPingSocket 获取(或创建)绑定到指定源IP的探测 socket
+func getPingSocket(src string) (net.PacketConn, error) {
+	socketsMu.Lock()
+	defer socketsMu.Unlock()
+	if c, ok := sockets[src]; ok {
+		return c, nil
+	}
+	bind := "0.0.0.0"
+	if src != "" {
+		bind = src
+	}
+	conn, err := net.ListenPacket("ip4:icmp", bind)
+	if err != nil {
+		return nil, err
+	}
+	sockets[src] = conn
+	go pingReadLoop(conn)
+	return conn, nil
 }
 
-func pingReadLoop() {
+func pingReadLoop(conn net.PacketConn) {
 	buf := make([]byte, 1600)
 	for {
-		n, _, err := pingConn.ReadFrom(buf)
+		n, _, err := conn.ReadFrom(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
 				continue
@@ -81,12 +90,17 @@ func RunPing(IpAddr *net.IPAddr, maxrtt time.Duration, maxttl int, seq int) (flo
 	return RunPingSize(IpAddr, maxrtt, 56)
 }
 
-// RunPingSize 指定 payload 大小(字节)的探测, 用于 IPLC/IEPL 等需要
-// 验证不同包长表现的场景(如 64/512/1400 字节)。
+// RunPingSize 指定 payload 大小(字节)的探测
 func RunPingSize(IpAddr *net.IPAddr, maxrtt time.Duration, size int) (float64, error) {
-	initPingSocket()
-	if pingInitErr != nil {
-		return 0, pingInitErr
+	return RunPingFrom(IpAddr, maxrtt, size, "")
+}
+
+// RunPingFrom 指定源IP的探测: 双网口机器(公网口/专线口)可按链路
+// 强制从对应网口发包, 实现两条路径分开监控。srcip 为空走系统默认路由。
+func RunPingFrom(IpAddr *net.IPAddr, maxrtt time.Duration, size int, srcip string) (float64, error) {
+	conn, err := getPingSocket(srcip)
+	if err != nil {
+		return 0, err
 	}
 	if size < 8 {
 		size = 8
@@ -119,7 +133,7 @@ func RunPingSize(IpAddr *net.IPAddr, maxrtt time.Duration, size int) (float64, e
 	}
 
 	sendOn := time.Now()
-	if _, err := pingConn.WriteTo(wire, IpAddr); err != nil {
+	if _, err := conn.WriteTo(wire, IpAddr); err != nil {
 		cleanup()
 		return 0, err
 	}

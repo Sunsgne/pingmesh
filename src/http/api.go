@@ -422,6 +422,11 @@ func configApiRoutes() {
 						return
 					}
 				}
+				if sip, ok := topology["Srcip"]; ok && sip != "" && !ValidIP4(sip) {
+					preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法探测源IP, 需为本机网口的IPv4地址或留空 ) "
+					RenderJson(w, preout)
+					return
+				}
 				if tj, ok := topology["Thdjitter"]; ok && tj != "" {
 					if jv, err := strconv.ParseFloat(tj, 64); err != nil || jv <= 0 {
 						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法抖动阈值, > 0 ms 或留空 ) "

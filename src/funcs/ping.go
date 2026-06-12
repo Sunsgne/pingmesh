@@ -77,10 +77,21 @@ func probeParams() (interval, count, timeout, size int) {
 	return
 }
 
+// srcipFor 该目标在本节点监测规则中配置的探测源IP(双网口分路监控)
+func srcipFor(addr string) string {
+	for _, t := range g.SelfCfg.Topology {
+		if t["Addr"] == addr {
+			return t["Srcip"]
+		}
+	}
+	return ""
+}
+
 // PingTask 对单个目标按配置的间隔/包数/超时/包长连续探测, 返回统计(含抖动)
 func PingTask(addr string) g.PingSt {
 	seelog.Debug("[func:PingTask] start ", addr)
 	interval, count, timeout, size := probeParams()
+	srcip := srcipFor(addr)
 	stat := g.PingSt{}
 	stat.MinDelay = -1
 	lossPK := 0
@@ -98,7 +109,7 @@ func PingTask(addr string) g.PingSt {
 		pwg.Add(1)
 		go func(idx int) {
 			defer pwg.Done()
-			delay, err := nettools.RunPingSize(ipaddr, time.Duration(timeout)*time.Millisecond, size)
+			delay, err := nettools.RunPingFrom(ipaddr, time.Duration(timeout)*time.Millisecond, size, srcip)
 			if err == nil {
 				rtts[idx] = delay
 			} else {
