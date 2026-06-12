@@ -14,7 +14,7 @@
   <div class="card">
     <div class="card-head">
       <h3>反向 Ping 监控</h3>
-      <span class="sub">查看其他节点到目标节点的网络质量（数据来自各源节点）</span>
+      <span class="sub">选择一个探测节点，查看其他节点到它的网络质量（数据来自各源节点）</span>
       <span class="spacer"></span>
       <span class="muted" id="loading"></span>
     </div>
@@ -39,9 +39,9 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
     var cfg = ctx.config;
     var miniCharts = [];
 
-    // 可以被反向查看的节点: 所有节点
+    // 反向视图 = "其他节点到我的质量", 仅对探测节点有意义
     var nodes = [];
-    $.each(cfg.Network, function (_, n) { nodes.push(n); });
+    $.each(cfg.Network, function (_, n) { if (n.Pingmesh) nodes.push(n); });
     nodes.sort(function (a, b) { return a.Addr === cfg.Addr ? -1 : (b.Addr === cfg.Addr ? 1 : (a.Name < b.Name ? -1 : 1)); });
 
     var box = $('#agent-chips');
