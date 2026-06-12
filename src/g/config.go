@@ -224,21 +224,25 @@ func ParseConfig(ver string) {
 	if FlagPort > 0 {
 		Cfg.Port = FlagPort
 	}
-	// 旧配置迁移: 功能开关与探测参数默认值
-	if Cfg.Base != nil {
-		baseDefaults := map[string]int{
-			"Chinamap":     1,
-			"Pinginterval": 3000, // 包间隔(ms)
-			"Pingcount":    20,   // 每轮包数
-			"Pingtimeout":  3000, // 单包超时(ms)
-			"Pingsize":     56,   // 探测包大小(字节)
-			"Apisign":      0,    // 老集群默认关闭, 全部升级并统一令牌后可开启
-			"Remindmin":    60,   // 持续故障重复提醒间隔(分钟), 0=关闭; 默认每小时提醒未确认的持续故障
-		}
-		for k, v := range baseDefaults {
-			if _, ok := Cfg.Base[k]; !ok {
-				Cfg.Base[k] = v
-			}
+	// 旧配置迁移: 功能开关与探测参数默认值(Base 缺失时也要补齐, 前端依赖这些键)
+	if Cfg.Base == nil {
+		Cfg.Base = map[string]int{}
+	}
+	baseDefaults := map[string]int{
+		"Archive":      10,
+		"Refresh":      1,
+		"Timeout":      5,
+		"Chinamap":     1,
+		"Pinginterval": 3000, // 包间隔(ms)
+		"Pingcount":    20,   // 每轮包数
+		"Pingtimeout":  3000, // 单包超时(ms)
+		"Pingsize":     56,   // 探测包大小(字节)
+		"Apisign":      0,    // 老集群默认关闭, 全部升级并统一令牌后可开启
+		"Remindmin":    60,   // 持续故障重复提醒间隔(分钟), 0=关闭; 默认每小时提醒未确认的持续故障
+	}
+	for k, v := range baseDefaults {
+		if _, ok := Cfg.Base[k]; !ok {
+			Cfg.Base[k] = v
 		}
 	}
 	// 集群容灾默认值: 纪元从 0 起, 默认开启自动容灾(主挂时备选自动接管)
@@ -250,6 +254,23 @@ func ParseConfig(ver string) {
 	}
 	if _, ok := Cfg.Mode["MasterAuto"]; !ok {
 		Cfg.Mode["MasterAuto"] = "true"
+	}
+	// 配置自愈: Network 缺失/为空会让前端拿到 null 直接崩页面, 补全为含本机的最小拓扑
+	if Cfg.Network == nil {
+		Cfg.Network = map[string]NetworkMember{}
+	}
+	if _, ok := Cfg.Network[Cfg.Addr]; !ok && Cfg.Addr != "" {
+		Cfg.Network[Cfg.Addr] = NetworkMember{
+			Name: Cfg.Name, Addr: Cfg.Addr, Pingmesh: true,
+			Ping: []string{}, Topology: []map[string]string{},
+		}
+		log.Println("[init] config healed: added self node", Cfg.Addr, "to empty network")
+	}
+	if Cfg.Alert == nil {
+		Cfg.Alert = map[string]string{}
+	}
+	if Cfg.Chinamap == nil {
+		Cfg.Chinamap = map[string]map[string][]string{}
 	}
 	// 旧配置迁移: 拓扑展示参数默认值(缺省或空 map 时补齐, 避免前端拓扑页无法渲染)
 	if Cfg.Topology == nil {
@@ -316,6 +337,10 @@ func SaveCloudConfig(url string) (Config, error) {
 	if err != nil {
 		config.Name = string(body)
 		return config, err
+	}
+	// 远端配置完整性校验: 残缺配置(空拓扑)一律拒绝采纳, 防止覆盖本地好配置后全网扩散
+	if len(config.Network) == 0 {
+		return config, errors.New("远端配置不完整(Network 为空), 拒绝采纳")
 	}
 	CfgLock.Lock()
 	defer CfgLock.Unlock()

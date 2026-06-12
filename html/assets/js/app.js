@@ -368,11 +368,11 @@ var SP = (function () {
         return asnCache.hasOwnProperty(addr) ? asnCache[addr] : undefined;
     }
 
-    /* 提取互Ping的源节点(探测节点且有监测目标) */
+    /* 提取互Ping的源节点(探测节点且有监测目标); 配置残缺时返回空数组而非抛错 */
     function sourceNodes(cfg) {
         var list = [];
-        $.each(cfg.Network || {}, function (addr, n) {
-            if (n.Pingmesh && ((n.Ping && n.Ping.length > 0) || (n.Topology && n.Topology.length > 0))) {
+        $.each((cfg && cfg.Network) || {}, function (addr, n) {
+            if (n && n.Pingmesh && ((n.Ping && n.Ping.length > 0) || (n.Topology && n.Topology.length > 0))) {
                 list.push(n);
             }
         });
@@ -381,7 +381,7 @@ var SP = (function () {
     }
 
     function nodeName(cfg, addr) {
-        var net = cfg.Network || {};
+        var net = (cfg && cfg.Network) || {};
         return (net[addr] && net[addr].Name) ? net[addr].Name : addr;
     }
 

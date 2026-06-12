@@ -105,17 +105,26 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         }]
     });
 
-    // 构建节点与连线
+    // 构建节点与连线(对缺失字段做防御, 避免半截配置导致整页白屏)
     $.each(cfg.Network || {}, function (addr, n) {
+        if (!n) return;
         var isSource = (n.Topology || []).length > 0;
-        nodes[addr] = { name: n.Name, addr: addr, source: isSource, bad: false };
+        nodes[addr] = { name: n.Name || addr, addr: addr, source: isSource, bad: false };
         $.each(n.Topology || [], function (_, topo) {
+            if (!topo || !topo['Addr']) return;
             links[addr + '-' + topo['Addr']] = {
-                from: n.Name, to: SP.nodeName(cfg, topo['Addr']),
+                from: n.Name || addr, to: SP.nodeName(cfg, topo['Addr']),
                 bad: false, pendingStatus: true
             };
         });
     });
+
+    // 没有任何节点/监测关系时给出引导, 而不是空白画布
+    if ($.isEmptyObject(nodes)) {
+        $('#topo-chart').html('<div class="empty-state" style="padding-top:200px"><div class="big">&#128279;</div>' +
+            '尚无拓扑数据：请到「系统配置 → 节点管理」添加节点并配置监测关系，' +
+            '或检查本节点配置是否完整（系统配置 → 高级 JSON）</div>');
+    }
 
     draw(); // 先以灰色渲染拓扑, 状态返回后增量更新
 
@@ -132,7 +141,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         $.ajax({
             dataType: 'json',
             url: '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/topology.json',
-            timeout: (cfg.Base['Timeout'] || 5) * 1000
+            timeout: ((cfg.Base || {})['Timeout'] || 5) * 1000
         }).done(function (topodata) {
             n.bad = false;
             $('#st-' + addr.replace(/\./g, '-')).html('<span class="badge green"><span class="dot"></span>在线</span>');
@@ -155,6 +164,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     function draw() {
         var data = [], lns = [];
+        var topoCfg = cfg.Topology || {};
         // 「基础设置 - 拓扑节点大小」生效: 探测节点用原值, 被测目标缩小到 72%
         var baseSize = parseInt(topoCfg['Tsymbolsize'] || 56, 10);
         if (!(baseSize > 0)) baseSize = 56;
@@ -262,7 +272,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     });
 
     // 自动刷新
-    setTimeout(function () { window.location.reload(); }, (cfg.Base['Refresh'] || 1) * 60 * 1000);
+    setTimeout(function () { window.location.reload(); }, ((cfg.Base || {})['Refresh'] || 1) * 60 * 1000);
     chart.resize();
     $(window).resize(function () { chart.resize(); });
 });
