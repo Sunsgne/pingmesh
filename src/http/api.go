@@ -473,6 +473,15 @@ func configApiRoutes() {
 						return
 					}
 				}
+				{
+					sec, _ := strconv.Atoi(topology["Thdchecksec"])
+					num, _ := strconv.Atoi(topology["Thdoccnum"])
+					if num > 0 && sec/60 < num {
+						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 检测窗口太小: 窗口" + topology["Thdchecksec"] + "秒最多累计" + strconv.Itoa(sec/60) + "个异常分钟, 无法达到触发次数" + topology["Thdoccnum"] + "; 需满足 窗口秒数 ≥ 次数×60 ) "
+						RenderJson(w, preout)
+						return
+					}
+				}
 				if _, ok := topology["Thdoccnum"]; !ok {
 					preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法拓扑报警规则，次) "
 					RenderJson(w, preout)

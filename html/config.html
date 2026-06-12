@@ -471,7 +471,7 @@
         </div>
         <div class="hint mt-2">
           按分组批量勾选：点击分组行的复选框。单向监测：勾选「我监测它」。互 PING：目标也是探测节点时再勾选「互PING」（对方用默认阈值）。<br>
-          报警规则：「窗口」时间内，延迟或丢包超阈值的次数达到「次数」即报警。
+          报警规则：「窗口」时间内，延迟/丢包/抖动<b>达到阈值</b>的分钟数<b>达到「次数」</b>即报警（每分钟产生一个数据点，故需满足 窗口秒数 ≥ 次数×60；丢包阈值设 100 表示完全不通才报）。
         </div>
       </div>
 
@@ -1292,15 +1292,22 @@ SP.init('config', '系统配置').done(function (ctx) {
             });
         }
 
-        var ping = [], topo = [];
+        var ping = [], topo = [], ruleErr = null;
         if (probe) {
             $('#n-targets tr[data-a]').each(function () {
                 if (!$(this).find('.t-on').is(':checked')) return;
                 var ta = $(this).attr('data-a');
+                var entry = topoEntry(ta, SP.nodeName(cfg, ta), $(this));
+                var sec = parseInt(entry['Thdchecksec'], 10), num = parseInt(entry['Thdoccnum'], 10);
+                if (num > 0 && Math.floor(sec / 60) < num) {
+                    ruleErr = SP.nodeName(cfg, ta) + ': 检测窗口 ' + sec + '秒 最多累计 ' + Math.floor(sec / 60) + ' 个异常分钟, 达不到触发次数 ' + num + '(需 窗口 ≥ 次数×60)';
+                    return false;
+                }
                 ping.push(ta);
-                topo.push(topoEntry(ta, SP.nodeName(cfg, ta), $(this)));
+                topo.push(entry);
             });
         }
+        if (ruleErr) { SP.toast(ruleErr, 'err'); return; }
         cfg.Network[addr] = { Name: name, Addr: addr, Group: group, Pingmesh: probe, Ping: ping, Topology: topo };
 
         if (probe) {
