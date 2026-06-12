@@ -220,6 +220,10 @@ func configApiRoutes() {
 				err := rows.Scan(&l.Id, &l.Logtime, &l.Targetname, &l.Targetip, &l.Tracert, &l.Ack, &l.Ackby, &l.Ackreason, &l.Acktime)
 				l.Fromname = g.Cfg.Name
 				l.Fromip = g.Cfg.Addr
+				// 名称按当前配置解析: 节点改名后历史告警同步显示新名
+				if n, ok := g.Cfg.Network[l.Targetip]; ok && n.Name != "" {
+					l.Targetname = n.Name
+				}
 				if err != nil {
 					seelog.Error("[/api/alert.json] Rows", err)
 					continue
