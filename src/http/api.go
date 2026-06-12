@@ -177,6 +177,11 @@ func configApiRoutes() {
 		if len(r.Form["date"]) > 0 {
 			dtb = strings.Replace(r.Form["date"][0], "alertlog-", "", -1)
 		}
+		// 支持自定义时间范围(优先于 date)
+		rangeStart, rangeEnd := dtb+" 00:00:00", dtb+" 23:59:59"
+		if len(r.Form["start"]) > 0 && len(r.Form["end"]) > 0 && r.Form["start"][0] != "" && r.Form["end"][0] != "" {
+			rangeStart, rangeEnd = r.Form["start"][0], r.Form["end"][0]
+		}
 		listpreout := []string{}
 		datapreout := []g.AlertLog{}
 		querySql := "select date(logtime) as ldate from alertlog group by date(logtime) order by logtime desc"
@@ -196,15 +201,15 @@ func configApiRoutes() {
 			}
 			rows.Close()
 		}
-		querySql = "select logtime,targetname,targetip,tracert from alertlog where logtime between ? and ?"
-		rows, err = g.Db.Query(querySql, dtb+" 00:00:00", dtb+" 23:59:59")
+		querySql = "select rowid,logtime,targetname,targetip,tracert,ifnull(ack,0),ifnull(ackby,''),ifnull(ackreason,''),ifnull(acktime,'') from alertlog where logtime between ? and ? order by logtime desc limit 1000"
+		rows, err = g.Db.Query(querySql, rangeStart, rangeEnd)
 		seelog.Debug("[func:/api/alert.json] Query ", querySql)
 		if err != nil {
 			seelog.Error("[func:/api/alert.json] Query ", err)
 		} else {
 			for rows.Next() {
 				l := new(g.AlertLog)
-				err := rows.Scan(&l.Logtime, &l.Targetname, &l.Targetip, &l.Tracert)
+				err := rows.Scan(&l.Id, &l.Logtime, &l.Targetname, &l.Targetip, &l.Tracert, &l.Ack, &l.Ackby, &l.Ackreason, &l.Acktime)
 				l.Fromname = g.Cfg.Name
 				l.Fromip = g.Cfg.Addr
 				if err != nil {
@@ -424,8 +429,8 @@ func configApiRoutes() {
 		}
 		//Network
 		for k, network := range nconfig.Network {
-			if !ValidIP4(network.Addr) || !ValidIP4(k) {
-				preout["info"] = "Ping节点测试网络信息错误!(非法节点IP地址 " + k + ")"
+			if !ValidHost(network.Addr) || !ValidHost(k) {
+				preout["info"] = "Ping节点测试网络信息错误!(非法节点地址 " + k + ", 需为IPv4或域名)"
 				RenderJson(w, preout)
 				return
 			}
@@ -489,8 +494,8 @@ func configApiRoutes() {
 		for _, provVal := range nconfig.Chinamap {
 			for _, telcomVal := range provVal {
 				for _, ip := range telcomVal {
-					if ip != "" && !ValidIP4(ip) {
-						preout["info"] = "Mapping Ip illegal!"
+					if ip != "" && !ValidHost(ip) {
+						preout["info"] = "全球延迟探测地址非法(需为IPv4或域名): " + ip
 						RenderJson(w, preout)
 						return
 					}

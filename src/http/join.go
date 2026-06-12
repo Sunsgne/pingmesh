@@ -35,8 +35,8 @@ func configJoinRoutes() {
 			RenderJson(w, preout)
 			return
 		}
-		if !ValidIP4(addr) {
-			preout["info"] = "非法节点IP: " + addr
+		if !ValidHost(addr) {
+			preout["info"] = "非法节点地址(需为IPv4或域名): " + addr
 			RenderJson(w, preout)
 			return
 		}
