@@ -214,6 +214,17 @@
             <div class="hint">多个收件人用英文分号分隔</div>
           </div>
           <button class="btn sm" id="mail-test-btn">发送测试邮件</button>
+          <div class="field mt-4">
+            <label>持续故障重复提醒</label>
+            <select class="input" id="f-remindmin">
+              <option value="0">关闭（只在故障/恢复时各通知一次）</option>
+              <option value="30">每 30 分钟提醒一次</option>
+              <option value="60">每 1 小时提醒一次</option>
+              <option value="360">每 6 小时提醒一次</option>
+              <option value="1440">每 24 小时提醒一次</option>
+            </select>
+            <div class="hint">故障持续未恢复时定期再提醒；<b>已确认的告警不再重复提醒</b>（恢复后自动重置）。屏蔽到期仍异常会自动补一条通知</div>
+          </div>
         </div>
         <div>
           <div class="flex mb-4">
@@ -607,6 +618,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-emaillist').val(cfg.Alert['RevcEmailList']);
         $('#f-jointoken').val(cfg.Password || '');
         $('#f-apisign').prop('checked', cfg.Base['Apisign'] === 1);
+        $('#f-remindmin').val(String(cfg.Base['Remindmin'] || 0));
         renderNodes();
         renderJoin();
         renderChannels();
@@ -1545,6 +1557,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Pingtimeout'] = parseInt($('#f-pingtimeout').val(), 10) || 3000;
         cfg.Base['Pingsize'] = parseInt($('#f-pingsize').val(), 10) || 56;
         cfg.Base['Apisign'] = $('#f-apisign').is(':checked') ? 1 : 0;
+        cfg.Base['Remindmin'] = parseInt($('#f-remindmin').val(), 10) || 0;
         if (cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] > 55000) {
             var tot = Math.round(cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] / 1000);
             throw new Error('探测参数组合无效: 每分钟探测一轮, 一轮要发完全部包。当前 间隔' + cfg.Base['Pinginterval'] + 'ms × ' + cfg.Base['Pingcount'] + '包 = ' + tot + '秒, 超过55秒上限。改成例如 1000ms×30包 或 500ms×60包 即可');

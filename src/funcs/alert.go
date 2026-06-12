@@ -6,6 +6,7 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cihub/seelog"
@@ -14,47 +15,126 @@ import (
 	"github.com/zenlenet/pingmesh/src/nettools"
 )
 
+// incidentState 每条链路本次故障的过程状态(用于提醒/确认联动/时长统计)
+type incidentState struct {
+	BadSince    time.Time
+	LastNotify  time.Time
+	MutedSkip   bool // 屏蔽期间漏发过告警
+	Acked       bool // 本次故障已被确认, 抑制重复提醒
+}
+
+var (
+	incidentMu sync.Mutex
+	incidents  = map[string]*incidentState{}
+)
+
+func incidentOf(addr string) *incidentState {
+	incidentMu.Lock()
+	defer incidentMu.Unlock()
+	st, ok := incidents[addr]
+	if !ok {
+		st = &incidentState{}
+		incidents[addr] = st
+	}
+	return st
+}
+
+// AckIncident 告警被确认时调用: 本次故障期间不再重复提醒(恢复后自动重置)
+func AckIncident(target string) {
+	incidentMu.Lock()
+	defer incidentMu.Unlock()
+	if st, ok := incidents[target]; ok {
+		st.Acked = true
+	}
+}
+
+func fmtDur(d time.Duration) string {
+	d = d.Round(time.Minute)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return strconv.Itoa(h) + " 小时 " + strconv.Itoa(m) + " 分钟"
+	}
+	return strconv.Itoa(m) + " 分钟"
+}
+
 func StartAlert() {
 	seelog.Info("[func:StartAlert] ", "starting run AlertCheck ")
+	remindMin := g.Cfg.Base["Remindmin"] // 持续故障重复提醒间隔(分钟), 0=关闭
 	for _, v := range g.SelfCfg.Topology {
-		if v["Addr"] != g.SelfCfg.Addr {
-			old, haskey := g.AlertStatus[v["Addr"]]
-			sFlag := CheckAlertStatus(v)
-			muted := IsMuted(v["Addr"])
-			if sFlag {
-				g.AlertStatus[v["Addr"]] = true
-				// 状态由异常恢复为正常: 发送恢复通知(屏蔽中不打扰)
-				if haskey && !old && !muted {
-					seelog.Debug("[func:StartAlert] ", v["Addr"]+" Recovered!")
+		if v["Addr"] == g.SelfCfg.Addr {
+			continue
+		}
+		old, haskey := g.AlertStatus[v["Addr"]]
+		sFlag := CheckAlertStatus(v)
+		muted := IsMuted(v["Addr"])
+		st := incidentOf(v["Addr"])
+		if sFlag {
+			g.AlertStatus[v["Addr"]] = true
+			// 状态由异常恢复为正常: 发送恢复通知(屏蔽中不打扰), 附故障时长
+			if haskey && !old {
+				seelog.Debug("[func:StartAlert] ", v["Addr"]+" Recovered!")
+				if !muted {
 					l := newAlertLog(v)
-					go NotifyAll(l, v, true)
-				}
-			} else if !haskey || old {
-				seelog.Debug("[func:StartAlert] ", v["Addr"]+" Alert!")
-				g.AlertStatus[v["Addr"]] = false
-				l := newAlertLog(v)
-				mtrString := ""
-				hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
-				if nil != err {
-					seelog.Error("[func:StartAlert] Traceroute error ", err)
-					mtrString = err.Error()
-				} else {
-					jHops, err := json.Marshal(hops)
-					if err != nil {
-						mtrString = err.Error()
-					} else {
-						mtrString = string(jHops)
+					extras := [][2]string{}
+					if !st.BadSince.IsZero() {
+						extras = append(extras, [2]string{"故障持续", fmtDur(time.Since(st.BadSince))})
 					}
+					go NotifyAll(l, v, "recovery", extras)
 				}
-				l.Tracert = mtrString
-				go AlertStorage(l)
-				if muted {
-					seelog.Info("[func:StartAlert] ", v["Addr"], " is muted, notification skipped")
+				st.BadSince = time.Time{}
+				st.MutedSkip = false
+				st.Acked = false
+			}
+			continue
+		}
+		if !haskey || old {
+			// 新故障: 记录 + 告警(屏蔽中只记录)
+			seelog.Debug("[func:StartAlert] ", v["Addr"]+" Alert!")
+			g.AlertStatus[v["Addr"]] = false
+			st.BadSince = time.Now()
+			st.Acked = false
+			l := newAlertLog(v)
+			mtrString := ""
+			hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
+			if nil != err {
+				seelog.Error("[func:StartAlert] Traceroute error ", err)
+				mtrString = err.Error()
+			} else {
+				jHops, jerr := json.Marshal(hops)
+				if jerr != nil {
+					mtrString = jerr.Error()
 				} else {
-					go NotifyAll(l, v, false)
+					mtrString = string(jHops)
 				}
 			}
-
+			l.Tracert = mtrString
+			go AlertStorage(l)
+			if muted {
+				st.MutedSkip = true
+				seelog.Info("[func:StartAlert] ", v["Addr"], " is muted, notification skipped")
+			} else {
+				st.LastNotify = time.Now()
+				go NotifyAll(l, v, "alert", nil)
+			}
+			continue
+		}
+		// 持续故障中
+		dur := [2]string{"故障持续", fmtDur(time.Since(st.BadSince))}
+		if muted {
+			st.MutedSkip = true
+		} else if st.MutedSkip {
+			// 屏蔽到期复查: 仍异常则补一条通知, 故障不会静默挂着
+			seelog.Info("[func:StartAlert] ", v["Addr"], " mute expired but still down, notifying")
+			st.MutedSkip = false
+			st.LastNotify = time.Now()
+			go NotifyAll(newAlertLog(v), v, "mute_expired", [][2]string{dur})
+		} else if remindMin > 0 && !st.Acked && !st.LastNotify.IsZero() &&
+			time.Since(st.LastNotify) >= time.Duration(remindMin)*time.Minute {
+			// 持续故障重复提醒(已确认的不再提醒)
+			seelog.Info("[func:StartAlert] ", v["Addr"], " still down, periodic reminder")
+			st.LastNotify = time.Now()
+			go NotifyAll(newAlertLog(v), v, "reminder", [][2]string{dur})
 		}
 	}
 	seelog.Info("[func:StartAlert] ", "AlertCheck finish ")
