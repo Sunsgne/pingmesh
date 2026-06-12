@@ -53,7 +53,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     chart.setOption({
         tooltip: { show: true },
-        animationDurationUpdate: 600,
+        animation: false,
         series: [{
             type: 'graph', layout: 'circular', roam: true,
             symbolSize: parseInt(cfg.Topology['Tsymbolsize'] || 60, 10),
@@ -76,6 +76,8 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             };
         });
     });
+
+    draw(); // 先以灰色渲染拓扑, 状态返回后增量更新
 
     var statusBody = $('#node-status tbody');
     $.each(nodes, function (addr, n) {
@@ -106,7 +108,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             $('#st-' + addr.replace(/\./g, '-')).html('<span class="badge red"><span class="dot"></span>不可达</span>');
         }).always(function () {
             pending--;
-            if (pending === 0) draw();
+            draw();
         });
     });
 
