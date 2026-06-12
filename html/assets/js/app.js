@@ -48,7 +48,7 @@ var SP = (function () {
     /* ---------- modal ---------- */
     function openModal(id) { $('#' + id).addClass('open'); }
     function closeModal(id) { $('#' + id).removeClass('open'); }
-    $(document).on('click', '.sp-modal-mask', function (e) { if (e.target === this) $(this).removeClass('open'); });
+    // 点击遮罩不关闭弹窗(防误触), 仅通过 × / 取消 按钮主动关闭
     $(document).on('click', '.m-close', function () { $(this).closest('.sp-modal-mask').removeClass('open'); });
 
     function confirmBox(title, msg, cb) {
