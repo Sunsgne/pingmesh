@@ -403,6 +403,20 @@ body.login-page {
 }
 @keyframes sp-spin { to { transform: rotate(360deg); } }
 
+/* ---------- 大屏全屏模式 ---------- */
+.sp-content:fullscreen {
+  background: var(--sp-bg); overflow-y: auto; padding: 28px 36px;
+}
+.sp-content:fullscreen .mesh-table td,
+.sp-content:fullscreen .mesh-table th.col-h { width: 132px; min-width: 132px; max-width: 132px; }
+.sp-content:fullscreen .mesh-cell { height: 46px; line-height: 46px; font-size: 16px; border-radius: 9px; }
+.sp-content:fullscreen .mesh-table th { font-size: 13px; }
+.sp-content:fullscreen .mesh-table th.col-h .col-name { font-size: 13.5px; }
+.sp-content:fullscreen .mesh-table th.col-h .col-ip,
+.sp-content:fullscreen .mesh-table th.row-h .src-ip { font-size: 11px; }
+.sp-content:fullscreen .mesh-stats .ms b { font-size: 22px; }
+.sp-content:fullscreen .mesh-stats .ms { font-size: 14px; }
+
 /* ---------- MTR ---------- */
 .mtr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mtr-table th {
