@@ -7,15 +7,12 @@ import (
 	"github.com/cihub/seelog"
 	"github.com/zenlenet/pingmesh/src/funcs"
 	"github.com/zenlenet/pingmesh/src/g"
-	"github.com/zenlenet/pingmesh/src/nettools"
 	"github.com/wcharczuk/go-chart"
 	"github.com/wcharczuk/go-chart/drawing"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -270,88 +267,6 @@ func configApiRoutes() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		RenderJson(w, chinaMp)
-	})
-
-	//检测工具API
-	http.HandleFunc("/api/tools.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthData(r) {
-			deny(w)
-			return
-		}
-		preout := g.ToolsRes{}
-		preout.Status = "false"
-		r.ParseForm()
-		if len(r.Form["t"]) == 0 {
-			preout.Error = "target empty!"
-			RenderJson(w, preout)
-			return
-		}
-		nowtime := int(time.Now().Unix())
-		g.ToolLimitLock.Lock()
-		if last, ok := g.ToolLimit[r.RemoteAddr]; ok && (nowtime-last) <= g.Cfg.Toollimit {
-			g.ToolLimitLock.Unlock()
-			preout.Error = "Time Limit Exceeded!"
-			RenderJson(w, preout)
-			return
-		}
-		g.ToolLimit[r.RemoteAddr] = nowtime
-		g.ToolLimitLock.Unlock()
-		target := strings.Replace(strings.Replace(r.Form["t"][0], "https://", "", -1), "http://", "", -1)
-		preout.Ping = g.PingSt{}
-		preout.Ping.MinDelay = -1
-		lossPK := 0
-		ipaddr, err := net.ResolveIPAddr("ip", target)
-		if err != nil {
-			preout.Error = "Unable to resolve destination host"
-			RenderJson(w, preout)
-			return
-		}
-		preout.Ip = ipaddr.String()
-		var channel chan float64 = make(chan float64, 5)
-		var wg sync.WaitGroup
-		for i := 0; i < 5; i++ {
-			wg.Add(1)
-			go func() {
-				delay, err := nettools.RunPing(ipaddr, 5*time.Second, 64, i)
-				if err != nil {
-					channel <- -1.00
-				} else {
-					channel <- delay
-				}
-				wg.Done()
-			}()
-			time.Sleep(time.Duration(100 * time.Millisecond))
-		}
-		wg.Wait()
-		for i := 0; i < 5; i++ {
-			select {
-			case delay := <-channel:
-				if delay != -1.00 {
-					preout.Ping.AvgDelay = preout.Ping.AvgDelay + delay
-					if preout.Ping.MaxDelay < delay {
-						preout.Ping.MaxDelay = delay
-					}
-					if preout.Ping.MinDelay == -1 || preout.Ping.MinDelay > delay {
-						preout.Ping.MinDelay = delay
-					}
-					preout.Ping.RevcPk = preout.Ping.RevcPk + 1
-				} else {
-					lossPK = lossPK + 1
-				}
-				preout.Ping.SendPk = preout.Ping.SendPk + 1
-				preout.Ping.LossPk = int((float64(lossPK) / float64(preout.Ping.SendPk)) * 100)
-			}
-		}
-		if preout.Ping.RevcPk > 0 {
-			preout.Ping.AvgDelay = preout.Ping.AvgDelay / float64(preout.Ping.RevcPk)
-		} else {
-			preout.Ping.AvgDelay = 3000
-			preout.Ping.MinDelay = 3000
-			preout.Ping.MaxDelay = 3000
-		}
-		preout.Status = "true"
-		w.Header().Set("Content-Type", "application/json")
-		RenderJson(w, preout)
 	})
 
 	//保存配置文件

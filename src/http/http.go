@@ -89,6 +89,7 @@ func StartHttp() {
 	configPingmeshRoutes()
 	configJoinRoutes()
 	configOpsRoutes()
+	configToolsRoutes()
 	configIndexRoutes()
 	s := g.FlagListen
 	if s == "" {
