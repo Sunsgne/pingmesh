@@ -77,6 +77,7 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
                 '<span class="badge gray mono">' + SP.esc(srcAddr) + '</span>' +
                 '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
                 '<span class="badge green" id="' + id + '-loss">- %</span>' +
+                '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
                 '</div></div>');
             chartsBox.append(card);
 
@@ -85,6 +86,9 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
                 : '/api/proxy.json?g=http://' + srcAddr + ':' + cfg.Port + '/api/ping.json?ip=' + targetAddr;
             card.click(function () {
                 SP.openPingChart(n.Name + ' → ' + SP.nodeName(cfg, targetAddr) + ' (' + targetAddr + ')', apiurl);
+            });
+            SP.asn(srcAddr, function (info) {
+                if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
             });
 
             var chart = echarts.init(document.getElementById(id));

@@ -320,6 +320,52 @@ var SP = (function () {
         return dfd.promise();
     }
 
+    /* ---------- ASN 查询(前端去重缓存, 服务端24h缓存, RIPE NCC 数据) ---------- */
+    var asnCache = {};   // addr -> {asn, holder, prefix, ip} | null(查不到)
+    var asnPending = {}; // addr -> [callbacks]
+
+    function isPrivateHost(addr) {
+        if (!addr) return true;
+        if (/^(10\.|127\.|192\.168\.|169\.254\.)/.test(addr)) return true;
+        var m = addr.match(/^172\.(\d+)\./);
+        if (m && +m[1] >= 16 && +m[1] <= 31) return true;
+        return false;
+    }
+
+    // asnGet(addr, cb): cb(info|null)
+    function asnGet(addr, cb) {
+        addr = (addr || '').replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+        if (!addr || isPrivateHost(addr)) { cb(null); return; }
+        if (asnCache.hasOwnProperty(addr)) { cb(asnCache[addr]); return; }
+        if (asnPending[addr]) { asnPending[addr].push(cb); return; }
+        asnPending[addr] = [cb];
+        $.getJSON('/api/asn.json?ip=' + encodeURIComponent(addr))
+            .done(function (res) {
+                asnCache[addr] = (res.status === 'true') ? res : null;
+            })
+            .fail(function () { asnCache[addr] = null; })
+            .always(function () {
+                var cbs = asnPending[addr] || [];
+                delete asnPending[addr];
+                for (var i = 0; i < cbs.length; i++) cbs[i](asnCache[addr]);
+            });
+    }
+
+    // 短文本: AS15169 · GOOGLE
+    function asnShort(info) {
+        if (!info || !info.asn) return '';
+        var holder = String(info.holder || '');
+        holder = holder.split(' - ')[0].split(',')[0];
+        if (holder.length > 18) holder = holder.substring(0, 17) + '…';
+        return 'AS' + info.asn + (holder ? ' · ' + holder : '');
+    }
+
+    // 同步读缓存(供 tooltip 等即时场景)
+    function asnCached(addr) {
+        addr = (addr || '').split(':')[0];
+        return asnCache.hasOwnProperty(addr) ? asnCache[addr] : undefined;
+    }
+
     /* 提取互Ping的源节点(探测节点且有监测目标) */
     function sourceNodes(cfg) {
         var list = [];
@@ -349,6 +395,10 @@ var SP = (function () {
         delayLevel: delayLevel,
         openPingChart: openPingChart,
         sourceNodes: sourceNodes,
-        nodeName: nodeName
+        nodeName: nodeName,
+        asn: asnGet,
+        asnShort: asnShort,
+        asnCached: asnCached,
+        isPrivateHost: isPrivateHost
     };
 })();

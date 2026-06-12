@@ -124,6 +124,7 @@ SP.init('index', '概览').done(function (ctx) {
                 '<span class="badge gray mono">' + SP.esc(t) + '</span>' +
                 '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
                 '<span class="badge green" id="' + id + '-loss">- %</span>' +
+                '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
                 '</div></div>');
             box.append(card);
 
@@ -131,6 +132,9 @@ SP.init('index', '概览').done(function (ctx) {
                 : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port + '/api/ping.json?ip=' + t;
             card.click(function () {
                 SP.openPingChart(cfg.Name + ' → ' + tname + ' (' + t + ')', apiurl);
+            });
+            SP.asn(t, function (info) {
+                if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
             });
 
             var chart = echarts.init(document.getElementById(id));

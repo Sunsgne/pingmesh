@@ -115,7 +115,7 @@
         </div>
       </div>
       <table class="sp-table">
-        <thead><tr><th>节点名称</th><th>IP 地址</th><th>分组</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
+        <thead><tr><th>节点名称</th><th>IP 地址</th><th>ASN</th><th>分组</th><th>类型</th><th>监测目标</th><th>被谁监测</th><th style="width:170px">操作</th></tr></thead>
         <tbody id="nodelist"></tbody>
       </table>
     </div>
@@ -878,6 +878,7 @@ SP.init('config', '系统配置').done(function (ctx) {
             box.append('<tr data-s="' + SP.esc((n.Name + ' ' + addr + ' ' + (n.Group || '')).toLowerCase()) + '">' +
                 '<td><b>' + SP.esc(n.Name) + '</b>' + (addr === cfg.Addr ? ' <span class="badge indigo">本机</span>' : '') + '</td>' +
                 '<td class="mono">' + SP.esc(addr) + '</td>' +
+                '<td class="n-asn" data-a="' + SP.esc(addr) + '"><span class="muted">…</span></td>' +
                 '<td>' + (n.Group ? '<span class="badge gray">' + SP.esc(n.Group) + '</span>' : '<span class="muted">—</span>') + '</td>' +
                 '<td>' + (n.Pingmesh ? '<span class="badge green"><span class="dot"></span>探测节点</span>' : '<span class="badge gray">被测目标</span>') + '</td>' +
                 '<td>' + (n.Pingmesh ? (n.Ping || []).length + ' 个' : '<span class="muted">—</span>') + '</td>' +
@@ -887,6 +888,15 @@ SP.init('config', '系统配置').done(function (ctx) {
         });
         applyNodeFilter();
         $('#node-count').text(cnt);
+        // 异步填充 ASN 列
+        $('.n-asn').each(function () {
+            var cell = $(this);
+            SP.asn(cell.attr('data-a'), function (info) {
+                cell.html(info
+                    ? '<span class="badge indigo" style="font-size:10.5px" title="AS' + info.asn + ' ' + SP.esc(info.holder) + ' ' + SP.esc(info.prefix || '') + '">' + SP.esc(SP.asnShort(info)) + '</span>'
+                    : '<span class="muted" title="内网地址或未查询到">—</span>');
+            });
+        });
         $('.n-edit').click(function () { openNode($(this).attr('data-a')); });
         $('#node-search').unbind('keyup input').bind('keyup input', applyNodeFilter);
         $('.n-del').click(function () {
