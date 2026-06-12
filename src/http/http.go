@@ -23,6 +23,14 @@ func ValidIP4(ipAddress string) bool {
 	return false
 }
 
+var hostRe = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$`)
+
+// ValidHost 合法的 IPv4 或域名(节点地址支持域名, 探测时自动解析)
+func ValidHost(addr string) bool {
+	addr = strings.Trim(addr, " ")
+	return ValidIP4(addr) || hostRe.MatchString(addr)
+}
+
 func RenderJson(w http.ResponseWriter, v interface{}) {
 	bs, err := json.Marshal(v)
 	if err != nil {
@@ -80,6 +88,7 @@ func StartHttp() {
 	configApiRoutes()
 	configPingmeshRoutes()
 	configJoinRoutes()
+	configOpsRoutes()
 	configIndexRoutes()
 	s := g.FlagListen
 	if s == "" {

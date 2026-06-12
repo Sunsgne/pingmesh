@@ -334,9 +334,10 @@
           <input type="text" class="input" id="n-name" placeholder="如: 北京机房 / 核心网关">
         </div>
         <div class="field" style="margin-bottom:0">
-          <label>IP 地址</label>
-          <input type="text" class="input mono" id="n-addr" placeholder="如: 10.0.0.1">
-          <div class="hint" id="n-addr-hint" style="display:none">修改 IP 后，其他节点对它的监测关系会自动跟随更新</div>
+          <label>IP / 域名</label>
+          <input type="text" class="input mono" id="n-addr" placeholder="如: 10.0.0.1 或 gw.example.com">
+          <div class="hint" id="n-addr-hint" style="display:none">修改地址后，其他节点对它的监测关系会自动跟随更新</div>
+          <div class="hint" id="n-asn" style="min-height:16px"></div>
         </div>
         <div class="field" style="margin-bottom:0">
           <label>分组（可选）</label>
@@ -874,11 +875,34 @@ SP.init('config', '系统配置').done(function (ctx) {
             .attr('title', addr === cfg.Addr ? '本机 IP 请在「基础设置」中修改' : '');
         $('#n-addr-hint').toggle(!!addr && addr !== cfg.Addr);
         $('#t-search').val('');
+        lookupAsn(n.Addr);
         setNodeType(addr ? (n.Pingmesh ? 'probe' : 'target') : 'probe');
         renderTargets(n);
         renderWatchers(n);
         SP.openModal('node-modal');
     }
+
+    /* ASN 查询(RIPE NCC 权威数据, 服务端缓存24h) */
+    var asnSeq = 0;
+    function lookupAsn(addr) {
+        var box = $('#n-asn');
+        box.html('');
+        addr = $.trim(addr || '');
+        if (!addr || addr === '127.0.0.1') return;
+        var seq = ++asnSeq;
+        box.html('<span class="spinner" style="width:11px;height:11px"></span> 查询 ASN...');
+        $.getJSON('/api/asn.json?ip=' + encodeURIComponent(addr), function (res) {
+            if (seq !== asnSeq) return;
+            if (res.status === 'true') {
+                box.html('&#127760; <b>AS' + res.asn + '</b> · ' + SP.esc(res.holder) +
+                    ' <span class="mono" style="font-size:11px">' + SP.esc(res.prefix) + '</span>' +
+                    (res.ip !== addr ? ' <span class="muted">(解析为 ' + SP.esc(res.ip) + ')</span>' : ''));
+            } else {
+                box.html('<span class="muted">ASN: ' + SP.esc(res.info || '未知') + '</span>');
+            }
+        }).fail(function () { if (seq === asnSeq) box.html(''); });
+    }
+    $('#n-addr').blur(function () { lookupAsn($(this).val()); });
 
     /* 监测目标列表: 按分组渲染, 支持搜索/批量 */
     function renderTargets(n) {
@@ -1032,7 +1056,9 @@ SP.init('config', '系统配置').done(function (ctx) {
         var group = $.trim($('#n-group').val());
         var probe = nodeType() === 'probe';
         if (!name) { SP.toast('请输入节点名称', 'err'); return; }
-        if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) { SP.toast('请输入合法的 IPv4 地址', 'err'); return; }
+        var isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(addr);
+        var isDomain = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(addr);
+        if (!isIp && !isDomain) { SP.toast('请输入合法的 IPv4 地址或域名', 'err'); return; }
         if (addr !== editingAddr && cfg.Network[addr]) { SP.toast('该 IP 已存在: ' + SP.nodeName(cfg, addr), 'err'); return; }
 
         // IP 变更: 重建键并迁移所有引用

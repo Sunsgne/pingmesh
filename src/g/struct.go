@@ -79,12 +79,17 @@ type PingLog struct {
 }
 
 type AlertLog struct {
+	Id         int64
 	Logtime    string
 	Targetip   string
 	Targetname string
 	Tracert    string
 	Fromip     string
 	Fromname   string
+	Ack        int
+	Ackby      string
+	Ackreason  string
+	Acktime    string
 }
 
 type ChinaMp struct {

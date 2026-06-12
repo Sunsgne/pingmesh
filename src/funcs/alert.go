@@ -20,10 +20,11 @@ func StartAlert() {
 		if v["Addr"] != g.SelfCfg.Addr {
 			old, haskey := g.AlertStatus[v["Addr"]]
 			sFlag := CheckAlertStatus(v)
+			muted := IsMuted(v["Addr"])
 			if sFlag {
 				g.AlertStatus[v["Addr"]] = true
-				// 状态由异常恢复为正常: 发送恢复通知
-				if haskey && !old {
+				// 状态由异常恢复为正常: 发送恢复通知(屏蔽中不打扰)
+				if haskey && !old && !muted {
 					seelog.Debug("[func:StartAlert] ", v["Addr"]+" Recovered!")
 					l := newAlertLog(v)
 					go NotifyAll(l, v, true)
@@ -47,12 +48,26 @@ func StartAlert() {
 				}
 				l.Tracert = mtrString
 				go AlertStorage(l)
-				go NotifyAll(l, v, false)
+				if muted {
+					seelog.Info("[func:StartAlert] ", v["Addr"], " is muted, notification skipped")
+				} else {
+					go NotifyAll(l, v, false)
+				}
 			}
 
 		}
 	}
 	seelog.Info("[func:StartAlert] ", "AlertCheck finish ")
+}
+
+// IsMuted 目标是否在屏蔽期内(屏蔽期间仍记录告警, 但不发通知)
+func IsMuted(target string) bool {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	var cnt int
+	g.DLock.Lock()
+	g.Db.QueryRow("SELECT count(1) FROM alertmute WHERE target = ? AND muteduntil > ?", target, now).Scan(&cnt)
+	g.DLock.Unlock()
+	return cnt > 0
 }
 
 func newAlertLog(v map[string]string) g.AlertLog {

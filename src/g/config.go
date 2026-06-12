@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -162,6 +163,13 @@ func InitDbSchema() {
 		`CREATE INDEX IF NOT EXISTS idx_pinglog_target_time ON pinglog (target, logtime)`,
 		`CREATE INDEX IF NOT EXISTS idx_pinglog_time ON pinglog (logtime)`,
 		`CREATE TABLE IF NOT EXISTS mappinglog (logtime VARCHAR (16) PRIMARY KEY, mapjson TEXT)`,
+		`CREATE TABLE IF NOT EXISTS alertmute (
+			target     VARCHAR (64) PRIMARY KEY,
+			reason     TEXT,
+			muteduntil VARCHAR (32),
+			createdby  VARCHAR (64),
+			created_at VARCHAR (32)
+		)`,
 	}
 	DLock.Lock()
 	defer DLock.Unlock()
@@ -169,6 +177,15 @@ func InitDbSchema() {
 		if _, err := Db.Exec(s); err != nil {
 			log.Fatalln("[Fault]db schema init fail.", err)
 		}
+	}
+	// 告警确认字段(老库升级, 已存在时报错忽略)
+	for _, s := range []string{
+		`ALTER TABLE alertlog ADD COLUMN ack INT DEFAULT 0`,
+		`ALTER TABLE alertlog ADD COLUMN ackby VARCHAR(64)`,
+		`ALTER TABLE alertlog ADD COLUMN ackreason TEXT`,
+		`ALTER TABLE alertlog ADD COLUMN acktime VARCHAR(32)`,
+	} {
+		Db.Exec(s)
 	}
 }
 
@@ -299,6 +316,14 @@ func saveAuth() {
 	AuthAgentIpMap = map[string]bool{}
 	for _, k := range Cfg.Network {
 		AuthAgentIpMap[k.Addr] = true
+		// 域名节点: 解析出的 IP 一并加入互信表(请求来源是 IP)
+		if net.ParseIP(k.Addr) == nil {
+			if ips, err := net.LookupHost(k.Addr); err == nil {
+				for _, ip := range ips {
+					AuthAgentIpMap[ip] = true
+				}
+			}
+		}
 	}
 	Cfg.Authiplist = strings.Replace(Cfg.Authiplist, " ", "", -1)
 	if Cfg.Authiplist != "" {
