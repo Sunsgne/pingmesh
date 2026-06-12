@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Pingmesh 矩阵 - SmartPing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="card">
+    <div class="card-head">
+      <h3>Pingmesh 全网互 Ping 矩阵</h3>
+      <span class="sub">行 = 探测源节点，列 = 监测目标。点击单元格查看历史曲线</span>
+      <span class="spacer"></span>
+      <span class="muted" id="loading"></span>
+    </div>
+    <div class="card-body">
+      <div class="flex mb-4" style="flex-wrap:wrap">
+        <span class="muted" style="font-size:12.5px">时间窗口</span>
+        <div class="seg" id="win-seg">
+          <button data-v="15" class="active">15分钟</button>
+          <button data-v="30">30分钟</button>
+          <button data-v="60">1小时</button>
+          <button data-v="360">6小时</button>
+          <button data-v="1440">24小时</button>
+        </div>
+        <span class="muted" style="font-size:12.5px;margin-left:10px">指标</span>
+        <div class="seg" id="metric-seg">
+          <button data-v="delay" class="active">平均延迟</button>
+          <button data-v="loss">丢包率</button>
+        </div>
+        <span class="spacer"></span>
+        <label class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
+          <span class="switch"><input type="checkbox" id="auto-refresh" checked><span class="track"></span></span>
+          自动刷新 (60s)
+        </label>
+        <button class="btn sm" id="refresh-btn">立即刷新</button>
+      </div>
+
+      <div class="mesh-wrap">
+        <table class="mesh-table" id="mesh"></table>
+      </div>
+
+      <div class="mesh-legend mt-4">
+        <span class="lg"><span class="sq" style="background:#059669"></span>优秀 &lt;30ms</span>
+        <span class="lg"><span class="sq" style="background:#34d399"></span>良好 30-80ms</span>
+        <span class="lg"><span class="sq" style="background:#fbbf24"></span>一般 80-150ms / 丢包&ge;5%</span>
+        <span class="lg"><span class="sq" style="background:#f97316"></span>较差 150-300ms / 丢包&ge;20%</span>
+        <span class="lg"><span class="sq" style="background:#ef4444"></span>异常 &ge;300ms / 丢包&ge;50%</span>
+        <span class="lg"><span class="sq" style="background:#e2e8f0"></span>无数据</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('pingmesh', 'Pingmesh 矩阵').done(function (ctx) {
+    var cfg = ctx.config;
+    var mins = 15, metric = 'delay';
+    var meshData = {};   // srcAddr -> row
+    var timer = null;
+
+    var sources = SP.sourceNodes(cfg);
+    // 目标列 = 所有源节点监测目标的并集(保持稳定顺序)
+    var targets = [], seen = {};
+    $.each(sources, function (_, s) {
+        $.each(s.Ping || [], function (_, t) {
+            if (!seen[t]) { seen[t] = true; targets.push(t); }
+        });
+    });
+
+    $('#win-seg button').click(function () {
+        $('#win-seg button').removeClass('active'); $(this).addClass('active');
+        mins = parseInt($(this).attr('data-v'), 10);
+        load();
+    });
+    $('#metric-seg button').click(function () {
+        $('#metric-seg button').removeClass('active'); $(this).addClass('active');
+        metric = $(this).attr('data-v');
+        render();
+    });
+    $('#refresh-btn').click(load);
+    $('#auto-refresh').change(setupTimer);
+    setupTimer();
+    load();
+
+    function setupTimer() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if ($('#auto-refresh').is(':checked')) timer = setInterval(load, 60000);
+    }
+
+    function load() {
+        if (sources.length === 0) {
+            $('#mesh').html('<tr><td><div class="empty-state">没有启用 Smartping 的源节点</div></td></tr>');
+            return;
+        }
+        var pending = sources.length;
+        $('#loading').html('<span class="spinner"></span> 正在汇总 ' + sources.length + ' 个节点...');
+        $.each(sources, function (_, s) {
+            var url = (s.Addr === cfg.Addr)
+                ? '/api/pingmesh.json?mins=' + mins
+                : '/api/proxy.json?g=http://' + s.Addr + ':' + cfg.Port + '/api/pingmesh.json?mins=' + mins;
+            $.ajax({ url: url, dataType: 'json', timeout: (cfg.Base['Timeout'] || 5) * 1000 })
+                .done(function (row) { meshData[s.Addr] = row; })
+                .fail(function () { meshData[s.Addr] = { error: true }; })
+                .always(function () {
+                    pending--;
+                    if (pending === 0) { $('#loading').html(''); render(); }
+                });
+        });
+    }
+
+    function render() {
+        var html = '<tr><th class="row-h">源 \\ 目标</th>';
+        $.each(targets, function (_, t) {
+            html += '<th class="col-h" title="' + SP.esc(t) + '">' + SP.esc(SP.nodeName(cfg, t)) +
+                '<br><span class="muted mono" style="font-weight:400;font-size:10.5px">' + SP.esc(t) + '</span></th>';
+        });
+        html += '</tr>';
+
+        $.each(sources, function (_, s) {
+            html += '<tr><th class="row-h"><span class="src-name">' + SP.esc(s.Name) + '</span><span class="src-ip mono">' + SP.esc(s.Addr) + '</span></th>';
+            var row = meshData[s.Addr];
+            $.each(targets, function (_, t) {
+                if (t === s.Addr) {
+                    html += '<td><div class="mesh-cell self">—</div></td>';
+                    return;
+                }
+                var monitored = row && !row.error && $.inArray(t, (cfg.Network[s.Addr] || {}).Ping || []) >= 0;
+                var c = row && row.cells ? row.cells[t] : null;
+                if (!monitored || !c || c.points === 0) {
+                    var hint = row && row.error ? '节点不可达' : '无数据';
+                    html += '<td><div class="mesh-cell na" title="' + hint + '">' + (row && row.error ? '&#9888;' : '·') + '</div></td>';
+                    return;
+                }
+                var lvl = SP.delayLevel(c.avgdelay, c.loss);
+                var main = metric === 'delay' ? SP.fmtMs(c.avgdelay) + ' ms' : c.loss.toFixed(0) + ' %';
+                var sub = metric === 'delay' ? '丢包 ' + c.loss.toFixed(0) + '%' : SP.fmtMs(c.avgdelay) + ' ms';
+                var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
+                    '\n平均延迟 ' + SP.fmtMs(c.avgdelay) + 'ms / 最大 ' + SP.fmtMs(c.maxdelay) + 'ms' +
+                    '\n丢包率 ' + c.loss.toFixed(1) + '%\n采样 ' + c.points + ' 次 · ' + c.lastcheck;
+                html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +
+                    main + '<small>' + sub + '</small></div></td>';
+            });
+            html += '</tr>';
+        });
+        $('#mesh').html(html);
+
+        $('#mesh .mesh-cell[data-src]').click(function () {
+            var src = $(this).attr('data-src'), dst = $(this).attr('data-dst');
+            var apiurl = (src === cfg.Addr)
+                ? '/api/ping.json?ip=' + dst
+                : '/api/proxy.json?g=http://' + src + ':' + cfg.Port + '/api/ping.json?ip=' + dst;
+            SP.openPingChart(SP.nodeName(cfg, src) + ' → ' + SP.nodeName(cfg, dst) + ' (' + dst + ')', apiurl);
+        });
+    }
+});
+});
+</script>
+</body>
+</html>

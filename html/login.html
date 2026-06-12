@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>登录 - SmartPing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body class="login-page">
+
+<div class="login-card" id="card">
+  <div class="logo-row">
+    <div class="logo-mark">SP</div>
+    <h1>SmartPing</h1>
+  </div>
+  <div class="sub">开源、高效、便捷的网络质量监控平台</div>
+
+  <div class="login-err" id="err"></div>
+
+  <form id="login-form" autocomplete="on" onsubmit="return false;">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" class="input" id="username" autocomplete="username" autofocus placeholder="请输入用户名">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" class="input" id="password" autocomplete="current-password" placeholder="请输入密码">
+    </div>
+    <button class="btn primary" id="login-btn" type="submit" style="width:100%;padding:11px;font-size:14.5px;margin-top:6px;">登 录</button>
+  </form>
+
+  <div class="first-hint">首次部署默认账号 <b>admin / admin123</b>，登录后请尽快修改密码</div>
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script>
+$(function () {
+    $('#login-form').submit(function () {
+        var u = $('#username').val(), p = $('#password').val();
+        if (!u || !p) { showErr('请输入用户名和密码'); return false; }
+        $('#login-btn').attr('disabled', true).text('登录中...');
+        $.post('/api/login.json', { username: u, password: p }, function (res) {
+            if (res.status === 'true') {
+                window.location.href = '/index.html';
+            } else {
+                showErr(res.info || '登录失败');
+            }
+        }, 'json').fail(function () {
+            showErr('服务不可用，请稍后重试');
+        }).always(function () {
+            $('#login-btn').attr('disabled', false).text('登 录');
+        });
+        return false;
+    });
+    function showErr(msg) {
+        $('#err').text(msg).show();
+        $('#card').addClass('shake');
+        setTimeout(function () { $('#card').removeClass('shake'); }, 450);
+    }
+});
+</script>
+</body>
+</html>

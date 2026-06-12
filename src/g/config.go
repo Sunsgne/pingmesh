@@ -111,6 +111,7 @@ func ParseConfig(ver string) {
 	AlertStatus = map[string]bool{}
 	ToolLimit = map[string]int{}
 	saveAuth()
+	InitUserTable()
 }
 
 func SaveCloudConfig(url string) (Config, error) {

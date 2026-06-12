@@ -76,7 +76,9 @@ func GraphText(x int, y int, txt string) chart.Renderer {
 }
 
 func StartHttp() {
+	configAuthRoutes()
 	configApiRoutes()
+	configPingmeshRoutes()
 	configIndexRoutes()
 	seelog.Info("[func:StartHttp] starting to listen on ", g.Cfg.Port)
 	s := fmt.Sprintf(":%d", g.Cfg.Port)

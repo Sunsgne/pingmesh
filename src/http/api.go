@@ -8,6 +8,7 @@ import (
 	"github.com/smartping/smartping/src/funcs"
 	"github.com/smartping/smartping/src/g"
 	"github.com/smartping/smartping/src/nettools"
+	"github.com/wcharczuk/go-chart"
 	"github.com/wcharczuk/go-chart/drawing"
 	"io/ioutil"
 	"net"
@@ -22,9 +23,8 @@ func configApiRoutes() {
 
 	//配置文件API
 	http.HandleFunc("/api/config.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		r.ParseForm()
@@ -48,9 +48,8 @@ func configApiRoutes() {
 
 	//Ping数据API
 	http.HandleFunc("/api/ping.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		r.ParseForm()
@@ -143,9 +142,8 @@ func configApiRoutes() {
 
 	//Ping拓扑API
 	http.HandleFunc("/api/topology.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		preout := make(map[string]string)
@@ -162,9 +160,8 @@ func configApiRoutes() {
 
 	//报警API
 	http.HandleFunc("/api/alert.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		type DateList struct {
@@ -222,9 +219,8 @@ func configApiRoutes() {
 
 	//全国延迟API
 	http.HandleFunc("/api/mapping.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		m, _ := time.ParseDuration("-1m")
@@ -268,9 +264,8 @@ func configApiRoutes() {
 
 	//检测工具API
 	http.HandleFunc("/api/tools.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		preout := g.ToolsRes{}
@@ -350,18 +345,20 @@ func configApiRoutes() {
 
 	//保存配置文件
 	http.HandleFunc("/api/saveconfig.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthAdmin(r) {
+			deny(w)
 			return
 		}
 		preout := make(map[string]string)
 		r.ParseForm()
 		preout["status"] = "false"
-		if len(r.Form["password"]) == 0 || r.Form["password"][0] != g.Cfg.Password {
-			preout["info"] = "密码错误!"
-			RenderJson(w, preout)
-			return
+		// 管理员会话可直接保存; 兼容旧版的配置密码方式
+		if GetSession(r) == nil {
+			if len(r.Form["password"]) == 0 || r.Form["password"][0] != g.Cfg.Password {
+				preout["info"] = "密码错误!"
+				RenderJson(w, preout)
+				return
+			}
 		}
 		if len(r.Form["config"]) == 0 {
 			preout["info"] = "参数错误!"
@@ -512,9 +509,8 @@ func configApiRoutes() {
 
 	//发送测试邮件
 	http.HandleFunc("/api/sendmailtest.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) && !AuthAgentIp(r.RemoteAddr, true) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthAdmin(r) {
+			deny(w)
 			return
 		}
 		preout := make(map[string]string)
@@ -553,9 +549,8 @@ func configApiRoutes() {
 
 	//Ping画图
 	http.HandleFunc("/api/graph.png", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		w.Header().Set("Content-Type", "image/png")
@@ -692,9 +687,8 @@ func configApiRoutes() {
 
 	//代理访问
 	http.HandleFunc("/api/proxy.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthUserIp(r.RemoteAddr) {
-			o := "Your ip address (" + r.RemoteAddr + ")  is not allowed to access this site!"
-			http.Error(w, o, 401)
+		if !AuthData(r) {
+			deny(w)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -26,10 +26,23 @@
 
 ## 功能 ##
 
-- 正向PING，反向Ping绘图
+- 用户登录与权限管理（管理员/只读用户，默认账号 `admin / admin123`，首次登录后请修改密码）
+- Pingmesh 全网互PING矩阵（借鉴 Flashcat Pingmesh，行=源节点、列=目标，延迟/丢包热力着色，点击查看历史曲线）
+- 正向PING，反向Ping绘图（现代化界面，ECharts 实时曲线）
 - 互PING间机器的状态拓扑，自定义延迟、丢包阈值报警（声音报警与邮件报警），报警时MTR检测
 - 全国PING延迟地图（各省份可分电信、联通、移动三条线路）
 - 检测工具，支持使用SmartPing各节点进行网络相关检测
+- 可视化系统配置（基础设置/节点管理/报警邮件/全国延迟/高级JSON）
+
+## 快速开始 ##
+
+```bash
+go build -o bin/smartping ./src
+sudo setcap cap_net_raw+ep bin/smartping   # ICMP 需要 raw socket 权限(或用 root 运行)
+./control start                            # 默认端口 8899
+```
+
+浏览器访问 `http://127.0.0.1:8899`，使用默认账号 `admin / admin123` 登录。
 
 ## 设计思路 ##
 
