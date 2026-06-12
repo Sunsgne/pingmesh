@@ -430,6 +430,37 @@ func configApiRoutes() {
 						return
 					}
 				}
+				{
+					chk := func(key string, min, max int, label string) bool {
+						v, ok := topology[key]
+						if !ok || v == "" {
+							return true
+						}
+						n, err := strconv.Atoi(v)
+						if err != nil || n < min || n > max {
+							preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法" + label + ", " + strconv.Itoa(min) + "~" + strconv.Itoa(max) + " 或留空 ) "
+							return false
+						}
+						return true
+					}
+					if !chk("Pinterval", 10, 60000, "链路探测间隔(ms)") || !chk("Pcount", 1, 1000, "链路探测包数") ||
+						!chk("Ptimeout", 50, 10000, "链路单包超时(ms)") || !chk("Psize", 24, 1472, "链路探测包大小") {
+						RenderJson(w, preout)
+						return
+					}
+					effI, effC := nconfig.Base["Pinginterval"], nconfig.Base["Pingcount"]
+					if v, err := strconv.Atoi(topology["Pinterval"]); err == nil && v > 0 {
+						effI = v
+					}
+					if v, err := strconv.Atoi(topology["Pcount"]); err == nil && v > 0 {
+						effC = v
+					}
+					if effI*effC > 55000 {
+						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 链路探测间隔×包数超过55秒 ) "
+						RenderJson(w, preout)
+						return
+					}
+				}
 				if sip, ok := topology["Srcip"]; ok && sip != "" && !ValidIP4(sip) {
 					preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 非法探测源IP, 需为本机网口的IPv4地址或留空 ) "
 					RenderJson(w, preout)

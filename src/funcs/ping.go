@@ -2,6 +2,7 @@ package funcs
 
 import (
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -77,21 +78,40 @@ func probeParams() (interval, count, timeout, size int) {
 	return
 }
 
-// srcipFor 该目标在本节点监测规则中配置的探测源IP(双网口分路监控)
-func srcipFor(addr string) string {
+// linkRule 该目标在本节点监测规则中的条目
+func linkRule(addr string) map[string]string {
 	for _, t := range g.SelfCfg.Topology {
 		if t["Addr"] == addr {
-			return t["Srcip"]
+			return t
 		}
 	}
-	return ""
+	return nil
+}
+
+// probeParamsFor 链路级探测参数: 在全局默认基础上应用该链路的覆盖值
+func probeParamsFor(addr string) (interval, count, timeout, size int, srcip string) {
+	interval, count, timeout, size = probeParams()
+	t := linkRule(addr)
+	if t == nil {
+		return
+	}
+	srcip = t["Srcip"]
+	ovr := func(key string, min, max int, def *int) {
+		if v, err := strconv.Atoi(t[key]); err == nil && v >= min && v <= max {
+			*def = v
+		}
+	}
+	ovr("Pinterval", 10, 60000, &interval)
+	ovr("Pcount", 1, 1000, &count)
+	ovr("Ptimeout", 50, 10000, &timeout)
+	ovr("Psize", 24, 1472, &size)
+	return
 }
 
 // PingTask 对单个目标按配置的间隔/包数/超时/包长连续探测, 返回统计(含抖动)
 func PingTask(addr string) g.PingSt {
 	seelog.Debug("[func:PingTask] start ", addr)
-	interval, count, timeout, size := probeParams()
-	srcip := srcipFor(addr)
+	interval, count, timeout, size, srcip := probeParamsFor(addr)
 	stat := g.PingSt{}
 	stat.MinDelay = -1
 	lossPK := 0
