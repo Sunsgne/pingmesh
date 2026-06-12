@@ -219,11 +219,11 @@
             <select class="input" id="f-remindmin">
               <option value="0">关闭（只在故障/恢复时各通知一次）</option>
               <option value="30">每 30 分钟提醒一次</option>
-              <option value="60">每 1 小时提醒一次</option>
+              <option value="60">每 1 小时提醒一次（默认）</option>
               <option value="360">每 6 小时提醒一次</option>
               <option value="1440">每 24 小时提醒一次</option>
             </select>
-            <div class="hint">故障持续未恢复时定期再提醒；<b>已确认的告警不再重复提醒</b>（恢复后自动重置）。屏蔽到期仍异常会自动补一条通知</div>
+            <div class="hint">故障持续未恢复时定期再提醒；<b>确认后暂停提醒 24 小时</b>，到期仍未恢复则继续提醒（恢复后自动重置）。屏蔽到期仍异常会自动补一条通知</div>
           </div>
         </div>
         <div>
@@ -618,7 +618,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-emaillist').val(cfg.Alert['RevcEmailList']);
         $('#f-jointoken').val(cfg.Password || '');
         $('#f-apisign').prop('checked', cfg.Base['Apisign'] === 1);
-        $('#f-remindmin').val(String(cfg.Base['Remindmin'] || 0));
+        $('#f-remindmin').val(String(cfg.Base['Remindmin'] !== undefined ? cfg.Base['Remindmin'] : 60));
         renderNodes();
         renderJoin();
         renderChannels();

@@ -17,10 +17,10 @@ import (
 
 // incidentState 每条链路本次故障的过程状态(用于提醒/确认联动/时长统计)
 type incidentState struct {
-	BadSince    time.Time
-	LastNotify  time.Time
-	MutedSkip   bool // 屏蔽期间漏发过告警
-	Acked       bool // 本次故障已被确认, 抑制重复提醒
+	BadSince   time.Time
+	LastNotify time.Time
+	MutedSkip  bool      // 屏蔽期间漏发过告警
+	AckedUntil time.Time // 确认后暂停重复提醒至该时刻(24h), 仍未恢复则继续提醒
 }
 
 var (
@@ -39,12 +39,13 @@ func incidentOf(addr string) *incidentState {
 	return st
 }
 
-// AckIncident 告警被确认时调用: 本次故障期间不再重复提醒(恢复后自动重置)
+// AckIncident 告警被确认时调用: 暂停该故障的重复提醒24小时
+// (有人在处理, 别吵; 24小时后仍未恢复则继续提醒, 恢复后自动重置)
 func AckIncident(target string) {
 	incidentMu.Lock()
 	defer incidentMu.Unlock()
 	if st, ok := incidents[target]; ok {
-		st.Acked = true
+		st.AckedUntil = time.Now().Add(24 * time.Hour)
 	}
 }
 
@@ -84,7 +85,7 @@ func StartAlert() {
 				}
 				st.BadSince = time.Time{}
 				st.MutedSkip = false
-				st.Acked = false
+				st.AckedUntil = time.Time{}
 			}
 			continue
 		}
@@ -93,7 +94,7 @@ func StartAlert() {
 			seelog.Debug("[func:StartAlert] ", v["Addr"]+" Alert!")
 			g.AlertStatus[v["Addr"]] = false
 			st.BadSince = time.Now()
-			st.Acked = false
+			st.AckedUntil = time.Time{}
 			l := newAlertLog(v)
 			mtrString := ""
 			hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
@@ -129,7 +130,7 @@ func StartAlert() {
 			st.MutedSkip = false
 			st.LastNotify = time.Now()
 			go NotifyAll(newAlertLog(v), v, "mute_expired", [][2]string{dur})
-		} else if remindMin > 0 && !st.Acked && !st.LastNotify.IsZero() &&
+		} else if remindMin > 0 && time.Now().After(st.AckedUntil) && !st.LastNotify.IsZero() &&
 			time.Since(st.LastNotify) >= time.Duration(remindMin)*time.Minute {
 			// 持续故障重复提醒(已确认的不再提醒)
 			seelog.Info("[func:StartAlert] ", v["Addr"], " still down, periodic reminder")
