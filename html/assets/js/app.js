@@ -371,7 +371,7 @@ var SP = (function () {
     /* 提取互Ping的源节点(探测节点且有监测目标) */
     function sourceNodes(cfg) {
         var list = [];
-        $.each(cfg.Network, function (addr, n) {
+        $.each(cfg.Network || {}, function (addr, n) {
             if (n.Pingmesh && ((n.Ping && n.Ping.length > 0) || (n.Topology && n.Topology.length > 0))) {
                 list.push(n);
             }
@@ -381,7 +381,8 @@ var SP = (function () {
     }
 
     function nodeName(cfg, addr) {
-        return (cfg.Network[addr] && cfg.Network[addr].Name) ? cfg.Network[addr].Name : addr;
+        var net = cfg.Network || {};
+        return (net[addr] && net[addr].Name) ? net[addr].Name : addr;
     }
 
     /* ---------- MTR 渲染器(报警记录/检测工具共用) ---------- */

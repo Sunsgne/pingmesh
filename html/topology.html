@@ -55,6 +55,7 @@
 $(function () {
 SP.init('topology', '网络拓扑').done(function (ctx) {
     var cfg = ctx.config;
+    var topoCfg = cfg.Topology || {};
     var chart = echarts.init(document.getElementById('topo-chart'));
     var nodes = {}, links = {};
     var pending = 0;
@@ -105,7 +106,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     });
 
     // 构建节点与连线
-    $.each(cfg.Network, function (addr, n) {
+    $.each(cfg.Network || {}, function (addr, n) {
         var isSource = (n.Topology || []).length > 0;
         nodes[addr] = { name: n.Name, addr: addr, source: isSource, bad: false };
         $.each(n.Topology || [], function (_, topo) {
@@ -155,9 +156,9 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     function draw() {
         var data = [], lns = [];
         // 「基础设置 - 拓扑节点大小」生效: 探测节点用原值, 被测目标缩小到 72%
-        var baseSize = parseInt(cfg.Topology['Tsymbolsize'] || 56, 10);
+        var baseSize = parseInt(topoCfg['Tsymbolsize'] || 56, 10);
         if (!(baseSize > 0)) baseSize = 56;
-        var baseLine = parseFloat(cfg.Topology['Tline'] || 1.8);
+        var baseLine = parseFloat(topoCfg['Tline'] || 1.8);
         if (!(baseLine > 0)) baseLine = 1.8;
         $.each(nodes, function (addr, n) {
             var cat = n.bad ? 2 : (n.source ? 0 : 1);
@@ -190,7 +191,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         chart.setOption({ series: [{ data: data, links: lns }] });
         if (hasAlert && $('#sound-toggle').is(':checked') && !window.__alertAudio) {
             // 柔和双音提示, 降低音量避免刺耳
-            var a = new Audio(cfg.Topology['Tsound'] || '/alert-soft.wav');
+            var a = new Audio(topoCfg['Tsound'] || '/alert-soft.wav');
             a.loop = true; a.volume = 0.35;
             var p = a.play();
             if (p && p.catch) {
@@ -262,6 +263,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     // 自动刷新
     setTimeout(function () { window.location.reload(); }, (cfg.Base['Refresh'] || 1) * 60 * 1000);
+    chart.resize();
     $(window).resize(function () { chart.resize(); });
 });
 });

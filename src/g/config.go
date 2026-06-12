@@ -251,8 +251,21 @@ func ParseConfig(ver string) {
 	if _, ok := Cfg.Mode["MasterAuto"]; !ok {
 		Cfg.Mode["MasterAuto"] = "true"
 	}
-	// 旧配置迁移: 已删除的旧提示音文件改为内置柔和提示音
-	if Cfg.Topology != nil && Cfg.Topology["Tsound"] == "/alert.mp3" {
+	// 旧配置迁移: 拓扑展示参数默认值(缺省或空 map 时补齐, 避免前端拓扑页无法渲染)
+	if Cfg.Topology == nil {
+		Cfg.Topology = map[string]string{}
+	}
+	topoDefaults := map[string]string{
+		"Tline":       "1",
+		"Tsound":      "/alert-soft.wav",
+		"Tsymbolsize": "70",
+	}
+	for k, v := range topoDefaults {
+		if Cfg.Topology[k] == "" {
+			Cfg.Topology[k] = v
+		}
+	}
+	if Cfg.Topology["Tsound"] == "/alert.mp3" {
 		Cfg.Topology["Tsound"] = "/alert-soft.wav"
 	}
 	seelog.Info("Config loaded")
