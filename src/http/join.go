@@ -23,6 +23,7 @@ func configJoinRoutes() {
 		token := r.FormValue("token")
 		name := r.FormValue("name")
 		addr := r.FormValue("addr")
+		group := r.FormValue("group")
 		if token == "" || token != g.Cfg.Password {
 			seelog.Info("[func:/api/join.json] invalid token from ", r.RemoteAddr)
 			preout["info"] = "接入令牌错误"
@@ -40,6 +41,11 @@ func configJoinRoutes() {
 			return
 		}
 		g.AddMeshNode(name, addr)
+		if group != "" {
+			m := g.Cfg.Network[addr]
+			m.Group = group
+			g.Cfg.Network[addr] = m
+		}
 		if err := g.SaveConfig(); err != nil {
 			preout["info"] = "保存配置失败: " + err.Error()
 			RenderJson(w, preout)
@@ -85,7 +91,7 @@ func configJoinRoutes() {
 				RenderJson(w, preout)
 				return
 			}
-			if err := funcs.JoinMasterN(master, token, g.Cfg.Name, g.Cfg.Addr, 1); err != nil {
+			if err := funcs.JoinMasterN(master, token, g.Cfg.Name, g.Cfg.Addr, "", 1); err != nil {
 				preout["info"] = "加入失败: " + err.Error()
 				RenderJson(w, preout)
 				return

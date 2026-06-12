@@ -15,14 +15,14 @@ import (
 )
 
 // JoinMaster 以 Agent 身份加入主节点(带重试, 用于启动参数场景)
-func JoinMaster(master, token, name, addr string) error {
-	return JoinMasterN(master, token, name, addr, 5)
+func JoinMaster(master, token, name, addr, group string) error {
+	return JoinMasterN(master, token, name, addr, group, 5)
 }
 
 // JoinMasterN 以 Agent 身份加入主节点:
 // 1. 调用主节点 /api/join.json 完成注册(主节点自动完成全互联组网)
 // 2. 切换到 cloud 模式, 从主节点拉取并保存全量配置(之后每分钟自动同步)
-func JoinMasterN(master, token, name, addr string, attempts int) error {
+func JoinMasterN(master, token, name, addr, group string, attempts int) error {
 	master = strings.TrimRight(master, "/")
 	if !strings.HasPrefix(master, "http://") && !strings.HasPrefix(master, "https://") {
 		master = "http://" + master
@@ -43,7 +43,7 @@ func JoinMasterN(master, token, name, addr string, attempts int) error {
 		if i > 0 {
 			time.Sleep(3 * time.Second)
 		}
-		lastErr = joinOnce(master, token, name, addr)
+		lastErr = joinOnce(master, token, name, addr, group)
 		if lastErr == nil {
 			break
 		}
@@ -70,12 +70,13 @@ func JoinMasterN(master, token, name, addr string, attempts int) error {
 	return nil
 }
 
-func joinOnce(master, token, name, addr string) error {
+func joinOnce(master, token, name, addr, group string) error {
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.PostForm(master+"/api/join.json", url.Values{
 		"token": {token},
 		"name":  {name},
 		"addr":  {addr},
+		"group": {group},
 	})
 	if err != nil {
 		return err
