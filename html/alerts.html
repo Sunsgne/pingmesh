@@ -65,12 +65,7 @@
 <div class="sp-modal-mask" id="mtr-modal">
   <div class="sp-modal lg">
     <div class="m-head"><h3>MTR 路由追踪快照</h3><button class="m-close">&times;</button></div>
-    <div class="m-body" style="padding:0">
-      <table class="sp-table">
-        <thead><tr><th>#</th><th>Host</th><th>Loss%</th><th>Snt</th><th>Last</th><th>Avg</th><th>Best</th><th>Wrst</th><th>StDev</th></tr></thead>
-        <tbody id="tracertdata"></tbody>
-      </table>
-    </div>
+    <div class="m-body" id="mtr-body" style="padding:0;max-height:70vh;overflow-y:auto"></div>
   </div>
 </div>
 
@@ -213,8 +208,10 @@ SP.init('alerts', '报警记录').done(function (ctx) {
         $('#loading').html('');
         allRows.sort(function (a, b) { return a.Logtime < b.Logtime ? 1 : -1; });
         var box = $('#alertlist').empty();
+        var mtrIndexMap = window.mtrIndexMap = {};
         $.each(allRows, function (i, r) {
             var mid = mtrStore.length;
+            mtrIndexMap[mid] = i;
             mtrStore.push(r.Tracert);
             var status = r.Ack
                 ? '<span class="badge green" title="' + SP.esc((r.Ackby || '') + ' ' + (r.Acktime || '')) + '">已确认</span>' +
@@ -233,7 +230,10 @@ SP.init('alerts', '报警记录').done(function (ctx) {
         });
         $('#alert-count').text(allRows.length + ' 条').toggle(allRows.length > 0);
         $('#empty').toggle(allRows.length === 0);
-        $('.mtr-link').click(function () { showMtr(parseInt($(this).attr('data-i'), 10)); });
+        $('.mtr-link').click(function () {
+            var i = parseInt($(this).attr('data-i'), 10);
+            showMtr(i, (allRows[(window.mtrIndexMap || {})[i]] || {}).Targetip);
+        });
         $('.a-ack').click(function () { openAck(allRows[parseInt($(this).attr('data-i'), 10)]); });
         $('.a-mute').click(function () { openMute(allRows[parseInt($(this).attr('data-i'), 10)]); });
         applyFilter();
@@ -335,21 +335,11 @@ SP.init('alerts', '报警记录').done(function (ctx) {
     }
 
     /* ---------- MTR / 过滤 ---------- */
-    function showMtr(i) {
-        var body = $('#tracertdata').empty();
+    function showMtr(i, targetIp) {
         var hops;
         try { hops = JSON.parse(mtrStore[i]); } catch (e) { hops = null; }
-        if (!hops || !hops.length) {
-            body.append('<tr><td colspan="9" class="muted">无 MTR 数据</td></tr>');
-        } else {
-            $.each(hops, function (n, h) {
-                body.append('<tr><td>' + (n + 1) + '</td><td class="mono">' + SP.esc(h.Host) + '</td>' +
-                    '<td>' + ((h.Loss / h.Send) * 100).toFixed(1) + '%</td><td>' + h.Send + '</td>' +
-                    '<td>' + (h.Last / 1e6).toFixed(2) + '</td><td>' + (h.Avg / 1e6).toFixed(2) + '</td>' +
-                    '<td>' + (h.Best / 1e6).toFixed(2) + '</td><td>' + (h.Wrst / 1e6).toFixed(2) + '</td>' +
-                    '<td>' + h.StDev.toFixed(2) + '</td></tr>');
-            });
-        }
+        $('#mtr-body').html(SP.renderMtr(hops, targetIp));
+        SP.fillMtrAsn('#mtr-body');
         SP.openModal('mtr-modal');
     }
 
