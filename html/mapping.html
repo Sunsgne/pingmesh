@@ -147,8 +147,17 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
                 SP.toast('该时间点暂无探测数据(每分钟采集一次)', 'err');
                 return;
             }
-            if (!activeLine || $.inArray(activeLine, lines) < 0) activeLine = lines[0];
+            if (!activeLine || (activeLine !== '全部' && $.inArray(activeLine, lines) < 0)) activeLine = '全部';
             var lb = $('#line-chips').empty();
+            // 默认「全部」: 各地区取所有可达线路的平均延迟
+            var allChip = $('<span class="chip' + (activeLine === '全部' ? ' active' : '') + '">全部</span>');
+            allChip.click(function () {
+                activeLine = '全部';
+                $('#line-chips .chip').removeClass('active');
+                allChip.addClass('active');
+                renderMap(); renderList();
+            });
+            lb.append(allChip);
             $.each(lines, function (_, line) {
                 var chip = $('<span class="chip' + (line === activeLine ? ' active' : '') + '">' + SP.esc(line) + '</span>');
                 chip.click(function () {
@@ -167,11 +176,38 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
     }
 
     /* ---------- 世界地图 ---------- */
+    function mergedAll() {
+        // 聚合所有线路: 每个地区取可达线路的平均值, 全部不可达则标记不可达
+        var byRegion = {};
+        $.each(data.avgdelay || {}, function (_, list) {
+            $.each(list || [], function (_, item) {
+                (byRegion[item.name] = byRegion[item.name] || []).push(item.value);
+            });
+        });
+        var out = [];
+        $.each(byRegion, function (region, vals) {
+            var ok = $.grep(vals, function (v) { return v < UNREACH; });
+            var v;
+            if (ok.length > 0) {
+                var sum = 0;
+                $.each(ok, function (_, x) { sum += x; });
+                v = Math.round(sum / ok.length * 100) / 100;
+            } else {
+                v = 2000;
+            }
+            out.push({ name: region, value: v });
+        });
+        return out;
+    }
+
     function renderMap() {
-        var seriesData = (data && data.avgdelay[activeLine]) ? data.avgdelay[activeLine] : [];
+        var seriesData = [];
+        if (data) {
+            seriesData = (activeLine === '全部') ? mergedAll() : (data.avgdelay[activeLine] || []);
+        }
         chart.setOption({
             title: {
-                text: (data ? data.text : '') + ' · ' + (activeLine || '') + ' 全球延迟',
+                text: (data ? data.text : '') + ' · ' + (activeLine === '全部' ? '全部线路' : (activeLine || '')) + ' 全球延迟',
                 subtext: data ? data.subtext : '',
                 left: 'center',
                 textStyle: { color: '#0f172a', fontSize: 15, fontWeight: 'bold' },
