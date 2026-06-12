@@ -111,6 +111,13 @@ func configHealthRoutes() {
 }
 
 func StartHttp() {
+	// 用户表被集群同步替换后, 本节点全部会话失效(凭新密码重新登录)
+	g.OnUsersReplaced = func() {
+		sessionsLock.Lock()
+		sessions = map[string]*Session{}
+		sessionsLock.Unlock()
+		seelog.Info("[func:StartHttp] sessions invalidated after cluster user sync")
+	}
 	configAuthRoutes()
 	configApiRoutes()
 	configPingmeshRoutes()

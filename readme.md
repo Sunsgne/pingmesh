@@ -39,7 +39,7 @@
 | **告警阈值** | 每条链路独立配置：延迟阈值(ms)、丢包阈值(%)、检测窗口(秒)、触发次数 |
 | **一键组网** | 主节点 + Agent 架构：新节点一条命令加入，自动全互联组网，配置每分钟自动从主节点同步；数据去中心化存储在各节点 |
 | **集群容灾** | 去中心化多主：每个节点持有完整配置副本（主挂配置永不丢失）；主节点不可达时下一优先级节点**自动接管**写入；配置带纪元(Epoch)，任意节点的改动全网 LWW 收敛；「集群容灾」页可视化主从态势、在线状态与配置版本，并自动留存配置快照供回滚 |
-| **用户与权限** | 登录会话、管理员/只读两种角色、用户管理；兼容旧版 IP 白名单 |
+| **用户与权限** | 登录会话、管理员/只读两种角色、用户管理；**账户密码全集群同步**（在主节点改密码/增删用户，Agent 一分钟内自动跟随）；Agent 节点 Web 页面默认关闭（`-webui` 开启），统一在主节点管理；兼容旧版 IP 白名单 |
 | **全球延迟地图** | 世界地图按地区/线路延迟着色 + 搜索与延迟列表，地区与线路完全自定义（可整体开启/关闭） |
 | **检测工具** | 从所有节点同时发起 **ICMP PING / TCP Ping / HTTP(curl分段计时) / MTR 路由追踪 / DNS 解析**，对比各地连通性与质量 |
 | **可视化配置** | 基础设置 / 节点管理 / 节点接入 / 报警通道 / 全国延迟 / 高级 JSON 六个页签全部页面化 |
@@ -83,7 +83,8 @@ sudo ./deploy/install.sh --yes            # 非交互, 主节点默认值
 sudo ./deploy/install.sh --port 9000      # 自定义端口
 sudo ./deploy/install.sh --name 北京主节点 # 节点名称(主节点首次安装即生效)
 sudo ./deploy/install.sh --dir /data/pm   # 自定义安装目录(默认 /opt/pingmesh)
-sudo ./deploy/install.sh --join URL --token XXX --name 节点名   # Agent 模式
+sudo ./deploy/install.sh --join URL --token XXX --name 节点名   # Agent 模式(页面默认关闭, 账户随主节点)
+sudo ./deploy/install.sh --join URL --token XXX --name 节点名 --webui  # Agent + 开启本节点页面
 sudo ./deploy/install.sh --join URL --token XXX --name 节点名 --masters 10.0.0.2:8899  # Agent + 容灾备选
 sudo ./deploy/install.sh --update         # 在线升级(保留启动参数与数据)
 sudo ./deploy/install.sh --uninstall      # 卸载(保留数据)
@@ -201,6 +202,7 @@ docker compose --profile agent up -d
 - 配置同步：**AES-256-GCM 加密**传输（含邮箱密码、告警通道密钥等敏感字段）
 - 节点加入：HMAC 签名认证，令牌不再明文传输；join 成功后集群令牌自动统一
 - Web 加固：统一注入安全响应头（CSP / X-Frame-Options / X-Content-Type-Options / Referrer-Policy）；服务端读超时防慢速攻击；登录失败限速（同一来源连续失败自动短时锁定）；收到 SIGTERM 优雅停机
+- 攻击面收敛：Agent 节点 Web 页面默认关闭（`-webui` 显式开启），公网 Agent 不暴露登录入口；账户密码集群同步走 HMAC 验签 + AES-256-GCM 加密通道
 - 配置容灾：每次保存自动留存配置快照（`conf/backups/`，保留最近 30 份），误改可回滚；支持一键导出配置备份
 - 公网部署建议：开启 API 签名与加密（系统配置 → 节点接入），修改默认令牌与默认密码，防火墙限制 8899 端口来源
 
@@ -220,6 +222,8 @@ docker compose --profile agent up -d
 
 - **全互联组网**：新节点监测所有既有节点，所有探测节点反向监测新节点（默认阈值：延迟 200ms / 丢包 30%）
 - **配置同步**：Agent 进入 cloud 模式，每分钟从主节点拉取最新配置——日常只需在主节点页面操作，告警通道、阈值等改动自动下发
+- **账户同步**：Agent 的登录账户密码随主节点——join 时全量同步，之后主节点上的改密码/增删用户一分钟内全网生效（bcrypt 哈希经 HMAC 验签 + AES-256-GCM 加密传输）
+- **页面收敛**：Agent 节点 Web 页面**默认关闭**（数据接口与集群同步不受影响），统一在主节点页面管理；需要时启动参数加 `-webui` 开启，主节点故障由该节点自动接管时页面也会自动开放
 - **数据去中心化**：监测数据存储在各自节点，任意节点页面都能汇总查看全网矩阵
 
 > IP 无法自动识别（如 NAT 环境）时，加 `-addr <本机IP>` 显式指定。
@@ -288,6 +292,7 @@ docker compose --profile agent up -d
 | `-join http://主节点:8899` | 以 Agent 身份加入主节点 |
 | `-token / -name / -addr` | 接入令牌 / 节点名称 / 本机IP（留空自动识别） |
 | `-masters host:port,...` | 容灾备选主节点（有序，主挂自动接管，可选） |
+| `-webui` | 开启 Agent 节点的 Web 页面（默认关闭，统一在主节点管理；容灾接管时自动开放） |
 | `-v` | 显示版本（含构建提交与时间） |
 
 ---
@@ -298,6 +303,7 @@ docker compose --profile agent up -d
 1. 确认服务在运行：`systemctl status pingmesh`
 2. 确认监听地址：默认 `:8899` 监听所有网卡；若用 `-l 127.0.0.1:8899` 启动则只能本机访问
 3. 放行防火墙/安全组的 `8899/tcp`（云服务器还需检查控制台安全组）
+4. **Agent 节点页面默认关闭**（显示提示页属正常现象），请到主节点页面统一管理；确需开启时在启动参数（`pingmesh.env`）中追加 `-webui` 后重启服务
 
 **PING 全部丢包 / 无数据？**
 ICMP 需要 raw socket 权限：`sudo setcap cap_net_raw+ep ./pingmesh` 或以 root 运行；安装脚本与 systemd 单元已自动处理。

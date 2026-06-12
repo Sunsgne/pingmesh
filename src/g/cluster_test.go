@@ -109,6 +109,38 @@ func TestClusterActive(t *testing.T) {
 	}
 }
 
+func TestWebUIEnabled(t *testing.T) {
+	resetCfg()
+	defer func() { FlagWebUI = false; SetActingMaster(false) }()
+
+	// 主节点/独立节点(local 模式)始终开放
+	Cfg.Mode["Type"] = "local"
+	FlagWebUI = false
+	SetActingMaster(false)
+	if !WebUIEnabled() {
+		t.Error("local node should always serve web UI")
+	}
+
+	// Agent(cloud 模式)默认关闭
+	Cfg.Mode["Type"] = "cloud"
+	if WebUIEnabled() {
+		t.Error("cloud agent should disable web UI by default")
+	}
+
+	// -webui 强制开启
+	FlagWebUI = true
+	if !WebUIEnabled() {
+		t.Error("-webui flag should force-enable web UI")
+	}
+	FlagWebUI = false
+
+	// 容灾接管期间(代理主节点)自动开放
+	SetActingMaster(true)
+	if !WebUIEnabled() {
+		t.Error("acting master agent should serve web UI during failover")
+	}
+}
+
 // TestElectionPromotionOnPrimaryDown 验证选举核心: 主节点不可达时,
 // 下一优先级的可达候选自动成为代理主节点。这里用纯函数复刻 ClusterSync
 // 的选举片段进行断言, 不依赖网络。

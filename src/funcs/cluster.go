@@ -2,6 +2,7 @@ package funcs
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -22,6 +23,7 @@ type clusterPeerInfo struct {
 	EpochTime string `json:"epochtime"`
 	Mode      string `json:"mode"`
 	Acting    bool   `json:"acting"`
+	UserRev   int64  `json:"userrev"` // 用户数据版本(账户密码随主同步的 LWW 依据)
 	// Legacy: 节点 HTTP 可达但不支持集群接口(旧版本二进制/未互信),
 	// 滚动升级期间视为"在线但不参与容灾", 避免误判离线触发接管。
 	Legacy bool `json:"-"`
@@ -111,13 +113,72 @@ func ClusterSync() {
 		seelog.Info("[func:ClusterSync] adopting fresher config from ", bestEp,
 			" (epoch ", best.Epoch, " > local ", local.Epoch, ")")
 		syncFromEndpoint("http://" + bestEp + "/api/config.json")
-		return
-	}
-	if selfActing {
+	} else if selfActing {
 		seelog.Debug("[func:ClusterSync] self is acting master, config is authoritative (epoch ", local.Epoch, ")")
 	} else {
 		seelog.Debug("[func:ClusterSync] following acting master ", acting, ", local config up to date (epoch ", local.Epoch, ")")
 	}
+
+	// 用户账户随主同步(LWW): 可达候选中用户版本最高者胜出,
+	// 主节点改密码/增删用户后, 全部 Agent 在下一周期跟随生效。
+	localURev := g.UserRev()
+	bestURev, bestUEp := localURev, ""
+	for ep, info := range infos {
+		if info.Legacy {
+			continue
+		}
+		if info.UserRev > bestURev {
+			bestURev = info.UserRev
+			bestUEp = ep
+		}
+	}
+	if bestUEp != "" {
+		seelog.Info("[func:ClusterSync] adopting newer user table from ", bestUEp,
+			" (rev ", bestURev, " > local ", localURev, ")")
+		SyncUsersFrom(bestUEp, false)
+	}
+}
+
+// SyncUsersFrom 从指定节点拉取完整用户表(签名请求 + AES-256-GCM 加密传输)。
+// force=true 时无视版本号直接采纳(节点初次 join 时以主节点为准)。
+func SyncUsersFrom(endpoint string, force bool) error {
+	url := "http://" + endpoint + "/api/users.json"
+	client := http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Get(g.SignURL(url, g.Cfg.Password))
+	if err != nil {
+		seelog.Error("[func:SyncUsersFrom] pull users from ", endpoint, " failed: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode != 200 {
+		seelog.Error("[func:SyncUsersFrom] ", endpoint, " returned HTTP ", resp.StatusCode)
+		return errors.New("users sync: unexpected status")
+	}
+	// 用户哈希属敏感数据: 仅接受加密载荷
+	if !g.IsEncryptedPayload(body) {
+		seelog.Error("[func:SyncUsersFrom] ", endpoint, " returned non-encrypted payload, reject")
+		return errors.New("users sync: payload not encrypted")
+	}
+	plain, err := g.DecryptPayload(body, g.Cfg.Password)
+	if err != nil {
+		seelog.Error("[func:SyncUsersFrom] decrypt failed (token mismatch?): ", err)
+		return err
+	}
+	var out struct {
+		Rev   int64        `json:"rev"`
+		Users []g.UserFull `json:"users"`
+	}
+	if err := json.Unmarshal(plain, &out); err != nil {
+		return err
+	}
+	if !force && out.Rev <= g.UserRev() {
+		return nil
+	}
+	if force && out.Rev < 1 {
+		out.Rev = 1
+	}
+	return g.ReplaceUsers(out.Users, out.Rev)
 }
 
 // probeAll 并发探测候选节点, 返回可达者的信息(endpoint -> info)

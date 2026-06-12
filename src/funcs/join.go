@@ -85,6 +85,14 @@ func JoinMasterN(master, token, name, addr, group string, attempts int) error {
 	if err := g.SaveConfig(); err != nil {
 		return err
 	}
+	// 登录账户随主节点: join 时全量同步主节点用户表(之后每分钟跟随变更)
+	if u, err := url.Parse(master); err == nil && u.Host != "" {
+		if err := SyncUsersFrom(u.Host, true); err != nil {
+			seelog.Error("[func:JoinMaster] initial user sync failed (will retry each cycle): ", err)
+		} else {
+			seelog.Info("[func:JoinMaster] user accounts synced from master")
+		}
+	}
 	os.WriteFile(joinMarkerPath(), []byte(joinFingerprint(master, token, name, addr, group)), 0600)
 	seelog.Info("[func:JoinMaster] joined mesh, config synced from ", endpoint)
 	return nil
