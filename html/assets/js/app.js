@@ -16,7 +16,7 @@ var SP = (function () {
     var navItems = [
         { group: '监控' },
         { id: 'index', href: 'index.html', title: '概览', icon: 'dashboard' },
-        { id: 'pingmesh', href: 'pingmesh.html', title: 'Pingmesh 矩阵', icon: 'mesh' },
+        { id: 'pingmesh', href: 'pingmesh.html', title: 'Pingmesh', icon: 'mesh' },
         { id: 'reverse', href: 'reverse.html', title: '反向 Ping', icon: 'reverse' },
         { id: 'topology', href: 'topology.html', title: '网络拓扑', icon: 'topo' },
         { id: 'mapping', href: 'mapping.html', title: '全球延迟', icon: 'map' },
