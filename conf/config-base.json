@@ -30,7 +30,7 @@
 		"1.2.3.4": {
 			"Name": "OtherSP",
 			"Addr": "1.2.3.4",
-			"Smartping": true,
+			"Pingmesh": true,
 			"Ping": [
 				"114.114.114.114",
 				"127.0.0.1",
@@ -74,21 +74,21 @@
 		"114.114.114.114": {
 			"Name": "114DNS",
 			"Addr": "114.114.114.114",
-			"Smartping": false,
+			"Pingmesh": false,
 			"Ping": [],
 			"Topology": []
 		},
 		"123.125.114.144": {
 			"Name": "百度",
 			"Addr": "123.125.114.144",
-			"Smartping": false,
+			"Pingmesh": false,
 			"Ping": [],
 			"Topology": []
 		},
 		"127.0.0.1": {
 			"Name": "本机",
 			"Addr": "127.0.0.1",
-			"Smartping": true,
+			"Pingmesh": true,
 			"Ping": [
 				"1.2.3.4",
 				"114.114.114.114",
@@ -143,14 +143,14 @@
 		"69.171.229.28": {
 			"Name": "Facebook",
 			"Addr": "69.171.229.28",
-			"Smartping": false,
+			"Pingmesh": false,
 			"Ping": [],
 			"Topology": []
 		},
 		"8.8.4.4": {
 			"Name": "GoogleDNS",
 			"Addr": "8.8.4.4",
-			"Smartping": false,
+			"Pingmesh": false,
 			"Ping": [],
 			"Topology": []
 		}

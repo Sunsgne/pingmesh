@@ -22,4 +22,6 @@ src/test*
 conf/config.json
 !bin/nssm.exe*
 logs/*
-html/admin/*
+html/admin/*html/.assets-ver
+db/*.db-wal
+db/*.db-shm

@@ -1,5 +1,7 @@
 package g
 
+import "encoding/json"
+
 type Config struct {
 	Ver        string
 	Port       int
@@ -27,12 +29,27 @@ type AlertChannel struct {
 }
 
 type NetworkMember struct {
-	Name      string
-	Addr      string
-	Smartping bool
-	Ping      []string
-	//Tools map[string][]string
+	Name     string
+	Addr     string
+	Pingmesh bool
+	Ping     []string
 	Topology []map[string]string
+}
+
+// UnmarshalJSON 兼容旧版配置中的 "Smartping" 字段名
+func (n *NetworkMember) UnmarshalJSON(b []byte) error {
+	type alias NetworkMember
+	aux := struct {
+		*alias
+		Smartping *bool `json:"Smartping"`
+	}{alias: (*alias)(n)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if aux.Smartping != nil && !n.Pingmesh {
+		n.Pingmesh = *aux.Smartping
+	}
+	return nil
 }
 
 //Ping Struct

@@ -12,6 +12,7 @@
 #  其他:
 #    sudo ./deploy/install.sh --port 8899          # 指定端口
 #    sudo ./deploy/install.sh --dir /opt/pingmesh  # 指定安装目录
+#    sudo ./deploy/install.sh --update             # 在线更新到最新版(保留服务配置与数据)
 #    sudo ./deploy/install.sh --uninstall          # 卸载(保留数据目录)
 #
 #  也支持远程一键安装(无需提前克隆仓库):
@@ -22,7 +23,7 @@ set -euo pipefail
 REPO_URL="https://github.com/Sunsgne/smartping"
 INSTALL_DIR=/opt/pingmesh
 SERVICE=pingmesh
-JOIN="" TOKEN="" NAME="" PORT="" UNINSTALL=0
+JOIN="" TOKEN="" NAME="" PORT="" UNINSTALL=0 UPDATE=0
 
 info()  { echo -e "\033[32m[PingMesh]\033[0m $*"; }
 warn()  { echo -e "\033[33m[PingMesh]\033[0m $*"; }
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --name)      NAME="$2";  shift 2 ;;
     --port)      PORT="$2";  shift 2 ;;
     --dir)       INSTALL_DIR="$2"; shift 2 ;;
+    --update)    UPDATE=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h|--help)   grep '^#' "$0" | head -20; exit 0 ;;
     *) fatal "未知参数: $1 (使用 --help 查看用法)" ;;
@@ -123,6 +125,22 @@ if [[ -n "$JOIN" ]]; then
 fi
 
 # ---------------------------------------------------------- 5. 启动服务 ----
+if [[ $UPDATE -eq 1 ]]; then
+  info "[5/5] 更新模式: 保留现有服务配置, 仅替换二进制并重启 ..."
+  if [[ $HAS_SYSTEMD -eq 1 && -f /etc/systemd/system/${SERVICE}.service ]]; then
+    systemctl restart "$SERVICE"
+    sleep 1
+    systemctl is-active --quiet "$SERVICE" && info "更新完成, 服务已重启 (版本: $(${INSTALL_DIR}/pingmesh -v))" \
+      || fatal "服务重启失败, 请查看: journalctl -u ${SERVICE} -n 50"
+  else
+    cd "$INSTALL_DIR"
+    nohup "${INSTALL_DIR}/pingmesh" >/dev/null 2>&1 &
+    sleep 1
+    pgrep -f "${INSTALL_DIR}/pingmesh" >/dev/null && info "更新完成, 进程已重启" || fatal "重启失败"
+  fi
+  exit 0
+fi
+
 info "[5/5] 配置并启动服务 ..."
 if [[ $HAS_SYSTEMD -eq 1 ]]; then
   cat > "/etc/systemd/system/${SERVICE}.service" <<UNIT

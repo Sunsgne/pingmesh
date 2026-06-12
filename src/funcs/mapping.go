@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/cihub/seelog"
 	_ "modernc.org/sqlite"
-	"github.com/smartping/smartping/src/g"
-	"github.com/smartping/smartping/src/nettools"
+	"github.com/zenlenet/pingmesh/src/g"
+	"github.com/zenlenet/pingmesh/src/nettools"
 	"math"
 	"net"
 	"strconv"
@@ -31,8 +31,8 @@ func Mapping() {
 		for prov, _ := range provDetail {
 			seelog.Debug("[func:Mapping]", g.Cfg.Chinamap[tel][prov])
 			if len(g.Cfg.Chinamap[tel][prov]) > 0 {
-				go MappingTask(tel, prov, g.Cfg.Chinamap[tel][prov], &wg)
 				wg.Add(1)
+				go MappingTask(tel, prov, g.Cfg.Chinamap[tel][prov], &wg)
 			}
 		}
 	}
@@ -123,15 +123,11 @@ func MapPingStorage() {
 	if err != nil {
 		seelog.Error("[func:StartPing] Json Error ", err)
 	}
-	sql := "REPLACE INTO [mappinglog] (logtime, mapjson) values('" + time.Now().Format("2006-01-02 15:04") + "','" + string(jdata) + "')"
 	g.DLock.Lock()
-	g.Db.Exec(sql)
-	_, err = g.Db.Exec(sql)
-	seelog.Debug(sql)
+	_, err = g.Db.Exec("REPLACE INTO mappinglog (logtime, mapjson) values(?,?)", time.Now().Format("2006-01-02 15:04"), string(jdata))
 	if err != nil {
-		seelog.Error("[func:StartPing] Sql Error ", err)
+		seelog.Error("[func:MapPingStorage] Sql Error ", err)
 	}
 	g.DLock.Unlock()
-	seelog.Debug("[func:MapPingStorage] ", sql)
 	seelog.Info("Finish MapPingStorage...")
 }

@@ -2,126 +2,121 @@ package nettools
 
 import (
 	"bytes"
-	"encoding/binary"
+	"errors"
+	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
-	"math/rand"
-	"net"
-	"time"
 )
 
-type pkg struct {
-	conn     net.PacketConn
-	ipv4conn *ipv4.PacketConn
-	msg      icmp.Message
-	netmsg   []byte
-	id       int
-	seq      int
-	maxrtt   time.Duration
-	dest     net.Addr
+// 共享 ICMP socket + 应答分发器。
+// 旧实现每次 ping 都新建 raw socket, 且每个 socket 都会收到整机全部 ICMP
+// 回包, N 个目标并发时包处理量是 O(N^2)。现在全进程仅一个探测 socket,
+// 读循环按 (id,seq) 把应答派发给等待者, 包处理量回到 O(N)。
+
+var (
+	pingInitOnce sync.Once
+	pingInitErr  error
+	pingConn     net.PacketConn
+	pingSeq      uint32 // 全局自增, 生成唯一 (id,seq)
+
+	pendingMu sync.Mutex
+	pending   = map[uint64]chan time.Duration{}
+)
+
+func pingKey(id, seq int) uint64 {
+	return uint64(uint16(id))<<16 | uint64(uint16(seq))
 }
 
-type ICMP struct {
-	Addr    net.Addr
-	RTT     time.Duration
-	MaxRTT  time.Duration
-	MinRTT  time.Duration
-	AvgRTT  time.Duration
-	Final   bool
-	Timeout bool
-	Down    bool
-	Error   error
+func initPingSocket() {
+	pingInitOnce.Do(func() {
+		conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
+		if err != nil {
+			pingInitErr = err
+			return
+		}
+		pingConn = conn
+		go pingReadLoop()
+	})
 }
 
-func (t *pkg) Send(ttl int) ICMP {
-	var hop ICMP
-	var err error
-	t.conn, err = net.ListenPacket("ip4:icmp", "0.0.0.0")
-	if nil != err {
-		return hop
-	}
-	defer t.conn.Close()
-	t.ipv4conn = ipv4.NewPacketConn(t.conn)
-	defer t.ipv4conn.Close()
-	hop.Error = t.conn.SetReadDeadline(time.Now().Add(t.maxrtt))
-	if nil != hop.Error {
-		return hop
-	}
-	if nil != t.ipv4conn {
-		hop.Error = t.ipv4conn.SetTTL(ttl)
-	}
-	if nil != hop.Error {
-		return hop
-	}
-	sendOn := time.Now()
-	if nil != t.ipv4conn {
-		_, hop.Error = t.conn.WriteTo(t.netmsg, t.dest)
-	}
-	if nil != hop.Error {
-		return hop
-	}
-	buf := make([]byte, 1500)
+func pingReadLoop() {
+	buf := make([]byte, 1600)
 	for {
-		var readLen int
-		readLen, hop.Addr, hop.Error = t.conn.ReadFrom(buf)
-		if nerr, ok := hop.Error.(net.Error); ok && nerr.Timeout() {
-			hop.Timeout = true
-			return hop
-		}
-		if nil != hop.Error {
-			return hop
-		}
-		var result *icmp.Message
-		if nil != t.ipv4conn {
-			result, hop.Error = icmp.ParseMessage(1, buf[:readLen])
-		}
-		if nil != hop.Error {
-			return hop
-		}
-		switch result.Type {
-		case ipv4.ICMPTypeEchoReply:
-			if rply, ok := result.Body.(*icmp.Echo); ok {
-				if t.id == rply.ID && t.seq == rply.Seq {
-					hop.Final = true
-					hop.RTT = time.Since(sendOn)
-					return hop
-				}
-
+		n, _, err := pingConn.ReadFrom(buf)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				continue
 			}
-		case ipv4.ICMPTypeTimeExceeded:
-			if rply, ok := result.Body.(*icmp.TimeExceeded); ok {
-				if len(rply.Data) > 24 {
-					if uint16(t.id) == binary.BigEndian.Uint16(rply.Data[24:26]) {
-						hop.RTT = time.Since(sendOn)
-						return hop
-					}
-				}
-			}
-		case ipv4.ICMPTypeDestinationUnreachable:
-			if rply, ok := result.Body.(*icmp.Echo); ok {
-				if t.id == rply.ID && t.seq == rply.Seq {
-					hop.Down = true
-					hop.RTT = time.Since(sendOn)
-					return hop
-				}
-
+			return
+		}
+		msg, err := icmp.ParseMessage(1, buf[:n])
+		if err != nil || msg.Type != ipv4.ICMPTypeEchoReply {
+			continue
+		}
+		rply, ok := msg.Body.(*icmp.Echo)
+		if !ok {
+			continue
+		}
+		key := pingKey(rply.ID, rply.Seq)
+		pendingMu.Lock()
+		ch := pending[key]
+		delete(pending, key)
+		pendingMu.Unlock()
+		if ch != nil {
+			select {
+			case ch <- 0: // 仅作应答信号, 耗时由调用方计算
+			default:
 			}
 		}
 	}
 }
 
+// RunPing 发送一个 ICMP echo 并等待应答, 返回毫秒级延迟。
+// 保持旧签名兼容; seq 参数仅作参考, 内部使用全局唯一序号防串包。
 func RunPing(IpAddr *net.IPAddr, maxrtt time.Duration, maxttl int, seq int) (float64, error) {
-	var res pkg
-	var err error
-	res.dest = IpAddr
-	res.maxrtt = maxrtt
-	res.id = rand.Intn(65535)
-	res.seq = seq
-	res.msg = icmp.Message{Type: ipv4.ICMPTypeEcho, Code: 0, Body: &icmp.Echo{ID: res.id, Seq: res.seq, Data: bytes.Repeat([]byte("Go Smart Ping!"), 4) }}
-	res.netmsg, err = res.msg.Marshal(nil)
-	if nil != err {
+	initPingSocket()
+	if pingInitErr != nil {
+		return 0, pingInitErr
+	}
+	// 唯一 (id,seq): 高 16 位做 id, 低 16 位做 seq
+	v := atomic.AddUint32(&pingSeq, 1)
+	id := int(uint16(v >> 16)) | 0x1
+	sq := int(uint16(v))
+
+	msg := icmp.Message{Type: ipv4.ICMPTypeEcho, Code: 0,
+		Body: &icmp.Echo{ID: id, Seq: sq, Data: bytes.Repeat([]byte("ZENLENET PingMesh!"), 3)}}
+	wire, err := msg.Marshal(nil)
+	if err != nil {
 		return 0, err
 	}
-	pingRsult := res.Send(maxttl)
-	return float64(pingRsult.RTT.Nanoseconds()) / 1e6, pingRsult.Error
+
+	ch := make(chan time.Duration, 1)
+	key := pingKey(id, sq)
+	pendingMu.Lock()
+	pending[key] = ch
+	pendingMu.Unlock()
+	cleanup := func() {
+		pendingMu.Lock()
+		delete(pending, key)
+		pendingMu.Unlock()
+	}
+
+	sendOn := time.Now()
+	if _, err := pingConn.WriteTo(wire, IpAddr); err != nil {
+		cleanup()
+		return 0, err
+	}
+	timer := time.NewTimer(maxrtt)
+	defer timer.Stop()
+	select {
+	case <-ch:
+		return float64(time.Since(sendOn).Nanoseconds()) / 1e6, nil
+	case <-timer.C:
+		cleanup()
+		return 0, errors.New("timeout")
+	}
 }
