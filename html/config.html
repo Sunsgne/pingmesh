@@ -106,6 +106,7 @@
           <span class="muted">共 <b id="node-count">0</b> 个节点</span>
           <span class="spacer"></span>
           <input type="text" class="input" id="node-search" placeholder="搜索名称 / IP / 分组..." style="width:220px;padding:6px 10px">
+          <button class="btn sm" id="node-import-btn">批量导入被测目标</button>
           <button class="btn primary sm" id="node-add-btn">+ 添加节点</button>
         </div>
         <div class="muted mb-4" style="font-size:12.5px;background:var(--sp-primary-soft);border-radius:8px;padding:10px 14px;line-height:1.8">
@@ -292,6 +293,38 @@
   </div>
 </div>
 
+<!-- 节点管理: 批量导入被测目标 -->
+<div class="sp-modal-mask" id="node-import-modal">
+  <div class="sp-modal lg">
+    <div class="m-head"><h3>批量导入被测目标</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="muted mb-2" style="font-size:12.5px;line-height:1.8">
+        支持两种格式，自动识别、与现有节点去重（重复地址自动跳过）：<br>
+        1. <b>CSV</b>（每行一条）：<span class="mono">名称,IP或域名[,分组]</span>　例如 <span class="mono">上海网关,10.1.1.1,华东</span><br>
+        2. <b>JSON</b>：<span class="mono">[{"name":"上海网关","addr":"10.1.1.1","group":"华东"}, ...]</span>
+      </div>
+      <textarea class="input mono" id="ni-text" rows="10" spellcheck="false"
+        placeholder="上海网关,10.1.1.1,华东&#10;广州DNS,114.114.114.114,华南&#10;美西节点,us-west.example.com,海外"></textarea>
+      <div class="field mt-4" style="margin-bottom:0">
+        <div class="flex mb-2">
+          <label style="margin:0">导入后由哪些探测节点监测（默认阈值 200ms/30%）</label>
+          <span class="spacer"></span>
+          <button class="btn sm" id="ni-w-all">全选</button>
+          <button class="btn sm" id="ni-w-none">清空</button>
+        </div>
+        <div style="max-height:180px;overflow-y:auto;border:1px solid var(--sp-border);border-radius:10px;padding:6px 0">
+          <table class="sp-table"><tbody id="ni-watchers"></tbody></table>
+        </div>
+      </div>
+      <div class="hint mt-2" id="ni-result"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="ni-save">解析并导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- 全球延迟: 添加/编辑探测点 -->
 <div class="sp-modal-mask" id="gm-modal">
   <div class="sp-modal">
@@ -439,7 +472,8 @@
         <div style="max-height:320px;overflow-y:auto;border:1px solid var(--sp-border);border-radius:10px;padding:6px 0">
           <table class="sp-table"><tbody id="n-watchers"></tbody></table>
         </div>
-        <div class="hint mt-2">在这里直接选择由哪些探测节点来监测本目标（新勾选的使用默认阈值 200ms/30%），不必再逐个编辑探测节点。</div>
+        <div class="hint mt-2">在这里直接选择由哪些探测节点来监测本目标（新勾选的使用默认阈值 200ms/30%），不必再逐个编辑探测节点。
+          需要一次添加多个目标？<a id="n-goto-import">批量导入 CSV / JSON &rarr;</a></div>
       </div>
     </div>
     <div class="m-foot">
@@ -1072,6 +1106,93 @@ SP.init('config', '系统配置').done(function (ctx) {
 
     $('#node-add-btn').click(function () { openNode(null); });
     $('#node-modal .m-cancel').click(function () { SP.closeModal('node-modal'); });
+
+    /* ----- 批量导入被测目标 ----- */
+    function openNodeImport() {
+        SP.closeModal('node-modal');
+        $('#ni-text').val('');
+        $('#ni-result').html('');
+        var box = $('#ni-watchers').empty();
+        var cnt = 0;
+        $.each(cfg.Network, function (addr, n) {
+            if (!n.Pingmesh) return;
+            cnt++;
+            box.append('<tr><td style="width:40px;text-align:center"><input type="checkbox" class="ni-w" data-p="' + SP.esc(addr) + '" checked></td>' +
+                '<td><b>' + SP.esc(n.Name) + '</b> <span class="badge indigo" style="font-size:10px">' + SP.esc(groupOf(n)) + '</span> ' +
+                '<span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td></tr>');
+        });
+        if (cnt === 0) box.append('<tr><td class="muted" style="padding:12px">暂无探测节点，导入后可稍后再配置监测关系</td></tr>');
+        SP.openModal('node-import-modal');
+    }
+    $('#node-import-btn').click(openNodeImport);
+    $('#n-goto-import').click(openNodeImport);
+    $('#node-import-modal .m-cancel').click(function () { SP.closeModal('node-import-modal'); });
+    $('#ni-w-all').click(function () { $('#ni-watchers .ni-w').prop('checked', true); });
+    $('#ni-w-none').click(function () { $('#ni-watchers .ni-w').prop('checked', false); });
+
+    function validAddr(a) {
+        return /^(\d{1,3}\.){3}\d{1,3}$/.test(a) ||
+            /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/.test(a);
+    }
+
+    $('#ni-save').click(function () {
+        var text = $.trim($('#ni-text').val());
+        if (!text) { SP.toast('请粘贴导入内容', 'err'); return; }
+        // 解析: JSON 数组 或 CSV 行
+        var items = [], errors = [];
+        if (text.charAt(0) === '[' || text.charAt(0) === '{') {
+            try {
+                var arr = JSON.parse(text);
+                if (!$.isArray(arr)) arr = [arr];
+                $.each(arr, function (i, o) {
+                    items.push({ name: $.trim(o.name || o.Name || ''), addr: $.trim(o.addr || o.Addr || ''), group: $.trim(o.group || o.Group || '') });
+                });
+            } catch (e) { $('#ni-result').html('<span style="color:var(--sp-red)">JSON 解析失败: ' + SP.esc(e.message) + '</span>'); return; }
+        } else {
+            $.each(text.split('\n'), function (i, line) {
+                line = $.trim(line);
+                if (line === '') return;
+                var parts = line.split(/[,，]/);
+                if (parts.length < 2) { errors.push('第' + (i + 1) + '行: 至少需要 名称,地址'); return; }
+                items.push({ name: $.trim(parts[0]), addr: $.trim(parts[1]), group: $.trim(parts[2] || '') });
+            });
+        }
+        // 选中的监测者
+        var watchers = [];
+        $('#ni-watchers .ni-w:checked').each(function () { watchers.push($(this).attr('data-p')); });
+
+        var added = 0, skipped = 0;
+        $.each(items, function (i, it) {
+            if (!it.name || !it.addr) { errors.push('第' + (i + 1) + '条: 名称或地址为空'); return; }
+            if (!validAddr(it.addr)) { errors.push('第' + (i + 1) + '条: 地址非法 ' + it.addr); return; }
+            if (cfg.Network[it.addr]) { skipped++; return; }
+            cfg.Network[it.addr] = { Name: it.name, Addr: it.addr, Group: it.group, Pingmesh: false, Ping: [], Topology: [] };
+            $.each(watchers, function (_, pa) {
+                var probe = cfg.Network[pa];
+                if (!probe || !probe.Pingmesh) return;
+                probe.Ping = probe.Ping || []; probe.Topology = probe.Topology || [];
+                if ($.inArray(it.addr, probe.Ping) < 0) {
+                    probe.Ping.push(it.addr);
+                    probe.Topology.push(topoEntry(it.addr, it.name, null));
+                }
+            });
+            added++;
+        });
+        var msg = '成功导入 ' + added + ' 个目标' + (skipped ? '，跳过已存在 ' + skipped + ' 个' : '');
+        renderNodes();
+        if (errors.length > 0) {
+            // 有错误行时保留弹窗展示明细, 已成功的行已写入工作副本
+            $('#ni-result').html('<span style="color:var(--sp-red)">' + SP.esc(errors.join('；')) + '</span>' + (added ? '<br>' + SP.esc(msg) : ''));
+            if (added > 0) SP.toast(msg + '（部分行有错误，详见弹窗）', 'err');
+            return;
+        }
+        if (added > 0) {
+            SP.closeModal('node-import-modal');
+            SP.toast(msg + '，记得点击「保存配置」', 'ok');
+        } else {
+            $('#ni-result').html('内容均已存在，无新增');
+        }
+    });
 
     function topoEntry(addr, name, tr) {
         return {
