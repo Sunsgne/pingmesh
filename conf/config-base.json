@@ -18,7 +18,8 @@
 		"Pingcount": 20,
 		"Pingtimeout": 3000,
 		"Pingsize": 56,
-		"Apisign": 1
+		"Apisign": 1,
+		"Remindmin": 0
 	},
 	"Topology": {
 		"Tline": "1",

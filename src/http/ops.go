@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cihub/seelog"
+	"github.com/zenlenet/pingmesh/src/funcs"
 	"github.com/zenlenet/pingmesh/src/g"
 )
 
@@ -102,10 +103,16 @@ func configOpsRoutes() {
 		g.DLock.Lock()
 		_, err := g.Db.Exec("UPDATE alertlog SET ack=1, ackreason=?, ackby=?, acktime=? WHERE rowid=?",
 			reason, by, time.Now().Format("2006-01-02 15:04:05"), id)
+		var targetip string
+		g.Db.QueryRow("SELECT targetip FROM alertlog WHERE rowid=?", id).Scan(&targetip)
 		g.DLock.Unlock()
 		if err != nil {
 			renderErr(w, err.Error())
 			return
+		}
+		// 确认联动: 本次故障期间不再重复提醒
+		if targetip != "" {
+			funcs.AckIncident(targetip)
 		}
 		seelog.Info("[func:/api/alertack.json] ack #", id, " by ", by, " reason: ", reason)
 		renderOk(w, nil)

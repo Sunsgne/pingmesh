@@ -51,14 +51,21 @@ func recentStat(target string, mins int) (avg float64, loss float64, jitter floa
 	return avg, loss, jitter, err == nil && cnt > 0
 }
 
-func buildAlertMsg(l g.AlertLog, rule map[string]string, recovered bool) alertMsg {
+func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][2]string) alertMsg {
+	recovered := kind == "recovery"
 	m := alertMsg{Recovered: recovered}
 	m.Link = l.Fromname + " → " + l.Targetname
-	if recovered {
+	switch kind {
+	case "recovery":
 		m.Title = "✅ 网络质量已恢复"
-	} else {
+	case "reminder":
+		m.Title = "⏰ 故障持续提醒"
+	case "mute_expired":
+		m.Title = "🔔 屏蔽到期, 目标仍异常"
+	default:
 		m.Title = "🔴 网络质量告警"
 	}
+	m.Fields = append(m.Fields, extras...)
 	m.Fields = append(m.Fields, [2]string{"链路", m.Link})
 	m.Fields = append(m.Fields, [2]string{"源节点", l.Fromname + " (" + l.Fromip + ")"})
 	m.Fields = append(m.Fields, [2]string{"目标", l.Targetname + " (" + l.Targetip + ")"})
@@ -84,9 +91,10 @@ func buildAlertMsg(l g.AlertLog, rule map[string]string, recovered bool) alertMs
 	return m
 }
 
-// NotifyAll 通过所有已启用通道发送告警/恢复通知
-func NotifyAll(l g.AlertLog, rule map[string]string, recovered bool) {
-	m := buildAlertMsg(l, rule, recovered)
+// NotifyAll 通过所有已启用通道发送告警/恢复/提醒类通知
+// kind: alert | recovery | reminder | mute_expired
+func NotifyAll(l g.AlertLog, rule map[string]string, kind string, extras [][2]string) {
+	m := buildAlertMsg(l, rule, kind, extras)
 	// 邮件
 	if g.Cfg.Alert["SendEmailAccount"] != "" && g.Cfg.Alert["SendEmailPassword"] != "" &&
 		g.Cfg.Alert["EmailHost"] != "" && g.Cfg.Alert["RevcEmailList"] != "" {
@@ -99,12 +107,8 @@ func NotifyAll(l g.AlertLog, rule map[string]string, recovered bool) {
 		}()
 	}
 	// 其他通道
-	event := "alert"
-	if recovered {
-		event = "recovery"
-	}
 	payload := map[string]interface{}{
-		"event":      event,
+		"event":      kind,
 		"title":      m.Title + " " + m.Link,
 		"content":    m.Plain,
 		"fromname":   l.Fromname,
