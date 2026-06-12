@@ -106,6 +106,7 @@
           <span class="muted">共 <b id="node-count">0</b> 个节点</span>
           <span class="spacer"></span>
           <input type="text" class="input" id="node-search" placeholder="搜索名称 / IP / 分组..." style="width:220px;padding:6px 10px">
+          <button class="btn sm" id="plane-wizard-btn">双网口组网向导</button>
           <button class="btn sm" id="node-import-btn">批量导入被测目标</button>
           <button class="btn primary sm" id="node-add-btn">+ 添加节点</button>
         </div>
@@ -298,6 +299,58 @@
       <button class="btn m-cancel">取消</button>
       <button class="btn" id="ch-test">发送测试</button>
       <button class="btn primary" id="ch-save">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 双网口(多平面)组网向导 -->
+<div class="sp-modal-mask" id="plane-modal">
+  <div class="sp-modal xl">
+    <div class="m-head"><h3>双网口组网向导(公网 + 专线)</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="muted mb-4" style="font-size:12.5px;line-height:1.8;background:var(--sp-primary-soft);border-radius:8px;padding:10px 14px">
+        每台机器有公网、专线两个网口时：向导会为每台机器生成 <b>名称-公网</b> / <b>名称-专线</b> 两个目标节点（按平面分组），
+        并为勾选的探测节点自动建立<b>同平面</b>监测链路（公网口→对端公网IP、专线口→对端专线IP），两条路径完全分开监控、互不串路。
+      </div>
+
+      <div class="grid cols-2 mb-2">
+        <div class="field">
+          <label><input type="checkbox" id="pw-en-pub" checked style="margin-right:6px">启用平面 1（分组名）</label>
+          <input type="text" class="input" id="pw-name-pub" value="公网">
+        </div>
+        <div class="field">
+          <label><input type="checkbox" id="pw-en-line" checked style="margin-right:6px">启用平面 2（分组名）</label>
+          <input type="text" class="input" id="pw-name-line" value="专线">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>哪些探测节点监测这批机器（每个平面填该探测节点对应网口的源IP；留空 = 走系统默认路由）</label>
+        <div style="max-height:200px;overflow-y:auto;border:1px solid var(--sp-border);border-radius:10px">
+          <table class="sp-table">
+            <thead><tr><th style="width:40px">参与</th><th>探测节点</th><th>平面1 源IP（公网口）</th><th>平面2 源IP（专线口）</th></tr></thead>
+            <tbody id="pw-probes"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>机器列表（每行一台：<span class="mono">机器名,公网IP,专线IP</span>，某项留空表示该机器没有该平面）</label>
+        <textarea class="input mono" id="pw-machines" rows="7" spellcheck="false"
+          placeholder="机房A,1.1.1.1,192.168.1.1&#10;机房B,1.1.1.2,192.168.1.2&#10;仅公网的机器C,1.1.1.3,&#10;仅专线的机器D,,192.168.1.4"></textarea>
+      </div>
+
+      <div class="flex">
+        <span class="muted" style="font-size:12.5px">告警阈值:</span>
+        延迟 <input type="number" class="input" id="pw-delay" value="200" style="width:85px;padding:4px 8px"> ms
+        丢包 <input type="number" class="input" id="pw-loss" value="30" style="width:70px;padding:4px 8px"> %
+        <span class="muted" style="font-size:12px">（窗口 900 秒 / 次数 3，生成后可在监测规则里逐条调整）</span>
+      </div>
+      <div class="hint mt-2" id="pw-result"></div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="pw-save">生成组网配置</button>
     </div>
   </div>
 </div>
@@ -1169,6 +1222,101 @@ SP.init('config', '系统配置').done(function (ctx) {
     $('#node-add-btn').click(function () { openNode(null); });
     $('#node-modal .m-cancel').click(function () { SP.closeModal('node-modal'); });
 
+    /* ----- 双网口组网向导 ----- */
+    $('#plane-wizard-btn').click(function () {
+        $('#pw-machines').val('');
+        $('#pw-result').html('');
+        var box = $('#pw-probes').empty();
+        var cnt = 0;
+        $.each(cfg.Network, function (addr, n) {
+            if (!n.Pingmesh) return;
+            cnt++;
+            box.append('<tr><td style="text-align:center"><input type="checkbox" class="pw-on" data-p="' + SP.esc(addr) + '" checked></td>' +
+                '<td><b>' + SP.esc(n.Name) + '</b> <span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
+                '<td><input type="text" class="input mono pw-src-pub" style="padding:4px 8px" placeholder="默认路由"></td>' +
+                '<td><input type="text" class="input mono pw-src-line" style="padding:4px 8px" placeholder="默认路由"></td></tr>');
+        });
+        if (cnt === 0) box.append('<tr><td colspan="4" class="muted" style="padding:12px">暂无探测节点</td></tr>');
+        SP.openModal('plane-modal');
+    });
+    $('#plane-modal .m-cancel').click(function () { SP.closeModal('plane-modal'); });
+
+    $('#pw-save').click(function () {
+        var planes = [];
+        if ($('#pw-en-pub').is(':checked')) planes.push({ name: $.trim($('#pw-name-pub').val()) || '公网', col: 1, srcCls: '.pw-src-pub' });
+        if ($('#pw-en-line').is(':checked')) planes.push({ name: $.trim($('#pw-name-line').val()) || '专线', col: 2, srcCls: '.pw-src-line' });
+        if (planes.length === 0) { SP.toast('请至少启用一个平面', 'err'); return; }
+        var text = $.trim($('#pw-machines').val());
+        if (!text) { SP.toast('请填写机器列表', 'err'); return; }
+        var delay = $('#pw-delay').val() || 200, loss = $('#pw-loss').val() || 30;
+        // 参与的探测节点及其各平面源IP
+        var probes = [];
+        $('#pw-probes tr').each(function () {
+            var on = $(this).find('.pw-on');
+            if (on.length === 0 || !on.is(':checked')) return;
+            probes.push({
+                addr: on.attr('data-p'),
+                srcPub: $.trim($(this).find('.pw-src-pub').val()),
+                srcLine: $.trim($(this).find('.pw-src-line').val())
+            });
+        });
+        if (probes.length === 0) { SP.toast('请至少勾选一个探测节点', 'err'); return; }
+
+        var errors = [], addedNodes = 0, addedLinks = 0;
+        $.each(text.split('\n'), function (i, line) {
+            line = $.trim(line);
+            if (line === '') return;
+            var parts = line.split(/[,，]/);
+            var mname = $.trim(parts[0] || '');
+            var ips = [null, $.trim(parts[1] || ''), $.trim(parts[2] || '')];
+            if (!mname) { errors.push('第' + (i + 1) + '行: 缺少机器名'); return; }
+            $.each(planes, function (_, pl) {
+                var addr = ips[pl.col];
+                if (!addr) return; // 该机器没有该平面
+                if (!validAddr(addr)) { errors.push('第' + (i + 1) + '行: ' + pl.name + ' 地址非法 ' + addr); return; }
+                var nodeName = mname + '-' + pl.name;
+                if (!cfg.Network[addr]) {
+                    cfg.Network[addr] = { Name: nodeName, Addr: addr, Group: pl.name, Pingmesh: false, Ping: [], Topology: [] };
+                    addedNodes++;
+                } else {
+                    cfg.Network[addr].Group = cfg.Network[addr].Group || pl.name;
+                }
+                // 同平面接线: 每个参与的探测节点 -> 该目标, 源IP用对应网口
+                $.each(probes, function (_, pb) {
+                    if (pb.addr === addr) return;
+                    var probe = cfg.Network[pb.addr];
+                    if (!probe || !probe.Pingmesh) return;
+                    probe.Ping = probe.Ping || []; probe.Topology = probe.Topology || [];
+                    var srcip = (pl.col === 1) ? pb.srcPub : pb.srcLine;
+                    var exist = null;
+                    $.each(probe.Topology, function (_, t) { if (t['Addr'] === addr) exist = t; });
+                    if (exist) {
+                        if (srcip) exist['Srcip'] = srcip; // 已有链路仅更新源IP
+                        return;
+                    }
+                    probe.Ping.push(addr);
+                    probe.Topology.push({
+                        'Addr': addr, 'Name': cfg.Network[addr].Name,
+                        'Thdavgdelay': String(delay), 'Thdloss': String(loss),
+                        'Thdjitter': '', 'Thdchecksec': '900', 'Thdoccnum': '3',
+                        'Srcip': srcip, 'Pinterval': '', 'Pcount': '', 'Ptimeout': '', 'Psize': ''
+                    });
+                    addedLinks++;
+                });
+            });
+        });
+        var msg = '生成完成: 新增 ' + addedNodes + ' 个目标节点, ' + addedLinks + ' 条监测链路';
+        renderNodes();
+        if (errors.length > 0) {
+            $('#pw-result').html('<span style="color:var(--sp-red)">' + SP.esc(errors.join('；')) + '</span><br>' + SP.esc(msg));
+            if (addedNodes === 0 && addedLinks === 0) return;
+            SP.toast(msg + '（部分行有错误，详见弹窗）', 'err');
+            return;
+        }
+        SP.closeModal('plane-modal');
+        SP.toast(msg + '，记得点击「保存配置」', 'ok');
+    });
+
     /* ----- 批量导入被测目标 ----- */
     function openNodeImport() {
         SP.closeModal('node-modal');
@@ -1398,7 +1546,8 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Pingsize'] = parseInt($('#f-pingsize').val(), 10) || 56;
         cfg.Base['Apisign'] = $('#f-apisign').is(':checked') ? 1 : 0;
         if (cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] > 55000) {
-            throw new Error('探测间隔×包数不能超过55秒, 请调小间隔或包数');
+            var tot = Math.round(cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] / 1000);
+            throw new Error('探测参数组合无效: 每分钟探测一轮, 一轮要发完全部包。当前 间隔' + cfg.Base['Pinginterval'] + 'ms × ' + cfg.Base['Pingcount'] + '包 = ' + tot + '秒, 超过55秒上限。改成例如 1000ms×30包 或 500ms×60包 即可');
         }
         cfg.Toollimit = parseInt($('#f-toollimit').val(), 10) || 0;
         cfg.Topology['Tline'] = String($('#f-tline').val() || '1');

@@ -359,7 +359,10 @@ func configApiRoutes() {
 			return
 		}
 		if nconfig.Base["Pinginterval"]*nconfig.Base["Pingcount"] > 55000 {
-			preout["info"] = "探测间隔×包数不能超过55秒(每分钟一轮), 请调小间隔或包数"
+			total := nconfig.Base["Pinginterval"] * nconfig.Base["Pingcount"] / 1000
+			preout["info"] = "探测参数组合无效: 系统每分钟向每个目标探测一轮, 一轮要发完全部探测包。当前 间隔" +
+				strconv.Itoa(nconfig.Base["Pinginterval"]) + "ms × " + strconv.Itoa(nconfig.Base["Pingcount"]) + "包 = " +
+				strconv.Itoa(total) + "秒 > 55秒上限, 一轮发不完。请调小间隔或包数, 例如 1000ms×30包=30秒、500ms×60包=30秒"
 			RenderJson(w, preout)
 			return
 		}
@@ -454,7 +457,7 @@ func configApiRoutes() {
 						effC = v
 					}
 					if effI*effC > 55000 {
-						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 链路探测间隔×包数超过55秒 ) "
+						preout["info"] = k + "->" + topology["Addr"] + " 链路探测参数无效: 每分钟探测一轮, 该链路 间隔" + strconv.Itoa(effI) + "ms × " + strconv.Itoa(effC) + "包 = " + strconv.Itoa(effI*effC/1000) + "秒 > 55秒上限, 请调小该链路的间隔或包数"
 						RenderJson(w, preout)
 						return
 					}
