@@ -31,12 +31,16 @@
     <button class="btn primary" id="login-btn" type="submit" style="width:100%;padding:11px;font-size:14.5px;margin-top:6px;">登 录</button>
   </form>
 
-  <div class="first-hint">首次部署默认账号 <b>admin / admin123</b>，登录后请尽快修改密码</div>
+  <div class="first-hint" id="first-hint" style="display:none">首次部署默认账号 <b>admin / admin123</b>，登录后请尽快修改密码</div>
 </div>
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script>
 $(function () {
+    // 默认密码仍有效时才显示提示, 修改密码后自动消失
+    $.getJSON('/api/loginmeta.json', function (m) {
+        if (m && m.defaultcreds) $('#first-hint').show();
+    });
     $('#login-form').submit(function () {
         var u = $('#username').val(), p = $('#password').val();
         if (!u || !p) { showErr('请输入用户名和密码'); return false; }

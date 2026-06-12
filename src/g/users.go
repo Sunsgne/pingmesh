@@ -55,6 +55,18 @@ func InitUserTable() {
 	}
 }
 
+// DefaultCredsActive 默认账号 admin/admin123 是否仍然有效(用于登录页提示)
+func DefaultCredsActive() bool {
+	var hash string
+	DLock.Lock()
+	err := Db.QueryRow("select password from users where username = 'admin'").Scan(&hash)
+	DLock.Unlock()
+	if err != nil {
+		return false
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte("admin123")) == nil
+}
+
 // VerifyUser 校验用户名密码, 成功返回用户信息
 func VerifyUser(username, password string) (User, error) {
 	u := User{}

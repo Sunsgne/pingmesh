@@ -134,6 +134,11 @@ func deny(w http.ResponseWriter) {
 
 func configAuthRoutes() {
 
+	// 登录页元信息: 默认账号是否仍有效(改掉默认密码后提示自动消失)
+	http.HandleFunc("/api/loginmeta.json", func(w http.ResponseWriter, r *http.Request) {
+		RenderJson(w, map[string]interface{}{"defaultcreds": g.DefaultCredsActive()})
+	})
+
 	// 登录
 	http.HandleFunc("/api/login.json", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
