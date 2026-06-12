@@ -65,13 +65,6 @@ type PingSt struct {
 	Jitter float64
 }
 
-//Ping mini graph Struct
-type PingStMini struct {
-	Lastcheck []string `json:"lastcheck"`
-	LossPk    []string `json:"losspk"`
-	AvgDelay  []string `json:"avgdelay"`
-}
-
 type PingLog struct {
 	Logtime  string
 	Maxdelay string
@@ -104,11 +97,4 @@ type ChinaMp struct {
 type MapVal struct {
 	Value float64 `json:"value"`
 	Name  string  `json:"name"`
-}
-
-type ToolsRes struct {
-	Status string `json:"status"`
-	Error  string `json:"error"`
-	Ip     string `json:"ip"`
-	Ping   PingSt `json:"ping"`
 }
