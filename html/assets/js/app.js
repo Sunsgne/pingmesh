@@ -143,20 +143,43 @@ var SP = (function () {
         if (!bigChart) {
             bigChart = echarts.init(document.getElementById('sp-chart-box'));
             bigChart.setOption({
-                tooltip: { trigger: 'axis' },
-                legend: { data: ['最大延迟', '平均延迟', '最小延迟', '丢包率'], selected: { '最大延迟': false, '最小延迟': false } },
-                grid: { left: 50, right: 55, top: 45, bottom: 60 },
-                dataZoom: [{}],
-                xAxis: { data: [] },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [10, 14],
+                    textStyle: { color: '#e2e8f0', fontSize: 12 },
+                    axisPointer: { type: 'cross', label: { backgroundColor: '#4f46e5' } }
+                },
+                legend: {
+                    data: ['最大延迟', '平均延迟', '最小延迟', '丢包率'],
+                    selected: { '最大延迟': false, '最小延迟': false },
+                    icon: 'roundRect', itemWidth: 14, itemHeight: 8,
+                    textStyle: { color: '#475569', fontSize: 12 }
+                },
+                grid: { left: 52, right: 58, top: 48, bottom: 62 },
+                dataZoom: [{ height: 22, bottom: 14, borderColor: 'transparent', backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)', handleStyle: { color: '#6366f1' } }],
+                xAxis: {
+                    data: [], boundaryGap: false,
+                    axisLine: { lineStyle: { color: '#e2e8f0' } },
+                    axisLabel: { color: '#94a3b8', fontSize: 11 }, axisTick: { show: false }
+                },
                 yAxis: [
-                    { type: 'value', name: '延迟(ms)', position: 'left' },
-                    { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', axisLabel: { formatter: '{value}%' } }
+                    { type: 'value', name: '延迟(ms)', position: 'left', nameTextStyle: { color: '#94a3b8' },
+                      axisLabel: { color: '#94a3b8', fontSize: 11 }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                    { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
+                      axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11 }, splitLine: { show: false } }
                 ],
                 series: [
-                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, areaStyle: { normal: { opacity: .15 } }, lineStyle: { normal: { width: 1 } }, data: [] },
-                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, areaStyle: { normal: { opacity: .15 } }, lineStyle: { normal: { width: 1 } }, data: [] },
-                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, itemStyle: { normal: { color: '#10b981' } }, areaStyle: { normal: { opacity: .25 } }, lineStyle: { normal: { width: 2 } }, data: [] },
-                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, itemStyle: { normal: { color: '#ef4444' } }, lineStyle: { normal: { width: 2 } }, data: [] }
+                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                      itemStyle: { color: '#a5b4fc' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
+                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                      itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
+                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true,
+                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
+                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                          { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
+                      data: [] },
+                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false,
+                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] }
                 ]
             });
         } else {
@@ -219,9 +242,9 @@ var SP = (function () {
         var shell =
             '<div class="sp-layout">' +
             '<aside class="sp-sidebar" id="sp-sidebar">' +
-            '<div class="sp-logo"><div class="logo-mark">SP</div><div class="logo-text">SmartPing<small>网络质量监控平台</small></div></div>' +
+            '<div class="sp-logo"><div class="logo-mark"><img src="assets/img/logo.png" alt="ZENLENET"></div><div class="logo-text">ZENLENET<small>PingMesh 网络质量监控</small></div></div>' +
             '<nav class="sp-nav">' + nav + '</nav>' +
-            '<div class="sp-sidebar-foot">SmartPing <span id="sp-ver"></span></div>' +
+            '<div class="sp-sidebar-foot">ZENLENET PingMesh <span id="sp-ver"></span></div>' +
             '</aside>' +
             '<div class="sp-main">' +
             '<header class="sp-topbar">' +
@@ -242,7 +265,7 @@ var SP = (function () {
             '</div>' +
             '</header>' +
             '<main class="sp-content" id="sp-content"></main>' +
-            '<div class="sp-footer"><span>&copy; 2017-2026 SmartPing.org · Apache-2.0</span><span id="sp-foot-node"></span></div>' +
+            '<div class="sp-footer"><span>&copy; 2026 ZENLENET PingMesh · Apache-2.0</span><span id="sp-foot-node"></span></div>' +
             '</div>' +
             '</div>';
         var page = $('#app').detach();
@@ -267,6 +290,10 @@ var SP = (function () {
         $('#sp-foot-node').text('当前节点: ' + cfg.Name + ' (' + cfg.Addr + ')');
         if (cfg.Mode && cfg.Mode['Type'] === 'cloud') {
             $('#sp-sync-time').text('云端配置 · 最后同步 ' + (cfg.Mode['LastSuccTime'] || '-'));
+        }
+        // 全国延迟功能关闭时隐藏导航入口
+        if (cfg.Base && cfg.Base['Chinamap'] === 0) {
+            $('.sp-nav a[href="mapping.html"]').hide();
         }
     }
 

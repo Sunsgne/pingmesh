@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>系统配置 - SmartPing</title>
+<title>系统配置 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
 <link href="assets/css/modern.css" rel="stylesheet">
 </head>
 <body>
@@ -65,6 +66,11 @@
           <label>访问 IP 白名单</label>
           <input type="text" class="input mono" id="f-authiplist" placeholder="为空则只允许登录用户访问">
           <div class="hint">逗号分隔。白名单中的 IP 无需登录即可访问（兼容旧版）</div>
+        </div>
+        <div class="field">
+          <label>全国延迟功能</label>
+          <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-chinamap"><span class="track"></span></label>
+          <span class="hint" style="display:inline;margin-left:8px">关闭后停止探测并隐藏菜单入口</span>
         </div>
       </div>
     </div>
@@ -202,7 +208,7 @@
       <div id="ch-fields"></div>
       <div class="field">
         <label>启用</label>
-        <span class="switch"><input type="checkbox" id="ch-enabled" checked><span class="track"></span></span>
+        <label class="switch"><input type="checkbox" id="ch-enabled" checked><span class="track"></span></label>
       </div>
     </div>
     <div class="m-foot">
@@ -229,8 +235,8 @@
         </div>
         <div class="field">
           <label>主动探测 (Smartping)</label><br>
-          <span class="switch" style="margin-top:6px"><input type="checkbox" id="n-smartping"><span class="track"></span></span>
-          <span class="hint" style="display:inline;margin-left:8px">该节点部署了 SmartPing</span>
+          <label class="switch" style="margin-top:6px"><input type="checkbox" id="n-smartping"><span class="track"></span></label>
+          <span class="hint" style="display:inline;margin-left:8px">该节点部署了 PingMesh 探针</span>
         </div>
       </div>
       <div id="n-targets-box">
@@ -290,6 +296,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-tsymbolsize').val(cfg.Topology['Tsymbolsize']);
         $('#f-tsound').val(cfg.Topology['Tsound']);
         $('#f-authiplist').val(cfg.Authiplist);
+        $('#f-chinamap').prop('checked', cfg.Base['Chinamap'] !== 0);
         $('#f-emailhost').val(cfg.Alert['EmailHost']);
         $('#f-emailaccount').val(cfg.Alert['SendEmailAccount']);
         $('#f-emailpassword').val(cfg.Alert['SendEmailPassword']);
@@ -305,7 +312,7 @@ SP.init('config', '系统配置').done(function (ctx) {
     function renderJoin() {
         var token = $('#f-jointoken').val() || '<接入令牌>';
         $('#join-cmd').val(
-            './smartping -join http://' + cfg.Addr + ':' + cfg.Port +
+            './pingmesh -join http://' + cfg.Addr + ':' + cfg.Port +
             ' -token ' + token + ' -name <节点名>'
         );
         if (cfg.Mode && cfg.Mode['Type'] === 'cloud') {
@@ -556,6 +563,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Timeout'] = parseInt($('#f-timeout').val(), 10) || 5;
         cfg.Base['Archive'] = parseInt($('#f-archive').val(), 10) || 10;
         cfg.Base['Refresh'] = parseInt($('#f-refresh').val(), 10) || 1;
+        cfg.Base['Chinamap'] = $('#f-chinamap').is(':checked') ? 1 : 0;
         cfg.Toollimit = parseInt($('#f-toollimit').val(), 10) || 0;
         cfg.Topology['Tline'] = String($('#f-tline').val() || '1');
         cfg.Topology['Tsymbolsize'] = String($('#f-tsymbolsize').val() || '70');

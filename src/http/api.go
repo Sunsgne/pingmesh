@@ -540,7 +540,7 @@ func configApiRoutes() {
 			return
 		}
 		now := time.Now().Format("2006-01-02 15:04:05")
-		title := "【测试】SmartPing 告警通道测试"
+		title := "【测试】ZENLENET PingMesh 告警通道测试"
 		text := title + "\n时间: " + now + "\n节点: " + g.Cfg.Name + " (" + g.Cfg.Addr + ")\n如收到此消息说明通道配置正确。"
 		payload := map[string]interface{}{
 			"event": "test", "title": title, "content": text,
@@ -590,7 +590,7 @@ func configApiRoutes() {
 			return
 		}
 
-		err := funcs.SendMail(r.Form["SendEmailAccount"][0], r.Form["SendEmailPassword"][0], r.Form["EmailHost"][0], r.Form["RevcEmailList"][0], "报警测试邮件 - SmartPing", "报警测试邮件")
+		err := funcs.SendMail(r.Form["SendEmailAccount"][0], r.Form["SendEmailPassword"][0], r.Form["EmailHost"][0], r.Form["RevcEmailList"][0], "报警测试邮件 - ZENLENET PingMesh", "报警测试邮件")
 		if err != nil {
 			preout["info"] = err.Error()
 			RenderJson(w, preout)

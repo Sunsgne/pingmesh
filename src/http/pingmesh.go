@@ -39,8 +39,20 @@ func configPingmeshRoutes() {
 		r.ParseForm()
 		mins := 15
 		if len(r.Form["mins"]) > 0 {
-			if m, err := strconv.Atoi(r.Form["mins"][0]); err == nil && m > 0 && m <= 24*60 {
+			if m, err := strconv.Atoi(r.Form["mins"][0]); err == nil && m > 0 && m <= 30*24*60 {
 				mins = m
+			}
+		}
+		// 支持自定义起止时间(格式 2006-01-02 15:04), 优先于 mins
+		timeStartStr := time.Unix(time.Now().Unix()-int64(mins)*60, 0).Format("2006-01-02 15:04")
+		timeEndStr := time.Now().Format("2006-01-02 15:04")
+		if len(r.Form["start"]) > 0 && len(r.Form["end"]) > 0 {
+			if s, err := time.Parse("2006-01-02 15:04", r.Form["start"][0]); err == nil {
+				if e, err2 := time.Parse("2006-01-02 15:04", r.Form["end"][0]); err2 == nil && e.After(s) {
+					timeStartStr = s.Format("2006-01-02 15:04")
+					timeEndStr = e.Format("2006-01-02 15:04")
+					mins = int(e.Sub(s).Minutes())
+				}
 			}
 		}
 		row := PingmeshRow{
@@ -53,10 +65,9 @@ func configPingmeshRoutes() {
 		if g.SelfCfg.Ping != nil {
 			row.Targets = g.SelfCfg.Ping
 		}
-		timeStartStr := time.Unix(time.Now().Unix()-int64(mins)*60, 0).Format("2006-01-02 15:04")
-		querySql := "select target, avg(avgdelay), max(maxdelay), min(case when mindelay < 0 then 0 else mindelay end), avg(losspk), max(logtime), count(1) from pinglog where logtime >= ? group by target"
+		querySql := "select target, avg(avgdelay), max(maxdelay), min(case when mindelay < 0 then 0 else mindelay end), avg(losspk), max(logtime), count(1) from pinglog where logtime >= ? and logtime <= ? group by target"
 		g.DLock.Lock()
-		rows, err := g.Db.Query(querySql, timeStartStr)
+		rows, err := g.Db.Query(querySql, timeStartStr, timeEndStr)
 		g.DLock.Unlock()
 		if err != nil {
 			seelog.Error("[func:/api/pingmesh.json] Query ", err)

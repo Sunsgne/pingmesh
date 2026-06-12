@@ -6,7 +6,7 @@ cd $WORKSPACE
 mkdir -p var
 mkdir -p bin
 
-module=smartping
+module=pingmesh
 app=$module
 pidfile=var/app.pid
 
