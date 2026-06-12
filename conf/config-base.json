@@ -14,7 +14,7 @@
 		"Chinamap": 1,
 		"Refresh": 1,
 		"Timeout": 5,
-		"Pinginterval": 3000,
+		"Pinginterval": 2500,
 		"Pingcount": 20,
 		"Pingtimeout": 3000,
 		"Pingsize": 56,
