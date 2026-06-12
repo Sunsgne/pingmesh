@@ -61,14 +61,30 @@ func AuthUser(r *http.Request) bool {
 	return false
 }
 
-// AuthAgent 节点级访问: 互Ping节点间的数据接口调用
+// AuthAgent 节点级访问: 互Ping节点间的数据接口调用。
+// 携带有效 HMAC 签名直接放行; 开启 Apisign 后强制验签(IP互信不再放行)。
 func AuthAgent(r *http.Request) bool {
+	r.ParseForm()
+	if g.VerifySign(r.URL.Path, r.FormValue("ts"), r.FormValue("nonce"), r.FormValue("sign")) {
+		return true
+	}
+	if g.SignRequired() {
+		return false
+	}
 	ip := r.RemoteAddr
 	if i := lastColon(ip); i >= 0 {
 		ip = ip[:i]
 	}
 	_, ok := g.AuthAgentIpMap[ip]
 	return ok
+}
+
+// AgentSigned 请求是否带有效节点签名(用于决定是否加密响应)
+func AgentSigned(r *http.Request) bool {
+	r.ParseForm()
+	// 注意: VerifySign 消耗 nonce, 仅在 AuthAgent 已通过后用于判别时,
+	// 这里直接复用其结果会二次消耗; 因此单独校验一次专用参数。
+	return r.FormValue("sign") != "" && r.FormValue("enc") == "1"
 }
 
 func lastColon(s string) int {

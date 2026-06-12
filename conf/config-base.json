@@ -17,7 +17,8 @@
 		"Pinginterval": 3000,
 		"Pingcount": 20,
 		"Pingtimeout": 3000,
-		"Pingsize": 56
+		"Pingsize": 56,
+		"Apisign": 1
 	},
 	"Topology": {
 		"Tline": "1",

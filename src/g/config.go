@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"io"
 	"io/fs"
@@ -226,6 +227,7 @@ func ParseConfig(ver string) {
 			"Pingcount":    20,   // 每轮包数
 			"Pingtimeout":  3000, // 单包超时(ms)
 			"Pingsize":     56,   // 探测包大小(字节)
+			"Apisign":      0,    // 老集群默认关闭, 全部升级并统一令牌后可开启
 		}
 		for k, v := range baseDefaults {
 			if _, ok := Cfg.Base[k]; !ok {
@@ -270,12 +272,23 @@ func SaveCloudConfig(url string) (Config, error) {
 	client := http.Client{
 		Timeout: timeout,
 	}
-	resp, err := client.Get(url)
+	// 节点间同步: 携带 HMAC 签名并请求加密载荷
+	sep := "?"
+	if strings.Contains(url, "?") {
+		sep = "&"
+	}
+	resp, err := client.Get(SignURL(url+sep+"enc=1", Cfg.Password))
 	if err != nil {
 		return config, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	if IsEncryptedPayload(body) {
+		body, err = DecryptPayload(body, Cfg.Password)
+		if err != nil {
+			return config, errors.New("配置解密失败(各节点接入令牌需一致): " + err.Error())
+		}
+	}
 	err = json.Unmarshal(body, &config)
 	if err != nil {
 		config.Name = string(body)

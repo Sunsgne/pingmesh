@@ -135,7 +135,15 @@
           <input type="text" class="input mono" id="f-jointoken" placeholder="加载中...">
           <button class="btn sm" style="flex:none" id="token-regen-btn">随机生成</button>
         </div>
-        <div class="hint">修改后点击「保存配置」生效，仅影响新节点接入（各节点的本地令牌互相独立）</div>
+        <div class="hint">修改后点击「保存配置」生效；新节点 join 时会自动采用该令牌（集群令牌统一，签名/加密密钥对齐）</div>
+      </div>
+      <div class="field">
+        <label>API 签名与加密</label>
+        <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-apisign"><span class="track"></span></label>
+        <span class="hint" style="display:inline;margin-left:8px">
+          节点间接口强制 HMAC-SHA256 验签（防伪造、±5分钟时间戳+nonce 防重放），配置同步走 AES-256-GCM 加密
+        </span>
+        <div class="hint">开启前提：所有节点已升级到本版本且接入令牌一致（重新 join 即自动统一）。开启后仅凭 IP 互信的请求将被拒绝</div>
       </div>
       <div class="field">
         <label>在新节点上执行（单二进制，自带页面资源，首次运行自动初始化）</label>
@@ -542,6 +550,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-emailpassword').val(cfg.Alert['SendEmailPassword']);
         $('#f-emaillist').val(cfg.Alert['RevcEmailList']);
         $('#f-jointoken').val(cfg.Password || '');
+        $('#f-apisign').prop('checked', cfg.Base['Apisign'] === 1);
         renderNodes();
         renderJoin();
         renderChannels();
@@ -1338,6 +1347,7 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Base['Pingcount'] = parseInt($('#f-pingcount').val(), 10) || 20;
         cfg.Base['Pingtimeout'] = parseInt($('#f-pingtimeout').val(), 10) || 3000;
         cfg.Base['Pingsize'] = parseInt($('#f-pingsize').val(), 10) || 56;
+        cfg.Base['Apisign'] = $('#f-apisign').is(':checked') ? 1 : 0;
         if (cfg.Base['Pinginterval'] * cfg.Base['Pingcount'] > 55000) {
             throw new Error('探测间隔×包数不能超过55秒, 请调小间隔或包数');
         }
