@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/fnv"
-	"io"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -235,19 +234,9 @@ func ParseConfig(ver string) {
 			}
 		}
 	}
-	// 兼容旧版: 存在 database-base.db 时沿用拷贝方式, 否则由代码建表
-	if !IsExist(Root+"/db/"+"database.db") && IsExist(Root+"/db/"+"database-base.db") {
-		src, err := os.Open(Root + "/db/" + "database-base.db")
-		if err != nil {
-			log.Fatalln("[Fault]db-base file open error.")
-		}
-		defer src.Close()
-		dst, err := os.OpenFile(Root+"/db/"+"database.db", os.O_WRONLY|os.O_CREATE, 0644)
-		if err != nil {
-			log.Fatalln("[Fault]db-base file copy error.")
-		}
-		defer dst.Close()
-		io.Copy(dst, src)
+	// 旧配置迁移: 已删除的旧提示音文件改为内置柔和提示音
+	if Cfg.Topology != nil && Cfg.Topology["Tsound"] == "/alert.mp3" {
+		Cfg.Topology["Tsound"] = "/alert-soft.wav"
 	}
 	seelog.Info("Config loaded")
 	Db, err = sql.Open("sqlite", Root+"/db/database.db")

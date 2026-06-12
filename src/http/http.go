@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"github.com/cihub/seelog"
 	"github.com/zenlenet/pingmesh/src/g"
-	"github.com/wcharczuk/go-chart"
-	"github.com/wcharczuk/go-chart/drawing"
 	"log"
 	"net/http"
 	"os"
@@ -70,17 +68,6 @@ func AuthAgentIp(RemoteAddr string, drt bool) bool {
 		}
 	}
 	return false
-}
-
-func GraphText(x int, y int, txt string) chart.Renderer {
-	f, _ := chart.GetDefaultFont()
-	rhart, _ := chart.PNG(300, 130)
-	chart.Draw.Text(rhart, txt, x, y, chart.Style{
-		FontColor: drawing.ColorBlack,
-		FontSize:  10,
-		Font:      f,
-	})
-	return rhart
 }
 
 func StartHttp() {
