@@ -142,7 +142,8 @@ export DEBIAN_FRONTEND=noninteractive
 NEED=()
 command -v git >/dev/null     || NEED+=(git)
 command -v setcap >/dev/null  || NEED+=(libcap2-bin)
-command -v curl >/dev/null     || NEED+=(curl)
+command -v curl >/dev/null    || NEED+=(curl)
+command -v fuser >/dev/null   || NEED+=(psmisc)
 NEED+=(ca-certificates)
 apt-get update -qq
 apt-get install -y -qq "${NEED[@]}" >/dev/null
@@ -204,15 +205,75 @@ CGO_ENABLED=0 go build \
   -o /tmp/pingmesh-bin ./src
 
 # ---------------------------------------------------------- 4. 安装部署 ----
+ENV_FILE="${INSTALL_DIR}/pingmesh.env"
+
+# 彻底停掉所有旧进程: systemd 单元(含旧版服务名 smartping) + nohup 游离进程。
+# 否则旧进程会继续拿着"已被替换/删除"的旧二进制运行, 表现为页面新、接口旧(404)。
+stop_old_processes() {
+  if [[ $HAS_SYSTEMD -eq 1 ]]; then
+    systemctl stop "$SERVICE" 2>/dev/null || true
+    systemctl stop smartping 2>/dev/null || true
+  fi
+  pkill -f "${INSTALL_DIR}/pingmesh" 2>/dev/null || true
+  pkill -f "${INSTALL_DIR}/bin/smartping" 2>/dev/null || true
+  # 兜底: 相对路径启动的游离进程(如 cd 安装目录后 nohup ./pingmesh)按服务端口定位后清理
+  local port pids p
+  port=$(detect_port)
+  pids="$(ss -ltnp 2>/dev/null | grep ":${port} " | grep -oP 'pid=\K[0-9]+' || true) "
+  pids+="$(netstat -ltnp 2>/dev/null | grep ":${port} " | awk '{print $NF}' | cut -d/ -f1 | grep -E '^[0-9]+$' || true) "
+  pids+="$(fuser "${port}/tcp" 2>/dev/null | tr -s ' \t' '\n' | grep -E '^[0-9]+$' || true)"
+  for p in $pids; do
+    [[ "$p" == "$$" ]] && continue
+    kill -9 "$p" 2>/dev/null || true
+  done
+  sleep 1
+}
+
+# 实际服务端口: 命令行 > 环境文件 > 已有配置 > 默认 8899
+detect_port() {
+  local p="$PORT"
+  [[ -z "$p" && -f "$ENV_FILE" ]] && p=$(grep -oP '(?<=-p )[0-9]+' "$ENV_FILE" 2>/dev/null | head -1 || true)
+  [[ -z "$p" && -f "${INSTALL_DIR}/conf/config.json" ]] && p=$(grep -oP '"Port"\s*:\s*\K[0-9]+' "${INSTALL_DIR}/conf/config.json" 2>/dev/null | head -1 || true)
+  echo "${p:-8899}"
+}
+
+# 升级后自校验: 端口上实际服务的版本必须等于刚安装的版本,
+# 否则一定存在旧进程占用端口, 给出占用进程与处理命令。
+verify_running() {
+  local port want got
+  port=$(detect_port)
+  want=$("${INSTALL_DIR}/pingmesh" -v 2>/dev/null | awk '{print $3}')
+  sleep 1
+  got=$(curl -s --max-time 4 "http://127.0.0.1:${port}/healthz" 2>/dev/null | grep -oP '"version":"\K[^"]+' || true)
+  if [[ -n "$got" && "$got" == "$want" ]]; then
+    info "运行版本校验通过: v${got} 正在端口 ${port} 上服务"
+    return 0
+  fi
+  warn "=============================================================="
+  if [[ -z "$got" ]]; then
+    warn "健康检查异常: http://127.0.0.1:${port}/healthz 无有效响应"
+    warn "端口 ${port} 上可能仍是旧版本进程(旧版本没有 /healthz 接口)"
+  else
+    warn "端口 ${port} 上实际运行的是 v${got}, 与刚安装的 v${want} 不一致!"
+  fi
+  warn "当前监听该端口的进程:"
+  ss -ltnp 2>/dev/null | grep ":${port} " \
+    || netstat -ltnp 2>/dev/null | grep ":${port} " \
+    || fuser -v "${port}/tcp" 2>&1 | grep -v '^$' \
+    || warn "  (未能列出, 可执行: sudo ss -ltnp | grep ${port})"
+  warn "请手动结束旧进程后重启服务:"
+  warn "  sudo pkill -f ${INSTALL_DIR}/pingmesh; sudo systemctl restart ${SERVICE}"
+  warn "  然后验证: curl http://127.0.0.1:${port}/healthz"
+  warn "=============================================================="
+  return 1
+}
+
 info "[4/5] 安装到 ${INSTALL_DIR} ..."
 mkdir -p "$INSTALL_DIR"
-if [[ $HAS_SYSTEMD -eq 1 ]]; then systemctl stop "$SERVICE" 2>/dev/null || true
-else pkill -f "${INSTALL_DIR}/pingmesh" 2>/dev/null || true; fi
+stop_old_processes
 install -m 755 /tmp/pingmesh-bin "${INSTALL_DIR}/pingmesh"
 rm -f /tmp/pingmesh-bin
 setcap cap_net_raw+ep "${INSTALL_DIR}/pingmesh" || warn "setcap 失败, 将依赖 root 权限运行"
-
-ENV_FILE="${INSTALL_DIR}/pingmesh.env"
 
 # 组装启动参数(写入 systemd 引用的环境文件)
 build_opts() {
@@ -234,12 +295,13 @@ if [[ $UPDATE -eq 1 && $ROLE_GIVEN -eq 0 && -z "$MASTERS" ]]; then
   info "[5/5] 更新模式: 保留现有启动参数与服务配置, 仅替换二进制并重启 ..."
   if [[ $HAS_SYSTEMD -eq 1 && -f /etc/systemd/system/${SERVICE}.service ]]; then
     systemctl restart "$SERVICE"; sleep 1
-    systemctl is-active --quiet "$SERVICE" && info "更新完成 (版本: $(${INSTALL_DIR}/pingmesh -v))" \
+    systemctl is-active --quiet "$SERVICE" && info "服务已重启 (版本: $(${INSTALL_DIR}/pingmesh -v))" \
       || fatal "服务重启失败: journalctl -u ${SERVICE} -n 50"
   else
     cd "$INSTALL_DIR"; nohup "${INSTALL_DIR}/pingmesh" >/dev/null 2>&1 &
-    sleep 1; pgrep -f "${INSTALL_DIR}/pingmesh" >/dev/null && info "更新完成, 进程已重启" || fatal "重启失败"
+    sleep 1; pgrep -f "${INSTALL_DIR}/pingmesh" >/dev/null || fatal "重启失败"
   fi
+  verify_running && info "更新完成" || true
   exit 0
 fi
 
@@ -304,6 +366,7 @@ else
   pgrep -f "${INSTALL_DIR}/pingmesh" >/dev/null && info "进程已启动 (pid: $(pgrep -f "${INSTALL_DIR}/pingmesh" | head -1))" \
     || fatal "启动失败, 请手动执行: cd ${INSTALL_DIR} && ./pingmesh ${OPTS}"
 fi
+verify_running || true
 
 # 防火墙放行
 HTTP_PORT="${PORT:-8899}"

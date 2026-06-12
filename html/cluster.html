@@ -120,7 +120,13 @@ SP.init('cluster', '集群容灾').done(function (ctx) {
     function apiErrMsg(prefix, xhr, st) {
         var msg = prefix;
         if (st === 'timeout') return msg + '：请求超时，集群节点较多时请稍后重试';
-        if (xhr && xhr.status === 404) return msg + '：本节点程序版本过旧（没有集群接口），请重新编译/升级本节点后重试';
+        if (xhr && xhr.status === 404) {
+            var ver = (SP.state.config || {}).Ver || '?';
+            return msg + '：端口上实际运行的后端是 v' + ver + '（需 v2.0.0+ 才有集群接口）。' +
+                '通常是旧进程未被停掉仍占用端口：请在本节点执行 ' +
+                'pkill -f /opt/pingmesh/pingmesh && systemctl restart pingmesh，' +
+                '再用 curl http://127.0.0.1:端口/healthz 确认版本';
+        }
         if (xhr && xhr.status === 401) return msg + '：登录已过期，请刷新页面重新登录';
         if (xhr && xhr.status) return msg + ' (HTTP ' + xhr.status + ')';
         return msg + '：无法连接服务';
