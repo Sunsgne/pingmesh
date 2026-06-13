@@ -26,6 +26,11 @@
 		"Tsound": "/alert-soft.wav",
 		"Tsymbolsize": "70"
 	},
+	"Brand": {
+		"Name": "ZENLENET",
+		"Slogan": "PingMesh · 网络质量监控平台",
+		"Logo": ""
+	},
 	"Alert": {
 		"EmailHost": "",
 		"RevcEmailList": "",

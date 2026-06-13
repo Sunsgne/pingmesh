@@ -513,6 +513,14 @@ func configApiRoutes() {
 				}
 			}
 		}
+		//Brand: 限制 Logo(通常为 base64 data URI)体积, 防止配置文件膨胀拖慢同步
+		if nconfig.Brand != nil {
+			if len(nconfig.Brand["Logo"]) > 512*1024 {
+				preout["info"] = "品牌 Logo 图片过大, 请压缩到 256KB 以内!"
+				RenderJson(w, preout)
+				return
+			}
+		}
 		nconfig.Ver = g.Cfg.Ver
 		nconfig.Port = g.Cfg.Port
 		// 密码(接入令牌)仅在显式提供时更新

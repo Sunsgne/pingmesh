@@ -247,9 +247,9 @@ var SP = (function () {
         var shell =
             '<div class="sp-layout">' +
             '<aside class="sp-sidebar" id="sp-sidebar">' +
-            '<div class="sp-logo"><div class="logo-mark"><img src="assets/img/logo.png" alt="ZENLENET"></div><div class="logo-text">ZENLENET<small>PingMesh 网络质量监控</small></div></div>' +
+            '<div class="sp-logo"><div class="logo-mark"><img src="assets/img/logo.png" alt="logo" id="sp-brand-logo"></div><div class="logo-text" id="sp-brand-text">ZENLENET<small>PingMesh 网络质量监控</small></div></div>' +
             '<nav class="sp-nav">' + nav + '</nav>' +
-            '<div class="sp-sidebar-foot">ZENLENET PingMesh <span id="sp-ver"></span></div>' +
+            '<div class="sp-sidebar-foot"><span id="sp-brand-foot">ZENLENET PingMesh</span> <span id="sp-ver"></span></div>' +
             '</aside>' +
             '<div class="sp-main">' +
             '<header class="sp-topbar">' +
@@ -288,8 +288,19 @@ var SP = (function () {
         $('#sp-menu-passwd').click(function () { openModal('sp-passwd-modal'); });
     }
 
+    // 应用品牌定制(名称/标语/Logo)到左上角侧栏与底部; 留空回退默认值
+    function applyBrand(brand) {
+        brand = brand || {};
+        var name = brand.Name || 'ZENLENET';
+        var slogan = brand.Slogan || 'PingMesh 网络质量监控';
+        if (brand.Logo) $('#sp-brand-logo').attr('src', brand.Logo);
+        $('#sp-brand-text').html(esc(name) + '<small>' + esc(slogan) + '</small>');
+        $('#sp-brand-foot').text(name + ' PingMesh');
+    }
+
     function applyConfig(cfg) {
         S.config = cfg;
+        applyBrand(cfg.Brand);
         $('#sp-ver').text('v' + cfg.Ver);
         $('#sp-node-chip').html('&#9679;&nbsp;' + esc(cfg.Name) + ' <span class="mono" style="font-weight:400">' + esc(cfg.Addr) + '</span>');
         $('#sp-foot-node').text('当前节点: ' + cfg.Name + ' (' + cfg.Addr + ')');
@@ -367,6 +378,50 @@ var SP = (function () {
         addr = (addr || '').split(':')[0];
         return asnCache.hasOwnProperty(addr) ? asnCache[addr] : undefined;
     }
+
+    /* ---------- IP 可达状态探测(并发限流 + 短缓存, 服务端 ICMP) ---------- */
+    var reachCache = {};   // host -> {reachable, rtt, loss, ip} | null(解析失败/出错)
+    var reachPending = {}; // host -> [callbacks]
+    var reachQueue = [];   // 待探测队列
+    var reachActive = 0;   // 在途请求数
+    var REACH_MAX = 6;     // 最大并发, 避免大量节点同时探测压垮后端
+
+    function reachClean(host) {
+        return (host || '').replace(/^https?:\/\//, '').split('/')[0];
+    }
+
+    function reachPump() {
+        while (reachActive < REACH_MAX && reachQueue.length) {
+            var host = reachQueue.shift();
+            reachActive++;
+            (function (host) {
+                $.getJSON('/api/reach.json?ip=' + encodeURIComponent(host))
+                    .done(function (res) { reachCache[host] = (res && res.status === 'true') ? res : null; })
+                    .fail(function () { reachCache[host] = null; })
+                    .always(function () {
+                        reachActive--;
+                        var cbs = reachPending[host] || [];
+                        delete reachPending[host];
+                        for (var i = 0; i < cbs.length; i++) cbs[i](reachCache[host]);
+                        reachPump();
+                    });
+            })(host);
+        }
+    }
+
+    // reachGet(host, cb): cb({reachable, rtt, loss, ip} | null)
+    function reachGet(host, cb) {
+        host = reachClean(host);
+        if (!host) { cb(null); return; }
+        if (reachCache.hasOwnProperty(host)) { cb(reachCache[host]); return; }
+        if (reachPending[host]) { reachPending[host].push(cb); return; }
+        reachPending[host] = [cb];
+        reachQueue.push(host);
+        reachPump();
+    }
+
+    // 清空缓存以强制重新探测(供"刷新状态"按钮使用)
+    function reachClear() { reachCache = {}; }
 
     /* 提取互Ping的源节点(探测节点且有监测目标); 配置残缺时返回空数组而非抛错 */
     function sourceNodes(cfg) {
@@ -475,6 +530,8 @@ var SP = (function () {
         asn: asnGet,
         asnShort: asnShort,
         asnCached: asnCached,
+        reach: reachGet,
+        reachClear: reachClear,
         isPrivateHost: isPrivateHost
     };
 })();

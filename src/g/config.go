@@ -370,6 +370,20 @@ func ParseConfig(ver string) {
 	if Cfg.Topology["Tsound"] == "/alert.mp3" {
 		Cfg.Topology["Tsound"] = "/alert-soft.wav"
 	}
+	// 品牌定制(登录页/左上角的名称、标语、Logo): 缺失时补默认, 随配置在集群内同步
+	if Cfg.Brand == nil {
+		Cfg.Brand = map[string]string{}
+	}
+	brandDefaults := map[string]string{
+		"Name":   "ZENLENET",
+		"Slogan": "PingMesh · 网络质量监控平台",
+		"Logo":   "",
+	}
+	for k, v := range brandDefaults {
+		if _, ok := Cfg.Brand[k]; !ok {
+			Cfg.Brand[k] = v
+		}
+	}
 	// 配置自愈落盘: 补全/修复的配置写回 config.json, 页面「高级 JSON」与后续升级都能看到完整配置
 	if len(healedKeys) > 0 {
 		log.Println("[init] config healed:", strings.Join(healedKeys, ", "))

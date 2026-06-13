@@ -81,6 +81,89 @@ func configToolsRoutes() {
 		w.Header().Set("Content-Type", "application/json")
 		RenderJson(w, out)
 	})
+
+	// 可达状态: 对单个 IP/域名做轻量 ICMP 探测, 供节点管理/全球延迟列表展示。
+	// 结果短时缓存(避免列表重渲染时反复探测), 不受检测工具限频(Toollimit)影响。
+	http.HandleFunc("/api/reach.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthData(r) {
+			deny(w)
+			return
+		}
+		r.ParseForm()
+		host := stripScheme(strings.TrimSpace(r.FormValue("ip")))
+		if host == "" {
+			renderErr(w, "参数错误: 需要 ip")
+			return
+		}
+		RenderJson(w, reachCheck(host))
+	})
+}
+
+/* ---------- 可达状态探测(短缓存) ---------- */
+
+type reachEntry struct {
+	ok        bool // 是否成功解析
+	ip        string
+	reachable bool
+	rtt       float64
+	loss      int
+	at        time.Time
+}
+
+var (
+	reachCache = map[string]reachEntry{}
+	reachMu    sync.Mutex
+)
+
+const reachTTL = 12 * time.Second
+
+func reachCheck(host string) map[string]interface{} {
+	reachMu.Lock()
+	if c, ok := reachCache[host]; ok && time.Since(c.at) < reachTTL {
+		reachMu.Unlock()
+		return reachOut(c)
+	}
+	reachMu.Unlock()
+
+	e := reachEntry{at: time.Now()}
+	ipaddr, err := net.ResolveIPAddr("ip4", host)
+	if err != nil {
+		reachMu.Lock()
+		reachCache[host] = e
+		reachMu.Unlock()
+		return map[string]interface{}{"status": "false", "info": "无法解析: " + host}
+	}
+	e.ok = true
+	e.ip = ipaddr.String()
+	recv, sum := 0, 0.0
+	const probes = 3
+	for i := 0; i < probes; i++ {
+		d, perr := nettools.RunPingSize(ipaddr, 2*time.Second, 56)
+		if perr == nil {
+			recv++
+			sum += d
+		}
+		time.Sleep(80 * time.Millisecond)
+	}
+	e.reachable = recv > 0
+	if recv > 0 {
+		e.rtt = sum / float64(recv)
+	}
+	e.loss = int(float64(probes-recv) / float64(probes) * 100)
+	reachMu.Lock()
+	reachCache[host] = e
+	reachMu.Unlock()
+	return reachOut(e)
+}
+
+func reachOut(e reachEntry) map[string]interface{} {
+	return map[string]interface{}{
+		"status":    "true",
+		"ip":        e.ip,
+		"reachable": e.reachable,
+		"rtt":       e.rtt,
+		"loss":      e.loss,
+	}
 }
 
 func stripScheme(t string) string {
@@ -204,12 +287,12 @@ func toolHttp(target string, out map[string]interface{}) {
 	var dnsStart, connStart, tlsStart, start time.Time
 	var dnsDone, connDone, tlsDone, firstByte time.Time
 	trace := &httptrace.ClientTrace{
-		DNSStart:          func(httptrace.DNSStartInfo) { dnsStart = time.Now() },
-		DNSDone:           func(httptrace.DNSDoneInfo) { dnsDone = time.Now() },
-		ConnectStart:      func(string, string) { connStart = time.Now() },
-		ConnectDone:       func(string, string, error) { connDone = time.Now() },
-		TLSHandshakeStart: func() { tlsStart = time.Now() },
-		TLSHandshakeDone:  func(tls.ConnectionState, error) { tlsDone = time.Now() },
+		DNSStart:             func(httptrace.DNSStartInfo) { dnsStart = time.Now() },
+		DNSDone:              func(httptrace.DNSDoneInfo) { dnsDone = time.Now() },
+		ConnectStart:         func(string, string) { connStart = time.Now() },
+		ConnectDone:          func(string, string, error) { connDone = time.Now() },
+		TLSHandshakeStart:    func() { tlsStart = time.Now() },
+		TLSHandshakeDone:     func(tls.ConnectionState, error) { tlsDone = time.Now() },
 		GotFirstResponseByte: func() { firstByte = time.Now() },
 	}
 	req, err := http.NewRequest("GET", u, nil)

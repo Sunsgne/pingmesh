@@ -12,10 +12,10 @@
 
 <div class="login-card" id="card">
   <div class="logo-row">
-    <div class="logo-mark" style="overflow:hidden;padding:0"><img src="assets/img/logo.png" alt="ZENLENET" style="width:100%;height:100%;display:block"></div>
-    <h1>ZENLENET <span style="font-weight:400;color:#64748b">PingMesh</span></h1>
+    <div class="logo-mark" style="overflow:hidden;padding:0"><img src="assets/img/logo.png" alt="logo" id="brand-logo" style="width:100%;height:100%;display:block"></div>
+    <h1 id="brand-title">ZENLENET <span style="font-weight:400;color:#64748b">PingMesh</span></h1>
   </div>
-  <div class="sub">全网互 PING · 网络质量监控平台</div>
+  <div class="sub" id="brand-sub">全网互 PING · 网络质量监控平台</div>
 
   <div class="login-err" id="err"></div>
 
@@ -37,10 +37,24 @@
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script>
 $(function () {
-    // 默认密码仍有效时才显示提示, 修改密码后自动消失
+    // 默认密码仍有效时才显示提示, 修改密码后自动消失; 同时应用品牌定制
     $.getJSON('/api/loginmeta.json', function (m) {
         if (m && m.defaultcreds) $('#first-hint').show();
+        if (m && m.brand) applyBrand(m.brand);
     });
+    function applyBrand(b) {
+        var name = b.Name || 'ZENLENET';
+        var slogan = b.Slogan || '全网互 PING · 网络质量监控平台';
+        if (b.Logo) $('#brand-logo').attr('src', b.Logo);
+        $('#brand-title').html(esc(name) + ' <span style="font-weight:400;color:#64748b">PingMesh</span>');
+        $('#brand-sub').text(slogan);
+        document.title = '登录 - ' + name + ' PingMesh';
+    }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
     $('#login-form').submit(function () {
         var u = $('#username').val(), p = $('#password').val();
         if (!u || !p) { showErr('请输入用户名和密码'); return false; }

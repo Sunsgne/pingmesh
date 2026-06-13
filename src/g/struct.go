@@ -10,6 +10,7 @@ type Config struct {
 	Mode       map[string]string
 	Base       map[string]int
 	Topology   map[string]string
+	Brand      map[string]string
 	Alert      map[string]string
 	Channels   []AlertChannel
 	Network    map[string]NetworkMember
