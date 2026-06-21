@@ -1,0 +1,32 @@
+# PingMesh Agent 节点: 仅探测, Web 默认关闭
+services:
+  pingmesh-agent:
+    image: pingmesh:local
+    container_name: pingmesh-agent
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    command:
+      - -p
+      - "8899"
+      - -join
+      - "${MASTER_URL:-http://10.100.1.8:8899}"
+      - -token
+      - "${JOIN_TOKEN:-smartping}"
+      - -name
+      - "${NODE_NAME:-agent}"
+      - -addr
+      - "${NODE_ADDR:-127.0.0.1}"
+      - -masters
+      - "${MASTERS:-10.100.1.8:8899,10.100.1.2:8899}"
+    volumes:
+      - ./data/conf:/app/conf
+      - ./data/db:/app/db
+      - ./data/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8899/healthz"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 20s
