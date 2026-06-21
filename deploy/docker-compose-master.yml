@@ -1,0 +1,14 @@
+# PingMesh 主/备控制节点 - host 网络 + 本地 8899, 对外 HTTPS 由 nginx 反代 443
+services:
+  pingmesh:
+    build: ..
+    image: pingmesh:latest
+    container_name: pingmesh
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - /opt/pingmesh/data/conf:/app/conf
+      - /opt/pingmesh/data/db:/app/db
+      - /opt/pingmesh/data/logs:/app/logs
+    restart: unless-stopped

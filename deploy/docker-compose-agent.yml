@@ -1,0 +1,14 @@
+# PingMesh Agent 节点 - 默认关闭 Web, 仅探测与集群同步
+services:
+  pingmesh:
+    build: ..
+    image: pingmesh:latest
+    container_name: pingmesh
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - /opt/pingmesh/data/conf:/app/conf
+      - /opt/pingmesh/data/db:/app/db
+      - /opt/pingmesh/data/logs:/app/logs
+    restart: unless-stopped
