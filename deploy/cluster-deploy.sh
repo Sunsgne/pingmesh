@@ -4,9 +4,9 @@ set -euo pipefail
 
 PASSWORD='Monitor@678!9981'
 MASTER_INTERNAL='10.100.1.8'
-BACKUP_INTERNAL='10.100.1.2'
+BACKUP_INTERNAL='10.100.1.3'
 MASTER_PUBLIC='43.229.152.50'
-BACKUP_PUBLIC='43.230.52.242'
+BACKUP_PUBLIC='163.53.245.90'
 INSTALL_DIR='/opt/pingmesh-docker'
 USER_HASH='$2b$12$niasuSlOkK6T4ha/m22vxOdEhmb.tbu6O5PMdOpQeRtXOLHBaYaVy'
 
@@ -117,7 +117,7 @@ case "${1:-all}" in
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
   ;;
   backup)
-    deploy_control "$BACKUP_PUBLIC" 22 "tyo-8" "$BACKUP_INTERNAL" "backup"
+    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
   ;;
   agents)
   TOKEN=$(get_token)
@@ -126,7 +126,6 @@ case "${1:-all}" in
   deploy_agent "42.240.152.238" 20001 "can-hxy" "10.100.1.19" "$TOKEN"
   deploy_agent "217.217.29.250" 22 "fra" "10.100.1.7" "$TOKEN"
   deploy_agent "104.251.226.39" 20001 "hkg2" "10.100.1.12" "$TOKEN"
-  deploy_agent "163.53.245.90" 22 "hkg1" "10.100.1.3" "$TOKEN"
   deploy_agent "163.53.245.136" 20001 "hkg3" "10.100.1.13" "$TOKEN"
   deploy_agent "149.119.41.156" 22 "lax" "10.100.1.10" "$TOKEN"
   deploy_agent "106.38.203.8" 20001 "pek" "10.100.1.15" "$TOKEN"
@@ -136,18 +135,18 @@ case "${1:-all}" in
   deploy_agent "149.51.125.226" 20001 "sin2-gs" "10.100.1.11" "$TOKEN"
   deploy_agent "59.36.211.118" 20001 "szx" "10.100.1.17" "$TOKEN"
   deploy_agent "192.169.120.12" 22 "tpe" "10.100.1.18" "$TOKEN"
+  deploy_agent "43.230.52.242" 22 "tyo-8" "10.100.1.2" "$TOKEN"
   deploy_agent "61.172.165.219" 20001 "tyo-7" "10.100.1.9" "$TOKEN"
   ;;
   all)
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
-    deploy_control "$BACKUP_PUBLIC" 22 "tyo-8" "$BACKUP_INTERNAL" "backup"
+    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
     TOKEN=$(get_token)
     info "接入令牌: ${TOKEN}"
     deploy_agent "106.75.160.24" 20001 "can-xxg" "10.100.1.4" "$TOKEN"
     deploy_agent "42.240.152.238" 20001 "can-hxy" "10.100.1.19" "$TOKEN"
     deploy_agent "217.217.29.250" 22 "fra" "10.100.1.7" "$TOKEN"
     deploy_agent "104.251.226.39" 20001 "hkg2" "10.100.1.12" "$TOKEN"
-    deploy_agent "163.53.245.90" 22 "hkg1" "10.100.1.3" "$TOKEN"
     deploy_agent "163.53.245.136" 20001 "hkg3" "10.100.1.13" "$TOKEN"
     deploy_agent "149.119.41.156" 22 "lax" "10.100.1.10" "$TOKEN"
     deploy_agent "106.38.203.8" 20001 "pek" "10.100.1.15" "$TOKEN"
@@ -157,6 +156,7 @@ case "${1:-all}" in
     deploy_agent "149.51.125.226" 20001 "sin2-gs" "10.100.1.11" "$TOKEN"
     deploy_agent "59.36.211.118" 20001 "szx" "10.100.1.17" "$TOKEN"
     deploy_agent "192.169.120.12" 22 "tpe" "10.100.1.18" "$TOKEN"
+    deploy_agent "43.230.52.242" 22 "tyo-8" "10.100.1.2" "$TOKEN"
     deploy_agent "61.172.165.219" 20001 "tyo-7" "10.100.1.9" "$TOKEN"
   ;;
   *)
