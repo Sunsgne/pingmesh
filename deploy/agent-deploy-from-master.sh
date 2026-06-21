@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 从主控制节点通过内网 SSH 批量部署 Agent (关闭 Web, 接入 10.100.1.8)
-set -uo pipefail
+set -o pipefail
 
 PASSWORD='Monitor@678!9981'
 MASTER_INTERNAL='10.100.1.8'
@@ -14,7 +14,7 @@ err()   { echo -e "\033[31m[agent]\033[0m $*"; }
 
 ssh_run() {
   local host="$1" port="${2:-22}"; shift 2
-  sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p "$port" "root@${host}" "$@"
+  sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$port" "root@${host}" "$@"
 }
 
 deploy_agent() {
@@ -23,27 +23,30 @@ deploy_agent() {
   if ! ssh_run "$host" "$port" "echo ok" 2>/dev/null; then
     err "  SSH 连接失败, 跳过 ${name}"; return 1
   fi
-  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-bin.gz"
-  ssh_run "$host" "$port" "
-    apt-get install -y -qq libcap2-bin psmisc curl >/dev/null 2>&1 || true
-    systemctl stop pingmesh 2>/dev/null || true
-    pkill -f '${INSTALL_DIR}/pingmesh' 2>/dev/null || true
-    sleep 1
-    rm -rf ${INSTALL_DIR}
-    mkdir -p ${INSTALL_DIR}
-    gunzip -c /tmp/pingmesh-bin.gz > ${INSTALL_DIR}/pingmesh
-    rm -f /tmp/pingmesh-bin.gz
-    chmod 755 ${INSTALL_DIR}/pingmesh
-    setcap cap_net_raw+ep ${INSTALL_DIR}/pingmesh 2>/dev/null || true
-    cat > /etc/systemd/system/pingmesh.service <<UNIT
+  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-bin.gz" || {
+    err "  scp 失败, 跳过 ${name}"; return 1
+  }
+  sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -p "$port" "root@${host}" \
+    "NAME=${name} ADDR=${addr} MASTER=${MASTER_INTERNAL} BACKUP=${BACKUP_INTERNAL} TOKEN=${JOIN_TOKEN} DIR=${INSTALL_DIR} bash -s" <<'REMOTE'
+apt-get install -y -qq libcap2-bin psmisc curl >/dev/null 2>&1 || true
+systemctl stop pingmesh 2>/dev/null || true
+pkill -f "${DIR}/pingmesh" 2>/dev/null || true
+sleep 1
+rm -rf "${DIR}"
+mkdir -p "${DIR}"
+gunzip -c /tmp/pingmesh-bin.gz > "${DIR}/pingmesh"
+rm -f /tmp/pingmesh-bin.gz
+chmod 755 "${DIR}/pingmesh"
+setcap cap_net_raw+ep "${DIR}/pingmesh" 2>/dev/null || true
+cat > /etc/systemd/system/pingmesh.service <<UNIT
 [Unit]
 Description=ZENLENET PingMesh Agent
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-WorkingDirectory=${INSTALL_DIR}
-ExecStart=${INSTALL_DIR}/pingmesh -p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${MASTER_INTERNAL}:8899,${BACKUP_INTERNAL}:8899
+WorkingDirectory=${DIR}
+ExecStart=${DIR}/pingmesh -p 8899 -join http://${MASTER}:8899 -token ${TOKEN} -name ${NAME} -addr ${ADDR} -masters ${MASTER}:8899,${BACKUP}:8899
 Restart=always
 RestartSec=3
 LimitNOFILE=65536
@@ -52,12 +55,17 @@ CapabilityBoundingSet=CAP_NET_RAW
 [Install]
 WantedBy=multi-user.target
 UNIT
-    systemctl daemon-reload
-    systemctl enable pingmesh 2>/dev/null || true
-    systemctl restart pingmesh
-    sleep 25
-    curl -s --max-time 5 http://127.0.0.1:8899/healthz 2>/dev/null | grep -q ok
-  " && info "  ${name} 成功" || { err "  ${name} 失败"; return 1; }
+systemctl daemon-reload
+systemctl enable pingmesh 2>/dev/null || true
+systemctl restart pingmesh
+sleep 25
+curl -s --max-time 5 http://127.0.0.1:8899/healthz 2>/dev/null | grep -q ok
+REMOTE
+  if [[ $? -eq 0 ]]; then
+    info "  ${name} 成功"
+  else
+    err "  ${name} 失败"; return 1
+  fi
 }
 
 AGENTS=(
@@ -83,6 +91,6 @@ OK=0 FAIL=0
 for entry in "${AGENTS[@]}"; do
   read -r host port name addr <<< "$entry"
   if deploy_agent "$host" "$port" "$name" "$addr"; then OK=$((OK+1)); else FAIL=$((FAIL+1)); fi
-  sleep 5
+  sleep 3
 done
 info "完成: 成功 ${OK}, 失败 ${FAIL}"
