@@ -42,7 +42,7 @@ deploy_agent() {
 PINGMESH_OPTS=-p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${MASTER_INTERNAL}:8899,${BACKUP_INTERNAL}:8899
 ENV
     chmod 600 ${INSTALL_DIR}/pingmesh.env
-    cat > /etc/systemd/system/pingmesh.service <<'UNIT'
+    cat > /etc/systemd/system/pingmesh.service <<UNIT
 [Unit]
 Description=ZENLENET PingMesh Agent
 After=network-online.target
@@ -50,9 +50,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/pingmesh
-EnvironmentFile=-/opt/pingmesh/pingmesh.env
-ExecStart=/opt/pingmesh/pingmesh \$PINGMESH_OPTS
+WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=-${INSTALL_DIR}/pingmesh.env
+ExecStart=${INSTALL_DIR}/pingmesh -p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${MASTER_INTERNAL}:8899,${BACKUP_INTERNAL}:8899
 Restart=always
 RestartSec=3
 LimitNOFILE=65536
@@ -62,7 +62,7 @@ NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/opt/pingmesh
+ReadWritePaths=${INSTALL_DIR}
 
 [Install]
 WantedBy=multi-user.target
