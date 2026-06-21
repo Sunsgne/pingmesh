@@ -28,10 +28,11 @@ deploy_agent() {
   sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-bin.gz"
   ssh_run "$host" "$port" "
     set -e
-    apt-get install -y -qq libcap2-bin psmisc sshpass >/dev/null 2>&1 || true
+    apt-get install -y -qq libcap2-bin psmisc curl >/dev/null 2>&1 || true
     mkdir -p ${INSTALL_DIR}
     systemctl stop pingmesh 2>/dev/null || true
     pkill -f '${INSTALL_DIR}/pingmesh' 2>/dev/null || true
+    rm -rf ${INSTALL_DIR}/conf ${INSTALL_DIR}/db
     gunzip -c /tmp/pingmesh-bin.gz > ${INSTALL_DIR}/pingmesh
     rm -f /tmp/pingmesh-bin.gz
     chmod 755 ${INSTALL_DIR}/pingmesh
@@ -66,8 +67,12 @@ UNIT
     systemctl daemon-reload
     systemctl enable pingmesh >/dev/null
     systemctl restart pingmesh
-    sleep 3
-    curl -s --max-time 5 http://127.0.0.1:8899/healthz | grep -q ok
+    ok=0
+    for w in 1 2 3 4 5 6 7 8 9 10; do
+      sleep 3
+      curl -s --max-time 5 http://127.0.0.1:8899/healthz 2>/dev/null | grep -q ok && ok=1 && break
+    done
+    [ \"\$ok\" = \"1\" ]
   " && info "  ${name} 成功" || { err "  ${name} 失败"; return 1; }
 }
 
@@ -99,7 +104,7 @@ apt-get install -y -qq sshpass >/dev/null 2>&1 || true
 OK=0 FAIL=0
 for entry in "${AGENTS[@]}"; do
   read -r host port name addr <<< "$entry"
-  if deploy_agent "$host" "$port" "$name" "$addr"; then ((OK++)); else ((FAIL++)); fi
+  if deploy_agent "$host" "$port" "$name" "$addr"; then OK=$((OK+1)); else FAIL=$((FAIL+1)); fi
   sleep 5
 done
 info "完成: 成功 ${OK}, 失败 ${FAIL}"
