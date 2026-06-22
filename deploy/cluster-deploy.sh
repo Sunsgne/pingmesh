@@ -8,7 +8,6 @@ BACKUP_INTERNAL='10.100.1.3'
 MASTER_PUBLIC='43.229.152.50'
 BACKUP_PUBLIC='163.53.245.90'
 INSTALL_DIR='/opt/pingmesh-docker'
-USER_HASH='$2b$12$niasuSlOkK6T4ha/m22vxOdEhmb.tbu6O5PMdOpQeRtXOLHBaYaVy'
 
 info()  { echo -e "\033[32m[deploy]\033[0m $*"; }
 warn()  { echo -e "\033[33m[deploy]\033[0m $*"; }
@@ -58,17 +57,21 @@ gen_cert_remote() {
 
 setup_default_user() {
   local host="$1" port="${2:-22}"
-  ssh_run "$host" "$port" "apt-get install -y -qq sqlite3 >/dev/null 2>&1 || true
+  ssh_run "$host" "$port" "apt-get install -y -qq sqlite3 python3 python3-pip >/dev/null 2>&1 || true
+    pip3 install bcrypt -q 2>/dev/null || true
     sleep 5
     DB=${INSTALL_DIR}/data/db/database.db
-    for i in \$(seq 1 30); do
-      [ -f \"\$DB\" ] && break
-      sleep 2
-    done
-    [ -f \"\$DB\" ] || exit 1
-    sqlite3 \"\$DB\" \"DELETE FROM users WHERE username='admin';\"
-    sqlite3 \"\$DB\" \"INSERT OR REPLACE INTO users(username,password,role,created_at) VALUES('xiaoqiang','${USER_HASH}','admin',datetime('now'));\"
-    sqlite3 \"\$DB\" \"UPDATE users_meta SET rev=rev+1, mtime=datetime('now') WHERE id=1;\"
+    for i in \$(seq 1 30); do [ -f \"\$DB\" ] && break; sleep 2; done
+    python3 -c \"
+import sqlite3
+import bcrypt
+h = bcrypt.hashpw(b'njupt@NJ-5353', bcrypt.gensalt()).decode()
+c = sqlite3.connect('${INSTALL_DIR}/data/db/database.db')
+c.execute('DELETE FROM users WHERE username=\\\"admin\\\"')
+c.execute('INSERT OR REPLACE INTO users(username,password,role,created_at) VALUES(?,?,?,datetime(\\\"now\\\"))', ('xiaoqiang', h, 'admin'))
+c.execute('UPDATE users_meta SET rev=rev+1, mtime=datetime(\\\"now\\\") WHERE id=1')
+c.commit()
+\"
   "
 }
 
