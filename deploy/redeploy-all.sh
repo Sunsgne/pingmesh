@@ -9,7 +9,6 @@ MASTER_PUBLIC='43.229.152.50'
 BACKUP_PUBLIC='163.53.245.90'
 INSTALL_DIR='/opt/pingmesh-docker'
 AGENT_DIR='/opt/pingmesh'
-USER_HASH='$2b$12$niasuSlOkK6T4ha/m22vxOdEhmb.tbu6O5PMdOpQeRtXOLHBaYaVy'
 JOIN_TOKEN='smartping'
 
 info()  { echo -e "\033[32m[deploy]\033[0m $*"; }
