@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Pingmesh - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="card mb-4">
+    <div class="card-body" style="padding:14px 18px">
+      <div class="mesh-stats">
+        <span class="ms"><b id="ms-nodes">-</b>探测节点</span>
+        <span class="ms"><b id="ms-links">-</b>监测链路</span>
+        <span class="ms"><b id="ms-ok" style="color:var(--sp-green)">-</b>正常</span>
+        <span class="ms bad"><b id="ms-bad">-</b>异常</span>
+        <span class="ms"><b id="ms-avg">-</b>全网平均延迟</span>
+        <span class="spacer" style="flex:1"></span>
+        <span class="muted" id="loading" style="align-self:center"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>Pingmesh</h3>
+      <span class="sub">行 = 探测源，列 = 目标。点击色块查看历史曲线</span>
+      <span class="spacer"></span>
+      <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
+        <label class="switch"><input type="checkbox" id="auto-refresh" checked><span class="track"></span></label>
+        自动刷新
+      </span>
+      <button class="btn sm" id="refresh-btn">刷新</button>
+      <button class="btn sm" id="fs-btn" title="投屏到监控大屏, ESC 退出">&#x26F6; 全屏</button>
+    </div>
+    <div class="card-body">
+      <div class="flex mb-4" style="flex-wrap:wrap">
+        <span class="muted" style="font-size:12.5px">时间</span>
+        <div class="seg" id="win-seg">
+          <button data-v="15" class="active">15分钟</button>
+          <button data-v="60">1小时</button>
+          <button data-v="360">6小时</button>
+          <button data-v="1440">1天</button>
+          <button data-v="10080">7天</button>
+          <button data-v="custom">自定义</button>
+        </div>
+        <span id="custom-range" style="display:none" class="flex">
+          <input type="datetime-local" class="input" id="cr-start" style="width:185px;padding:6px 8px">
+          <span class="muted">~</span>
+          <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
+          <button class="btn primary sm" id="cr-apply">应用</button>
+        </span>
+        <span class="spacer"></span>
+        <span class="muted" style="font-size:12.5px">缩放</span>
+        <div class="seg" id="zoom-seg">
+          <button data-v="std" class="active">标准</button>
+          <button data-v="compact">紧凑</button>
+          <button data-v="heat" title="纯色块密度图, 悬浮查看详情, 适合数百条链路一屏总览">热力图</button>
+        </div>
+        <span class="muted" style="font-size:12.5px;margin-left:10px">指标</span>
+        <div class="seg" id="metric-seg">
+          <button data-v="delay" class="active">延迟</button>
+          <button data-v="loss">丢包</button>
+        </div>
+      </div>
+
+      <div class="mesh-wrap" id="mesh-wrap">
+        <table class="mesh-table" id="mesh"></table>
+      </div>
+
+      <div class="mesh-legend mt-4">
+        <span class="lg"><span class="sq" style="background:#10b981"></span>&lt;30ms</span>
+        <span class="lg"><span class="sq" style="background:#6ee7b7"></span>30-80ms</span>
+        <span class="lg"><span class="sq" style="background:#fcd34d"></span>80-150ms / 丢包&ge;5%</span>
+        <span class="lg"><span class="sq" style="background:#fb923c"></span>150-300ms / 丢包&ge;20%</span>
+        <span class="lg"><span class="sq" style="background:#f43f5e"></span>&ge;300ms / 丢包&ge;50%</span>
+        <span class="lg"><span class="sq" style="background:#eef2f7"></span>无数据</span>
+        <span class="lg"><span class="sq" style="border:1px dashed var(--sp-border)"></span>自身</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
+    var cfg = ctx.config;
+    var mins = 15, custom = null, metric = 'delay';
+    var meshData = {};
+    var sources = [], targets = [];
+    var timer = null;
+
+    function rebuildTopo() {
+        sources = SP.sourceNodes(cfg);
+        targets = [];
+        var seen = {};
+        $.each(sources, function (_, s) {
+            $.each(s.Ping || [], function (_, t) {
+                if (!seen[t]) { seen[t] = true; targets.push(t); }
+            });
+        });
+    }
+
+    $('#win-seg button').click(function () {
+        $('#win-seg button').removeClass('active'); $(this).addClass('active');
+        var v = $(this).attr('data-v');
+        if (v === 'custom') {
+            $('#custom-range').show();
+            if (!$('#cr-start').val()) {
+                function dlocal(d) { function p(n){return n<10?'0'+n:n;} return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); }
+                $('#cr-start').val(dlocal(new Date(Date.now() - 6 * 3600 * 1000)));
+                $('#cr-end').val(dlocal(new Date()));
+            }
+            return;
+        }
+        $('#custom-range').hide();
+        custom = null;
+        mins = parseInt(v, 10);
+        load();
+    });
+    $('#cr-apply').click(function () {
+        var s = $('#cr-start').val(), e = $('#cr-end').val();
+        if (!s || !e || s >= e) { SP.toast('请选择正确的起止时间', 'err'); return; }
+        custom = { start: s.replace('T', ' '), end: e.replace('T', ' ') };
+        load();
+    });
+    $('#metric-seg button').click(function () {
+        $('#metric-seg button').removeClass('active'); $(this).addClass('active');
+        metric = $(this).attr('data-v');
+        render();
+    });
+    $('#refresh-btn').click(load);
+    /* 缩放档位: 标准/紧凑/热力图(纯色块), 记忆选择 */
+    function applyZoom(z) {
+        $('#mesh-wrap').removeClass('mesh-zoom-compact mesh-zoom-heat');
+        if (z === 'compact') $('#mesh-wrap').addClass('mesh-zoom-compact');
+        if (z === 'heat') $('#mesh-wrap').addClass('mesh-zoom-heat');
+        $('#zoom-seg button').removeClass('active');
+        $('#zoom-seg button[data-v="' + z + '"]').addClass('active');
+        try { localStorage.setItem('mesh-zoom', z); } catch (e) {}
+    }
+    $('#zoom-seg button').click(function () { applyZoom($(this).attr('data-v')); });
+    try { applyZoom(localStorage.getItem('mesh-zoom') || 'std'); } catch (e) {}
+
+    /* 大屏全屏: 全屏内容区(概要+矩阵), 自动刷新持续工作 */
+    $('#fs-btn').click(function () {
+        var el = document.getElementById('sp-content');
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else {
+            (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        }
+    });
+    $(document).bind('fullscreenchange webkitfullscreenchange', function () {
+        var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        $('#fs-btn').html(on ? '&#x2716; 退出全屏' : '&#x26F6; 全屏');
+    });
+    $('#auto-refresh').change(setupTimer);
+    setupTimer();
+    load();
+
+    function setupTimer() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if ($('#auto-refresh').is(':checked')) timer = setInterval(load, 60000);
+    }
+
+    function queryStr() {
+        if (custom) {
+            return '?start=' + encodeURIComponent(custom.start) + '&end=' + encodeURIComponent(custom.end);
+        }
+        return '?mins=' + mins;
+    }
+
+    function load() {
+        $('#loading').html('<span class="spinner"></span>');
+        // 每次刷新前重新拉取配置, 保证新加入/新启用的节点即时出现在矩阵中
+        $.getJSON('/api/config.json').done(function (ncfg) { cfg = ncfg; }).always(function () {
+            rebuildTopo();
+            if (sources.length === 0) {
+                $('#loading').html('');
+                $('#mesh').html('<tr><td><div class="empty-state">没有启用探测的源节点，请到「系统配置 - 节点管理」开启</div></td></tr>');
+                return;
+            }
+            var pending = sources.length;
+            var qs = queryStr();
+            $.each(sources, function (_, s) {
+                var url = (s.Addr === cfg.Addr)
+                    ? '/api/pingmesh.json' + qs
+                    : '/api/proxy.json?g=http://' + s.Addr + ':' + cfg.Port + '/api/pingmesh.json' + qs.replace(/&/g, '%26');
+                $.ajax({ url: url, dataType: 'json', timeout: (cfg.Base['Timeout'] || 5) * 1000 })
+                    .done(function (row) { meshData[s.Addr] = row; })
+                    .fail(function () { meshData[s.Addr] = { error: true }; })
+                    .always(function () {
+                        pending--;
+                        render();
+                        if (pending === 0) $('#loading').html('');
+                    });
+            });
+        });
+    }
+
+    function render() {
+        var html = '<tr><th class="row-h">源 \\ 目标</th>';
+        $.each(targets, function (_, t) {
+            html += '<th class="col-h" title="' + SP.esc(SP.nodeName(cfg, t)) + ' · ' + SP.esc(t) + '">' +
+                '<span class="col-name">' + SP.esc(SP.nodeName(cfg, t)) + '</span>' +
+                '<span class="col-ip mono">' + SP.esc(t) + '</span></th>';
+        });
+        html += '</tr>';
+
+        var stTotal = 0, stOk = 0, stBad = 0, stSum = 0, stCnt = 0;
+
+        $.each(sources, function (_, s) {
+            html += '<tr><th class="row-h"><span class="src-name">' + SP.esc(s.Name) + '</span><span class="src-ip mono">' + SP.esc(s.Addr) + '</span></th>';
+            var row = meshData[s.Addr];
+            $.each(targets, function (_, t) {
+                if (t === s.Addr) {
+                    html += '<td><div class="mesh-cell self">·</div></td>';
+                    return;
+                }
+                var monitored = $.inArray(t, (cfg.Network[s.Addr] || {}).Ping || []) >= 0;
+                var c = row && row.cells ? row.cells[t] : null;
+                if (!monitored || !row || row.error || !c || c.points === 0) {
+                    var hint = row && row.error ? '节点不可达' : '无数据';
+                    html += '<td><div class="mesh-cell na" title="' + hint + '">' + (row && row.error ? '&#9888;' : '·') + '</div></td>';
+                    return;
+                }
+                var lvl = SP.delayLevel(c.avgdelay, c.loss);
+                stTotal++; stSum += c.avgdelay; stCnt++;
+                if (lvl >= 3) stBad++; else stOk++;
+                var main = metric === 'delay' ? SP.fmtMs(c.avgdelay) : c.loss.toFixed(0) + '%';
+                if (c.loss >= 99.5) main = '&#10005;'; // 完全不通显示 ✕
+                var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
+                    '\n平均 ' + SP.fmtMs(c.avgdelay) + 'ms · 最大 ' + SP.fmtMs(c.maxdelay) + 'ms' +
+                    '\n抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次\n' + c.lastcheck;
+                html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +
+                    main + '</div></td>';
+            });
+            html += '</tr>';
+        });
+        $('#mesh').html(html);
+
+        $('#ms-nodes').text(sources.length);
+        $('#ms-links').text(stTotal);
+        $('#ms-ok').text(stOk);
+        $('#ms-bad').text(stBad);
+        $('#ms-avg').text(stCnt > 0 ? SP.fmtMs(stSum / stCnt) + ' ms' : '-');
+
+        // 异步回填 ASN 到悬浮提示与列头
+        $.each(targets, function (_, t) {
+            SP.asn(t, function (info) {
+                if (!info) return;
+                var line = '\nASN: ' + SP.asnShort(info);
+                $('#mesh .mesh-cell[data-dst="' + t + '"]').each(function () {
+                    if (($(this).attr('title') || '').indexOf('ASN:') < 0) {
+                        $(this).attr('title', $(this).attr('title') + line);
+                    }
+                });
+                $('#mesh th.col-h').each(function () {
+                    if ($(this).attr('title') === t) $(this).attr('title', t + ' · ' + SP.asnShort(info));
+                });
+            });
+        });
+
+        $('#mesh .mesh-cell[data-src]').click(function () {
+            var src = $(this).attr('data-src'), dst = $(this).attr('data-dst');
+            var apiurl = (src === cfg.Addr)
+                ? '/api/ping.json?ip=' + dst
+                : '/api/proxy.json?g=http://' + src + ':' + cfg.Port + '/api/ping.json?ip=' + dst;
+            SP.openPingChart(SP.nodeName(cfg, src) + ' → ' + SP.nodeName(cfg, dst) + ' (' + dst + ')', apiurl);
+        });
+    }
+});
+});
+</script>
+</body>
+</html>

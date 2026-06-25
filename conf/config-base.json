@@ -1,0 +1,210 @@
+{
+	"Ver": "0.8.0",
+	"Port": 8899,
+	"Name": "本机",
+	"Addr": "127.0.0.1",
+	"Mode": {
+		"Endpoint": "",
+		"LastSuccTime": "",
+		"Status": "true",
+		"Type": "local"
+	},
+	"Base": {
+		"Archive": 10,
+		"Chinamap": 1,
+		"Refresh": 1,
+		"Timeout": 5,
+		"Pinginterval": 2500,
+		"Pingcount": 20,
+		"Pingtimeout": 3000,
+		"Pingsize": 56,
+		"Apisign": 1,
+		"Remindmin": 60
+	},
+	"Topology": {
+		"Tline": "1",
+		"Tsound": "/alert-soft.wav",
+		"Tsymbolsize": "70"
+	},
+	"Brand": {
+		"Name": "ZENLENET",
+		"Slogan": "PingMesh · 网络质量监控平台",
+		"Logo": ""
+	},
+	"Alert": {
+		"EmailHost": "",
+		"RevcEmailList": "",
+		"SendEmailAccount": "",
+		"SendEmailPassword": ""
+	},
+	"Network": {
+		"1.2.3.4": {
+			"Name": "OtherSP",
+			"Addr": "1.2.3.4",
+			"Pingmesh": true,
+			"Ping": [
+				"114.114.114.114",
+				"127.0.0.1",
+				"8.8.4.4"
+			],
+			"Topology": [
+				{
+					"Addr": "127.0.0.1",
+					"Name": "本机",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "114.114.114.114",
+					"Name": "114DNS",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "8.8.4.4",
+					"Name": "GoogleDNS",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "1.2.3.4",
+					"Name": "OtherSP",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				}
+			]
+		},
+		"114.114.114.114": {
+			"Name": "114DNS",
+			"Addr": "114.114.114.114",
+			"Pingmesh": false,
+			"Ping": [],
+			"Topology": []
+		},
+		"123.125.114.144": {
+			"Name": "百度",
+			"Addr": "123.125.114.144",
+			"Pingmesh": false,
+			"Ping": [],
+			"Topology": []
+		},
+		"127.0.0.1": {
+			"Name": "本机",
+			"Addr": "127.0.0.1",
+			"Pingmesh": true,
+			"Ping": [
+				"1.2.3.4",
+				"114.114.114.114",
+				"123.125.114.144",
+				"127.0.0.1",
+				"69.171.229.28",
+				"8.8.4.4"
+			],
+			"Topology": [
+				{
+					"Addr": "1.2.3.4",
+					"Name": "OtherSP",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "114.114.114.114",
+					"Name": "114DNS",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "8.8.4.4",
+					"Name": "GoogleDNS",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "10",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "69.171.229.28",
+					"Name": "Facebook",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				},
+				{
+					"Addr": "123.125.114.144",
+					"Name": "百度",
+					"Thdavgdelay": "200",
+					"Thdchecksec": "900",
+					"Thdloss": "30",
+					"Thdoccnum": "3"
+				}
+			]
+		},
+		"69.171.229.28": {
+			"Name": "Facebook",
+			"Addr": "69.171.229.28",
+			"Pingmesh": false,
+			"Ping": [],
+			"Topology": []
+		},
+		"8.8.4.4": {
+			"Name": "GoogleDNS",
+			"Addr": "8.8.4.4",
+			"Pingmesh": false,
+			"Ping": [],
+			"Topology": []
+		}
+	},
+	"Chinamap": {
+		"United States": {
+			"骨干网": [
+				"8.8.8.8"
+			],
+			"精品网": [
+				"1.1.1.1"
+			]
+		},
+		"Japan": {
+			"骨干网": [
+				"129.250.35.250"
+			]
+		},
+		"Germany": {
+			"骨干网": [
+				"194.150.168.168"
+			]
+		},
+		"Singapore": {
+			"骨干网": [
+				"165.21.83.88"
+			]
+		},
+		"China": {
+			"骨干网": [
+				"114.114.114.114"
+			],
+			"精品网": [
+				"223.5.5.5"
+			]
+		},
+		"United Kingdom": {
+			"骨干网": [
+				"193.0.14.129"
+			]
+		}
+	},
+	"Toollimit": 0,
+	"Authiplist": "",
+	"Password": ""
+}

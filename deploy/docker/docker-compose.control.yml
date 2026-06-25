@@ -1,0 +1,40 @@
+# PingMesh 控制节点: pingmesh 主节点 + Nginx HTTPS 443 反代
+services:
+  pingmesh:
+    image: pingmesh:local
+    container_name: pingmesh
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    command:
+      - -p
+      - "8899"
+      - -name
+      - "${NODE_NAME:-sin1-sg2}"
+      - -addr
+      - "${NODE_ADDR:-10.100.1.8}"
+    volumes:
+      - ./data/conf:/app/conf
+      - ./data/db:/app/db
+      - ./data/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8899/healthz"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: pingmesh-nginx
+    network_mode: host
+    depends_on:
+      pingmesh:
+        condition: service_healthy
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    restart: unless-stopped

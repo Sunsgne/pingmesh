@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>全球延迟 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+<style>
+.region-row { cursor: pointer; }
+.region-row.active td { background: var(--sp-primary-soft) !important; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="card mb-4" id="map-card">
+    <div class="card-head">
+      <h3>全球 Ping 延迟地图</h3>
+      <span class="sub">各地区线路延迟着色，滚轮缩放、拖拽平移，可回看历史</span>
+      <span class="spacer"></span>
+      <input type="datetime-local" class="input" id="pick-time" style="width:195px;padding:6px 8px">
+      <button class="btn primary sm" id="pick-btn">查看该时间</button>
+      <button class="btn sm" id="now-btn">回到当前</button>
+      <span class="muted" id="loading"></span>
+    </div>
+    <div class="card-body">
+      <div class="flex mb-2" style="flex-wrap:wrap">
+        <span class="muted" style="font-size:12.5px">探测节点</span>
+        <div class="chips" id="agent-chips"></div>
+      </div>
+      <div id="echarts-map" style="width:100%;height:560px"></div>
+      <div class="mesh-legend">
+        <span class="lg"><span class="sq" style="background:#10b981"></span>&lt;30ms</span>
+        <span class="lg"><span class="sq" style="background:#6ee7b7"></span>30-80ms</span>
+        <span class="lg"><span class="sq" style="background:#fcd34d"></span>80-150ms</span>
+        <span class="lg"><span class="sq" style="background:#fb923c"></span>150-300ms</span>
+        <span class="lg"><span class="sq" style="background:#f43f5e"></span>&ge;300ms</span>
+        <span class="lg"><span class="sq" style="background:#94a3b8"></span>不可达</span>
+        <span class="lg"><span class="sq" style="background:#eef2f7"></span>未配置探测</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="list-card">
+    <div class="card-head">
+      <h3>地区延迟列表 <span class="badge indigo" id="list-count"></span></h3>
+      <span class="sub" id="list-sub"></span>
+      <span class="spacer"></span>
+      <input type="text" class="input" id="search" placeholder="搜索地区 / 线路..." style="width:240px">
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="sp-table">
+        <thead>
+          <tr>
+            <th>地区</th>
+            <th>线路</th>
+            <th>探测点</th>
+            <th style="cursor:pointer" id="sort-delay">平均延迟 <span id="sort-arrow">&darr;</span></th>
+            <th>状态</th>
+            <th style="width:110px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="region-list"></tbody>
+      </table>
+      <div class="empty-state" id="list-empty" style="display:none">
+        <div class="big">&#127757;</div>没有匹配的地区，请调整搜索条件或在「系统配置 - 全球延迟」中添加探测点
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="map-disabled" style="display:none">
+    <div class="card-body">
+      <div class="empty-state">
+        <div class="big">&#127757;</div>
+        全球延迟功能已关闭<br>
+        <span class="muted" style="font-size:12.5px">管理员可在「系统配置 - 基础设置」中开启</span>
+        <div class="mt-4"><a class="btn" href="config.html">前往系统配置</a></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/world.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('mapping', '全球延迟').done(function (ctx) {
+    var cfg = ctx.config;
+    if (cfg.Base && cfg.Base['Chinamap'] === 0) {
+        $('#map-card,#list-card').hide();
+        $('#map-disabled').show();
+        return;
+    }
+    var currentBase = '';
+    var chart = echarts.init(document.getElementById('echarts-map'));
+    var data = null;          // mapping.json 返回 {text, subtext, avgdelay: {线路: [{name, value}]}}
+    var activeLine = null;
+    var sortDesc = true;
+    var UNREACH = 1999;       // 探测端约定: 不可达时延迟为 2000ms
+
+    /* ---------- 节点切换 ---------- */
+    var box = $('#agent-chips');
+    $.each(SP.sourceNodes(cfg), function (_, n) {
+        var chip = $('<span class="chip' + (n.Addr === cfg.Addr ? ' active' : '') + '">' + SP.esc(n.Name) + '</span>');
+        chip.click(function () {
+            $('#agent-chips .chip').removeClass('active');
+            chip.addClass('active');
+            currentBase = (n.Addr === cfg.Addr) ? '' : '/api/proxy.json?g=http://' + n.Addr + ':' + cfg.Port;
+            load('');
+        });
+        box.append(chip);
+    });
+
+    $('#pick-btn').click(function () {
+        var v = $('#pick-time').val();
+        if (!v) { SP.toast('请选择时间', 'err'); return; }
+        load(v.replace('T', ' '));
+    });
+    $('#now-btn').click(function () { $('#pick-time').val(''); activeLine = '全部'; load(''); });
+    $('#search').bind('keyup input', renderList);
+    $('#sort-delay').click(function () { sortDesc = !sortDesc; $('#sort-arrow').html(sortDesc ? '&darr;' : '&uarr;'); renderList(); });
+
+    load('');
+    setTimeout(function () { window.location.reload(); }, (cfg.Base['Refresh'] || 1) * 60 * 1000);
+
+    /* ---------- 数据加载 ---------- */
+    function load(d) {
+        $('#loading').html('<span class="spinner"></span>');
+        var url = currentBase + '/api/mapping.json' + (d !== '' ? '?d=' + encodeURIComponent(d) : '');
+        $.getJSON(url, function (result) {
+            $('#loading').html('');
+            data = result;
+            var lines = [];
+            $.each(data.avgdelay || {}, function (line) { lines.push(line); });
+            lines.sort();
+            if (lines.length === 0) {
+                data = null;
+                renderMap(); renderList();
+                SP.toast('该时间点暂无探测数据(每分钟采集一次)', 'err');
+                return;
+            }
+            // 地图默认聚合「全部」线路; 查看单条线路通过列表的「地图定位」进入
+            if (!activeLine || (activeLine !== '全部' && $.inArray(activeLine, lines) < 0)) activeLine = '全部';
+            renderMap(); renderList();
+        }).fail(function () {
+            $('#loading').html('');
+            SP.toast('获取延迟数据失败', 'err');
+        });
+    }
+
+    /* ---------- 世界地图 ---------- */
+    function mergedAll() {
+        // 聚合所有线路: 每个地区取可达线路的平均值, 全部不可达则标记不可达
+        var byRegion = {};
+        $.each(data.avgdelay || {}, function (_, list) {
+            $.each(list || [], function (_, item) {
+                (byRegion[item.name] = byRegion[item.name] || []).push(item.value);
+            });
+        });
+        var out = [];
+        $.each(byRegion, function (region, vals) {
+            var ok = $.grep(vals, function (v) { return v < UNREACH; });
+            var v;
+            if (ok.length > 0) {
+                var sum = 0;
+                $.each(ok, function (_, x) { sum += x; });
+                v = Math.round(sum / ok.length * 100) / 100;
+            } else {
+                v = 2000;
+            }
+            out.push({ name: region, value: v });
+        });
+        return out;
+    }
+
+    function renderMap() {
+        var seriesData = [];
+        if (data) {
+            seriesData = (activeLine === '全部') ? mergedAll() : (data.avgdelay[activeLine] || []);
+        }
+        chart.setOption({
+            title: {
+                text: (data ? data.text : '') + ' · ' + (activeLine === '全部' ? '全部线路' : (activeLine || '')) + ' 全球延迟',
+                subtext: data ? data.subtext : '',
+                left: 'center',
+                textStyle: { color: '#0f172a', fontSize: 15, fontWeight: 'bold' },
+                subtextStyle: { color: '#94a3b8', fontSize: 12 }
+            },
+            tooltip: {
+                trigger: 'item',
+                backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [9, 13],
+                textStyle: { color: '#e2e8f0', fontSize: 12 },
+                formatter: function (p) {
+                    if (p.value == null || isNaN(p.value)) return p.name + '<br>未配置探测点';
+                    if (p.value >= UNREACH) return p.name + ' · ' + activeLine + '<br><b style="color:#f87171">不可达</b>';
+                    return p.name + ' · ' + activeLine + '<br>平均延迟 <b>' + Number(p.value).toFixed(1) + ' ms</b>';
+                }
+            },
+            visualMap: {
+                type: 'piecewise', left: 10, bottom: 10, showLabel: true,
+                textStyle: { color: '#64748b', fontSize: 11 },
+                itemWidth: 14, itemHeight: 10, show: false,
+                pieces: [
+                    { min: 0, max: 30, color: '#10b981' },
+                    { min: 30, max: 80, color: '#6ee7b7' },
+                    { min: 80, max: 150, color: '#fcd34d' },
+                    { min: 150, max: 300, color: '#fb923c' },
+                    { min: 300, max: UNREACH, color: '#f43f5e' },
+                    { min: UNREACH, color: '#94a3b8', label: '不可达' }
+                ]
+            },
+            series: [{
+                name: activeLine, type: 'map', map: 'world',
+                roam: true, scaleLimit: { min: 0.8, max: 8 },
+                top: 60, bottom: 20,
+                itemStyle: { areaColor: '#eef2f7', borderColor: '#ffffff', borderWidth: .8 },
+                emphasis: {
+                    label: { show: true, color: '#0f172a', fontWeight: 'bold', fontSize: 11 },
+                    itemStyle: { areaColor: '#c7d2fe' }
+                },
+                select: { disabled: true },
+                data: seriesData
+            }]
+        }, true);
+    }
+
+    /* ---------- 搜索 + 列表 ---------- */
+    function levelBadge(v) {
+        if (v >= UNREACH) return '<span class="badge gray">不可达</span>';
+        var lvl = SP.delayLevel(v, 0);
+        if (lvl <= 1) return '<span class="badge green"><span class="dot"></span>优秀</span>';
+        if (lvl === 2) return '<span class="badge yellow">一般</span>';
+        if (lvl === 3) return '<span class="badge yellow">较差</span>';
+        return '<span class="badge red"><span class="dot"></span>异常</span>';
+    }
+
+    function renderList() {
+        var q = $.trim($('#search').val()).toLowerCase();
+        var rows = [];
+        if (data) {
+            $.each(data.avgdelay, function (line, list) {
+                $.each(list || [], function (_, item) {
+                    var ipCnt = ((cfg.Chinamap[item.name] || {})[line] || []).length;
+                    rows.push({ region: item.name, line: line, value: item.value, ips: ipCnt });
+                });
+            });
+        }
+        rows = $.grep(rows, function (r) {
+            return q === '' || (r.region + ' ' + r.line).toLowerCase().indexOf(q) >= 0;
+        });
+        rows.sort(function (a, b) { return sortDesc ? b.value - a.value : a.value - b.value; });
+
+        var body = $('#region-list').empty();
+        $.each(rows, function (_, r) {
+            var delayTxt = r.value >= UNREACH ? '—' : Number(r.value).toFixed(1) + ' ms';
+            body.append('<tr class="region-row" data-region="' + SP.esc(r.region) + '" data-line="' + SP.esc(r.line) + '">' +
+                '<td><b>' + SP.esc(r.region) + '</b></td>' +
+                '<td><span class="badge indigo">' + SP.esc(r.line) + '</span></td>' +
+                '<td class="muted">' + (r.ips || '-') + ' 个 IP</td>' +
+                '<td class="mono"><b>' + delayTxt + '</b></td>' +
+                '<td>' + levelBadge(r.value) + '</td>' +
+                '<td><a class="locate">地图定位 &rarr;</a></td></tr>');
+        });
+        $('#list-count').text(rows.length + ' 条');
+        $('#list-sub').text(data ? '数据时间 ' + data.subtext : '');
+        $('#list-empty').toggle(rows.length === 0);
+
+        $('.region-row').click(function () {
+            var region = $(this).attr('data-region'), line = $(this).attr('data-line');
+            $('.region-row').removeClass('active');
+            $(this).addClass('active');
+            if (line !== activeLine) {
+                activeLine = line;
+                renderMap();
+            }
+            $('html, body').animate({ scrollTop: $('#map-card').offset().top - 10 }, 200);
+            chart.dispatchAction({ type: 'hideTip' });
+            chart.dispatchAction({ type: 'showTip', seriesIndex: 0, name: region });
+        });
+    }
+
+    $(window).resize(function () { chart.resize(); });
+});
+});
+</script>
+</body>
+</html>

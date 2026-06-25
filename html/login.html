@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>登录 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body class="login-page">
+
+<div class="login-card" id="card">
+  <div class="logo-row">
+    <div class="logo-mark" style="overflow:hidden;padding:0"><img src="assets/img/logo.png" alt="logo" id="brand-logo" style="width:100%;height:100%;display:block"></div>
+    <h1 id="brand-title">ZENLENET <span style="font-weight:400;color:#64748b">PingMesh</span></h1>
+  </div>
+  <div class="sub" id="brand-sub">全网互 PING · 网络质量监控平台</div>
+
+  <div class="login-err" id="err"></div>
+
+  <form id="login-form" autocomplete="on" onsubmit="return false;">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" class="input" id="username" autocomplete="username" autofocus placeholder="请输入用户名">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" class="input" id="password" autocomplete="current-password" placeholder="请输入密码">
+    </div>
+    <button class="btn primary" id="login-btn" type="submit" style="width:100%;padding:11px;font-size:14.5px;margin-top:6px;">登 录</button>
+  </form>
+
+  <div class="first-hint" id="first-hint" style="display:none">首次部署默认账号 <b>admin / admin123</b>，登录后请尽快修改密码</div>
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script>
+$(function () {
+    // 默认密码仍有效时才显示提示, 修改密码后自动消失; 同时应用品牌定制
+    $.getJSON('/api/loginmeta.json', function (m) {
+        if (m && m.defaultcreds) $('#first-hint').show();
+        if (m && m.brand) applyBrand(m.brand);
+    });
+    function applyBrand(b) {
+        var name = b.Name || 'ZENLENET';
+        var slogan = b.Slogan || '全网互 PING · 网络质量监控平台';
+        if (b.Logo) $('#brand-logo').attr('src', b.Logo);
+        $('#brand-title').html(esc(name) + ' <span style="font-weight:400;color:#64748b">PingMesh</span>');
+        $('#brand-sub').text(slogan);
+        document.title = '登录 - ' + name + ' PingMesh';
+    }
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    $('#login-form').submit(function () {
+        var u = $('#username').val(), p = $('#password').val();
+        if (!u || !p) { showErr('请输入用户名和密码'); return false; }
+        $('#login-btn').attr('disabled', true).text('登录中...');
+        $.post('/api/login.json', { username: u, password: p }, function (res) {
+            if (res.status === 'true') {
+                window.location.href = '/index.html';
+            } else {
+                showErr(res.info || '登录失败');
+            }
+        }, 'json').fail(function () {
+            showErr('服务不可用，请稍后重试');
+        }).always(function () {
+            $('#login-btn').attr('disabled', false).text('登 录');
+        });
+        return false;
+    });
+    function showErr(msg) {
+        $('#err').text(msg).show();
+        $('#card').addClass('shake');
+        setTimeout(function () { $('#card').removeClass('shake'); }, 450);
+    }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>报警记录 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <!-- 活跃屏蔽 -->
+  <div class="card mb-4" id="mute-card" style="display:none">
+    <div class="card-head">
+      <h3>屏蔽中的目标 <span class="badge yellow" id="mute-count"></span></h3>
+      <span class="sub">屏蔽期间仍记录告警，但不发送任何通知；到期自动恢复</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="sp-table">
+        <thead><tr><th>源节点</th><th>目标</th><th>屏蔽至</th><th>原因</th><th>操作人</th><th style="width:90px">操作</th></tr></thead>
+        <tbody id="mutelist"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head" style="flex-wrap:wrap;gap:10px">
+      <h3>报警记录 <span class="badge red" id="alert-count" style="display:none"></span></h3>
+      <span class="spacer"></span>
+      <div class="seg" id="range-seg">
+        <button data-v="today" class="active">今天</button>
+        <button data-v="24h">近24小时</button>
+        <button data-v="7d">近7天</button>
+        <button data-v="custom">自定义</button>
+      </div>
+      <span id="custom-range" style="display:none" class="flex">
+        <input type="datetime-local" class="input" id="cr-start" style="width:185px;padding:6px 8px">
+        <span class="muted">~</span>
+        <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
+        <button class="btn primary sm" id="cr-apply">查询</button>
+      </span>
+      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 原因..." style="width:200px;padding:6px 10px">
+      <span class="muted" id="loading"></span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="sp-table">
+        <thead>
+          <tr>
+            <th>报警时间</th><th>链路</th><th>状态</th><th style="width:70px">MTR</th><th style="width:200px">操作</th>
+          </tr>
+        </thead>
+        <tbody id="alertlist"></tbody>
+      </table>
+      <div class="empty-state" id="empty" style="display:none">
+        <div class="big">&#127881;</div>该时间范围内没有报警记录
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MTR 详情 -->
+<div class="sp-modal-mask" id="mtr-modal">
+  <div class="sp-modal lg">
+    <div class="m-head"><h3>MTR 路由追踪快照</h3><button class="m-close">&times;</button></div>
+    <div class="m-body" id="mtr-body" style="padding:0;max-height:70vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- 确认告警 -->
+<div class="sp-modal-mask" id="ack-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3>确认告警</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="muted mb-2" style="font-size:13px" id="ack-link"></div>
+      <div class="field">
+        <label>处理说明 / 原因</label>
+        <textarea class="input" id="ack-reason" rows="3" placeholder="如: 机房线路割接, 已联系运营商, 预计 2 小时恢复"></textarea>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="ack-save">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 屏蔽告警 -->
+<div class="sp-modal-mask" id="mute-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3>屏蔽告警</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="muted mb-2" style="font-size:13px" id="mute-link"></div>
+      <div class="field">
+        <label>暂停通知时长</label>
+        <select class="input" id="mute-minutes">
+          <option value="60">1 小时</option>
+          <option value="360">6 小时</option>
+          <option value="1440" selected>24 小时</option>
+          <option value="4320">3 天</option>
+          <option value="10080">7 天</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>原因（必填，便于团队知晓）</label>
+        <textarea class="input" id="mute-reason" rows="3" placeholder="如: 已知故障, 等待硬件更换"></textarea>
+      </div>
+      <div class="hint">屏蔽期间该目标的告警与恢复均不再通知（仍会记录），到期自动恢复通知。</div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="mute-save">屏蔽</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('alerts', '报警记录').done(function (ctx) {
+    var cfg = ctx.config;
+    var mtrStore = [];
+    var allRows = [];
+    var range = 'today';
+    var pendingCtx = null; // {fromip, targetip, targetname, id}
+
+    function pad(n) { return n < 10 ? '0' + n : n; }
+    function fmt(d) {
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+               pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+    function rangeWindow() {
+        var now = new Date();
+        if (range === 'today') {
+            return [fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate())), fmt(now)];
+        }
+        if (range === '24h') return [fmt(new Date(now.getTime() - 24 * 3600e3)), fmt(now)];
+        if (range === '7d') return [fmt(new Date(now.getTime() - 7 * 24 * 3600e3)), fmt(now)];
+        var s = $('#cr-start').val(), e = $('#cr-end').val();
+        return [s.replace('T', ' ') + ':00', e.replace('T', ' ') + ':59'];
+    }
+
+    $('#range-seg button').click(function () {
+        $('#range-seg button').removeClass('active'); $(this).addClass('active');
+        range = $(this).attr('data-v');
+        if (range === 'custom') {
+            $('#custom-range').show();
+            if (!$('#cr-start').val()) {
+                function dl(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+                $('#cr-start').val(dl(new Date(Date.now() - 24 * 3600e3)));
+                $('#cr-end').val(dl(new Date()));
+            }
+            return;
+        }
+        $('#custom-range').hide();
+        getdata();
+    });
+    $('#cr-apply').click(function () {
+        var s = $('#cr-start').val(), e = $('#cr-end').val();
+        if (!s || !e || s >= e) { SP.toast('请选择正确的起止时间', 'err'); return; }
+        getdata();
+    });
+    $('#search').bind('keyup input', applyFilter);
+
+    function sourceAgents() {
+        var list = [];
+        $.each(cfg.Network, function (_, n) {
+            if ((n.Topology || []).length > 0) list.push(n);
+        });
+        return list;
+    }
+    function nodeBase(addr) {
+        return (addr === cfg.Addr) ? '' : '/api/proxy.json?g=http://' + addr + ':' + cfg.Port;
+    }
+    function nestedQs(base, qs) {
+        // 经 proxy 时嵌套参数的 & 需转义
+        return base === '' ? qs : qs.replace(/&/g, '%26');
+    }
+
+    /* ---------- 数据加载 ---------- */
+    function getdata() {
+        var agents = sourceAgents();
+        var pending = agents.length;
+        allRows = []; mtrStore = [];
+        $('#alertlist').empty();
+        $('#loading').html('<span class="spinner"></span>');
+        if (pending === 0) { finish(); return; }
+        var win = rangeWindow();
+        $.each(agents, function (_, n) {
+            var base = nodeBase(n.Addr);
+            var qs = '?start=' + encodeURIComponent(win[0]) + '&end=' + encodeURIComponent(win[1]);
+            $.ajax({ dataType: 'json', url: base + '/api/alert.json' + nestedQs(base, qs), timeout: (cfg.Base['Timeout'] || 5) * 1000 })
+                .done(function (result) {
+                    $.each(result[1] || [], function (_, row) { allRows.push(row); });
+                })
+                .always(function () {
+                    pending--;
+                    if (pending === 0) finish();
+                });
+        });
+        loadMutes();
+    }
+
+    function finish() {
+        $('#loading').html('');
+        allRows.sort(function (a, b) { return a.Logtime < b.Logtime ? 1 : -1; });
+        var box = $('#alertlist').empty();
+        var mtrIndexMap = window.mtrIndexMap = {};
+        $.each(allRows, function (i, r) {
+            var mid = mtrStore.length;
+            mtrIndexMap[mid] = i;
+            mtrStore.push(r.Tracert);
+            var status = r.Ack
+                ? '<span class="badge green" title="' + SP.esc((r.Ackby || '') + ' ' + (r.Acktime || '')) + '">已确认</span>' +
+                  (r.Ackreason ? '<div class="muted" style="font-size:11px;max-width:260px">' + SP.esc(r.Ackreason) + '</div>' : '')
+                : '<span class="badge red"><span class="dot"></span>未确认</span>';
+            box.append('<tr data-s="' + SP.esc((r.Fromname + ' ' + r.Fromip + ' ' + r.Targetname + ' ' + r.Targetip + ' ' + (r.Ackreason || '')).toLowerCase()) + '">' +
+                '<td style="white-space:nowrap">' + SP.esc(r.Logtime) + '</td>' +
+                '<td><b>' + SP.esc(r.Fromname) + '</b> <span class="muted">&rarr;</span> <b>' + SP.esc(r.Targetname) + '</b>' +
+                '<div class="muted mono" style="font-size:11px">' + SP.esc(r.Fromip) + ' &rarr; ' + SP.esc(r.Targetip) + '</div></td>' +
+                '<td>' + status + '</td>' +
+                '<td><a class="mtr-link" data-i="' + mid + '">查看</a></td>' +
+                '<td>' +
+                (r.Ack ? '' : '<button class="btn sm a-ack" data-i="' + i + '">确认</button> ') +
+                '<button class="btn sm a-mute" data-i="' + i + '">屏蔽</button>' +
+                '</td></tr>');
+        });
+        $('#alert-count').text(allRows.length + ' 条').toggle(allRows.length > 0);
+        $('#empty').toggle(allRows.length === 0);
+        $('.mtr-link').click(function () {
+            var i = parseInt($(this).attr('data-i'), 10);
+            showMtr(i, (allRows[(window.mtrIndexMap || {})[i]] || {}).Targetip);
+        });
+        $('.a-ack').click(function () { openAck(allRows[parseInt($(this).attr('data-i'), 10)]); });
+        $('.a-mute').click(function () { openMute(allRows[parseInt($(this).attr('data-i'), 10)]); });
+        applyFilter();
+    }
+
+    /* ---------- 确认 ---------- */
+    function openAck(r) {
+        pendingCtx = r;
+        $('#ack-link').html('链路: <b>' + SP.esc(r.Fromname) + ' → ' + SP.esc(r.Targetname) + '</b>　时间: ' + SP.esc(r.Logtime));
+        $('#ack-reason').val('');
+        SP.openModal('ack-modal');
+    }
+    $('#ack-modal .m-cancel').click(function () { SP.closeModal('ack-modal'); });
+    $('#ack-save').click(function () {
+        var reason = $.trim($('#ack-reason').val());
+        if (!reason) { SP.toast('请填写处理说明', 'err'); return; }
+        var base = nodeBase(pendingCtx.Fromip);
+        var qs = '?id=' + pendingCtx.Id + '&reason=' + encodeURIComponent(reason) + '&by=' + encodeURIComponent(ctx.user.username);
+        $.getJSON(base + '/api/alertack.json' + nestedQs(base, qs), function (res) {
+            if (res.status === 'true') {
+                SP.toast('已确认', 'ok');
+                SP.closeModal('ack-modal');
+                getdata();
+            } else {
+                SP.toast(res.info || '确认失败', 'err');
+            }
+        }).fail(function () { SP.toast('请求失败', 'err'); });
+    });
+
+    /* ---------- 屏蔽 ---------- */
+    function openMute(r) {
+        pendingCtx = r;
+        $('#mute-link').html('屏蔽目标: <b>' + SP.esc(r.Targetname) + '</b> <span class="mono">' + SP.esc(r.Targetip) + '</span>　(源节点 ' + SP.esc(r.Fromname) + ' 上不再通知)');
+        $('#mute-reason').val('');
+        SP.openModal('mute-modal');
+    }
+    $('#mute-modal .m-cancel').click(function () { SP.closeModal('mute-modal'); });
+    $('#mute-save').click(function () {
+        var reason = $.trim($('#mute-reason').val());
+        if (!reason) { SP.toast('请填写屏蔽原因', 'err'); return; }
+        var base = nodeBase(pendingCtx.Fromip);
+        var qs = '?action=add&target=' + encodeURIComponent(pendingCtx.Targetip) +
+                 '&minutes=' + $('#mute-minutes').val() +
+                 '&reason=' + encodeURIComponent(reason) + '&by=' + encodeURIComponent(ctx.user.username);
+        $.getJSON(base + '/api/mute.json' + nestedQs(base, qs), function (res) {
+            if (res.status === 'true') {
+                SP.toast('已屏蔽至 ' + res.muteduntil, 'ok');
+                SP.closeModal('mute-modal');
+                loadMutes();
+            } else {
+                SP.toast(res.info || '屏蔽失败', 'err');
+            }
+        }).fail(function () { SP.toast('请求失败', 'err'); });
+    });
+
+    /* ---------- 屏蔽列表 ---------- */
+    function loadMutes() {
+        var agents = sourceAgents();
+        var pending = agents.length;
+        var mutes = [];
+        if (pending === 0) { renderMutes(mutes); return; }
+        $.each(agents, function (_, n) {
+            var base = nodeBase(n.Addr);
+            $.ajax({ dataType: 'json', url: base + '/api/mute.json' + nestedQs(base, '?action=list'), timeout: (cfg.Base['Timeout'] || 5) * 1000 })
+                .done(function (res) {
+                    $.each(res.mutes || [], function (_, m) {
+                        m._from = res.from; m._fromname = res.fromname;
+                        mutes.push(m);
+                    });
+                })
+                .always(function () {
+                    pending--;
+                    if (pending === 0) renderMutes(mutes);
+                });
+        });
+    }
+    function renderMutes(mutes) {
+        var box = $('#mutelist').empty();
+        $('#mute-card').toggle(mutes.length > 0);
+        $('#mute-count').text(mutes.length + ' 个');
+        $.each(mutes, function (_, m) {
+            box.append('<tr>' +
+                '<td>' + SP.esc(m._fromname || m._from) + '</td>' +
+                '<td><b>' + SP.esc(m.targetname) + '</b> <span class="muted mono" style="font-size:11px">' + SP.esc(m.target) + '</span></td>' +
+                '<td style="white-space:nowrap">' + SP.esc(m.muteduntil) + '</td>' +
+                '<td>' + SP.esc(m.reason || '-') + '</td>' +
+                '<td>' + SP.esc(m.createdby || '-') + '</td>' +
+                '<td><button class="btn sm ghost-danger m-unmute" data-f="' + SP.esc(m._from) + '" data-t="' + SP.esc(m.target) + '">解除</button></td></tr>');
+        });
+        $('.m-unmute').click(function () {
+            var from = $(this).attr('data-f'), target = $(this).attr('data-t');
+            var base = nodeBase(from);
+            var qs = '?action=del&target=' + encodeURIComponent(target);
+            $.getJSON(base + '/api/mute.json' + nestedQs(base, qs), function (res) {
+                if (res.status === 'true') { SP.toast('已解除屏蔽', 'ok'); loadMutes(); }
+                else SP.toast(res.info || '操作失败', 'err');
+            });
+        });
+    }
+
+    /* ---------- MTR / 过滤 ---------- */
+    function showMtr(i, targetIp) {
+        var hops;
+        try { hops = JSON.parse(mtrStore[i]); } catch (e) { hops = null; }
+        $('#mtr-body').html(SP.renderMtr(hops, targetIp));
+        SP.fillMtrAsn('#mtr-body');
+        SP.openModal('mtr-modal');
+    }
+
+    function applyFilter() {
+        var q = $.trim($('#search').val()).toLowerCase();
+        $('#alertlist tr').each(function () {
+            $(this).toggle(q === '' || ($(this).attr('data-s') || '').indexOf(q) >= 0);
+        });
+    }
+
+    getdata();
+});
+});
+</script>
+</body>
+</html>

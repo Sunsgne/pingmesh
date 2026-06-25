@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>概览 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="grid cols-4 mb-4">
+    <div class="card stat-card">
+      <div class="icon ic-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M7.5 8 10 15M16.5 8 14 15M8 6h8"/></svg></div>
+      <div><div class="val" id="st-agents">-</div><div class="lbl">监测节点</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+      <div><div class="val" id="st-targets">-</div><div class="lbl">监测目标</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div><div class="val" id="st-delay">-</div><div class="lbl">平均延迟 (近15分钟)</div></div>
+    </div>
+    <div class="card stat-card">
+      <div class="icon ic-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div><div class="val" id="st-bad">-</div><div class="lbl">异常目标 (近15分钟)</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h3>正向 Ping 监控</h3>
+      <span class="sub">点击图表查看历史曲线，支持自定义时间范围</span>
+      <span class="spacer"></span>
+      <span class="muted" id="loading"></span>
+    </div>
+    <div class="card-body">
+      <div class="chips mb-4" id="agent-chips"></div>
+      <div class="grid cols-3" id="charts"></div>
+      <div class="empty-state" id="empty" style="display:none">
+        <div class="big">&#128225;</div>
+        当前节点没有配置监测目标，请到「系统配置 - 节点管理」中添加
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('index', '概览').done(function (ctx) {
+    var rootCfg = ctx.config;
+    var miniCharts = [];
+
+    renderChips(rootCfg.Addr);
+    loadAgent(rootCfg.Addr);
+
+    function renderChips(activeAddr) {
+        var box = $('#agent-chips').empty();
+        $.each(SP.sourceNodes(rootCfg), function (_, n) {
+            var chip = $('<span class="chip' + (n.Addr === activeAddr ? ' active' : '') + '">' + SP.esc(n.Name) + '</span>');
+            chip.click(function () {
+                $('#agent-chips .chip').removeClass('active');
+                chip.addClass('active');
+                loadAgent(n.Addr);
+            });
+            box.append(chip);
+        });
+    }
+
+    function loadAgent(addr) {
+        var isSelf = (addr === rootCfg.Addr);
+        var base = isSelf ? '' : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port;
+        $('#loading').html('<span class="spinner"></span>');
+        $.getJSON(base + '/api/config.json').done(function (cfg) {
+            drawStats(addr, cfg, isSelf);
+            drawCharts(addr, cfg, isSelf);
+        }).fail(function () {
+            $('#loading').html('');
+            SP.toast('无法连接节点 ' + addr, 'err');
+        });
+    }
+
+    function drawStats(addr, cfg, isSelf) {
+        $('#st-agents').text(SP.sourceNodes(rootCfg).length);
+        var self = cfg.Network[cfg.Addr] || {};
+        $('#st-targets').text((self.Ping || []).length);
+        var meshUrl = isSelf ? '/api/pingmesh.json?mins=15'
+            : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port + '/api/pingmesh.json?mins=15';
+        $.getJSON(meshUrl, function (row) {
+            var sum = 0, n = 0, bad = 0;
+            $.each(row.cells, function (_, c) {
+                sum += c.avgdelay; n++;
+                if (SP.delayLevel(c.avgdelay, c.loss) >= 3) bad++;
+            });
+            $('#st-delay').text(n > 0 ? SP.fmtMs(sum / n) + ' ms' : '-');
+            $('#st-bad').text(n > 0 ? bad : '-');
+        });
+    }
+
+    function drawCharts(addr, cfg, isSelf) {
+        $.each(miniCharts, function (_, c) { c.dispose(); });
+        miniCharts = [];
+        var box = $('#charts').empty();
+        var self = cfg.Network[cfg.Addr] || {};
+        var targets = self.Ping || [];
+        $('#empty').toggle(targets.length === 0);
+        $('#loading').html('');
+
+        $.each(targets, function (i, t) {
+            var tname = SP.nodeName(cfg, t);
+            var id = 'mini-' + i;
+            var card = $(
+                '<div class="card ping-card">' +
+                '<div class="ping-head"><span class="t">' + SP.esc(cfg.Name) + ' &rarr; ' + SP.esc(tname) + '</span></div>' +
+                '<div class="mini-chart" id="' + id + '"></div>' +
+                '<div class="ping-foot">' +
+                '<span class="badge gray mono">' + SP.esc(t) + '</span>' +
+                '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
+                '<span class="badge green" id="' + id + '-loss">- %</span>' +
+                '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
+                '</div></div>');
+            box.append(card);
+
+            var apiurl = isSelf ? '/api/ping.json?ip=' + t
+                : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port + '/api/ping.json?ip=' + t;
+            card.click(function () {
+                SP.openPingChart(cfg.Name + ' → ' + tname + ' (' + t + ')', apiurl);
+            });
+            SP.asn(t, function (info) {
+                if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
+            });
+
+            var chart = echarts.init(document.getElementById(id));
+            miniCharts.push(chart);
+            chart.setOption({
+                grid: { left: 38, right: 12, top: 10, bottom: 22 },
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 11 } },
+                xAxis: { data: [], boundaryGap: false, axisLabel: { fontSize: 10, color: '#94a3b8' }, axisLine: { show: false }, axisTick: { show: false } },
+                yAxis: [
+                    { type: 'value', axisLabel: { fontSize: 10, color: '#94a3b8' }, splitLine: { lineStyle: { color: '#f1f5f9' } }, splitNumber: 3 },
+                    { type: 'value', min: 0, max: 100, show: false }
+                ],
+                series: [
+                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
+                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                          { offset: 0, color: 'rgba(99,102,241,.28)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
+                      data: [] },
+                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
+                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: [] }
+                ]
+            });
+            $.getJSON(apiurl, function (d) {
+                var labels = $.map(d.lastcheck, function (v) { return v.substring(11, 16); });
+                chart.setOption({
+                    xAxis: { data: labels },
+                    series: [{ name: '延迟', data: d.avgdelay }, { name: '丢包', data: d.losspk }]
+                });
+                // 最新非零样本作为当前指标
+                var lastDelay = '-', lastLoss = '-';
+                for (var k = d.lastcheck.length - 1; k >= 0; k--) {
+                    if (parseFloat(d.avgdelay[k]) > 0 || parseFloat(d.losspk[k]) > 0) {
+                        lastDelay = SP.fmtMs(d.avgdelay[k]); lastLoss = d.losspk[k];
+                        break;
+                    }
+                }
+                $('#' + id + '-delay').text(lastDelay + ' ms');
+                var lossBadge = $('#' + id + '-loss').text(lastLoss + ' %');
+                if (parseFloat(lastLoss) >= 20) lossBadge.removeClass('green').addClass('red');
+                else if (parseFloat(lastLoss) >= 5) lossBadge.removeClass('green').addClass('yellow');
+            });
+        });
+    }
+});
+});
+</script>
+</body>
+</html>

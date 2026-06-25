@@ -1,0 +1,33 @@
+# ZENLENET PingMesh 部署示例
+#   主节点:  docker compose up -d pingmesh
+#   加入主节点的 Agent 节点: 修改 smartping-agent 的 -join/-token/-name 后
+#            docker compose --profile agent up -d
+services:
+  pingmesh:
+    build: .
+    container_name: pingmesh
+    # ICMP 探测与互 PING 组网建议使用 host 网络(容器直接使用宿主机 IP)
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    volumes:
+      - ./data/conf:/app/conf
+      - ./data/db:/app/db
+      - ./data/logs:/app/logs
+    restart: unless-stopped
+
+  pingmesh-agent:
+    build: .
+    container_name: pingmesh-agent
+    profiles: ["agent"]
+    network_mode: host
+    cap_add:
+      - NET_RAW
+    # 启动时自动注册到主节点并组成全互联 Pingmesh, 配置每分钟自动同步。
+    # -masters 指定容灾备选(可选): 主挂时按顺序自动接管, 配置全网不丢。
+    command: ["-join", "http://10.0.0.1:8899", "-token", "${JOIN_TOKEN:-YOUR_JOIN_TOKEN}", "-name", "节点B", "-masters", "10.0.0.2:8899"]
+    volumes:
+      - ./data-agent/conf:/app/conf
+      - ./data-agent/db:/app/db
+      - ./data-agent/logs:/app/logs
+    restart: unless-stopped

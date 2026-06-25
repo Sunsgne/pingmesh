@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>用户管理 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="card">
+    <div class="card-head">
+      <h3>用户管理</h3>
+      <span class="sub">管理员可以创建用户、重置密码、调整角色</span>
+      <span class="spacer"></span>
+      <button class="btn primary sm" id="add-btn">+ 新建用户</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="sp-table">
+        <thead>
+          <tr><th>用户名</th><th>角色</th><th>创建时间</th><th>最后登录</th><th style="width:200px">操作</th></tr>
+        </thead>
+        <tbody id="userlist"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-head"><h3>角色说明</h3></div>
+    <div class="card-body" style="font-size:13px;color:var(--sp-text-2);line-height:2">
+      <span class="badge indigo">管理员</span> 可访问全部功能，包括系统配置与用户管理<br>
+      <span class="badge gray">只读用户</span> 可查看监控数据、使用检测工具，不能修改配置
+    </div>
+  </div>
+
+</div>
+
+<!-- 新建/编辑用户 -->
+<div class="sp-modal-mask" id="user-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3 id="user-modal-title">新建用户</h3><button class="m-close">&times;</button></div>
+    <div class="m-body">
+      <div class="field">
+        <label>用户名</label>
+        <input type="text" class="input" id="u-name" placeholder="2 个字符以上">
+      </div>
+      <div class="field">
+        <label>密码</label>
+        <input type="password" class="input" id="u-pass" placeholder="6 个字符以上" autocomplete="new-password">
+        <div class="hint" id="u-pass-hint" style="display:none">留空表示不修改密码</div>
+      </div>
+      <div class="field">
+        <label>角色</label>
+        <select class="input" id="u-role">
+          <option value="viewer">只读用户</option>
+          <option value="admin">管理员</option>
+        </select>
+      </div>
+    </div>
+    <div class="m-foot">
+      <button class="btn m-cancel">取消</button>
+      <button class="btn primary" id="u-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('users', '用户管理').done(function (ctx) {
+    if (ctx.user.role !== 'admin') {
+        $('#sp-content').html('<div class="empty-state"><div class="big">&#128274;</div>没有权限访问该页面</div>');
+        return;
+    }
+    var editing = null;
+    load();
+
+    function load() {
+        $.getJSON('/api/user/list.json', function (res) {
+            var box = $('#userlist').empty();
+            $.each(res.users || [], function (_, u) {
+                var roleBadge = u.role === 'admin'
+                    ? '<span class="badge indigo">管理员</span>'
+                    : '<span class="badge gray">只读用户</span>';
+                var self = (u.username === ctx.user.username);
+                box.append('<tr>' +
+                    '<td><b>' + SP.esc(u.username) + '</b>' + (self ? ' <span class="muted">(当前)</span>' : '') + '</td>' +
+                    '<td>' + roleBadge + '</td>' +
+                    '<td class="muted">' + SP.esc(u.created_at || '-') + '</td>' +
+                    '<td class="muted">' + SP.esc(u.last_login || '从未登录') + '</td>' +
+                    '<td>' +
+                    '<button class="btn sm u-edit" data-u="' + SP.esc(u.username) + '" data-r="' + u.role + '">编辑</button> ' +
+                    (self ? '' : '<button class="btn sm ghost-danger u-del" data-u="' + SP.esc(u.username) + '">删除</button>') +
+                    '</td></tr>');
+            });
+            $('.u-edit').click(function () { openEdit($(this).attr('data-u'), $(this).attr('data-r')); });
+            $('.u-del').click(function () {
+                var name = $(this).attr('data-u');
+                SP.confirm('删除用户', '确定删除用户「' + name + '」吗？该操作不可恢复。', function () {
+                    $.post('/api/user/delete.json', { username: name }, function (res) {
+                        if (res.status === 'true') { SP.toast('已删除', 'ok'); load(); }
+                        else SP.toast(res.info || '删除失败', 'err');
+                    }, 'json');
+                });
+            });
+        });
+    }
+
+    $('#add-btn').click(function () {
+        editing = null;
+        $('#user-modal-title').text('新建用户');
+        $('#u-name').val('').attr('disabled', false);
+        $('#u-pass').val('');
+        $('#u-pass-hint').hide();
+        $('#u-role').val('viewer');
+        SP.openModal('user-modal');
+    });
+
+    function openEdit(name, role) {
+        editing = name;
+        $('#user-modal-title').text('编辑用户 - ' + name);
+        $('#u-name').val(name).attr('disabled', true);
+        $('#u-pass').val('');
+        $('#u-pass-hint').show();
+        $('#u-role').val(role);
+        SP.openModal('user-modal');
+    }
+
+    $('#user-modal .m-cancel').click(function () { SP.closeModal('user-modal'); });
+    $('#u-save').click(function () {
+        var name = $.trim($('#u-name').val());
+        var pass = $('#u-pass').val();
+        var role = $('#u-role').val();
+        if (!name) { SP.toast('请输入用户名', 'err'); return; }
+        if (!editing && pass.length < 6) { SP.toast('密码至少6个字符', 'err'); return; }
+        $.post('/api/user/save.json', { username: name, password: pass, role: role }, function (res) {
+            if (res.status === 'true') {
+                SP.toast('保存成功', 'ok');
+                SP.closeModal('user-modal');
+                load();
+            } else {
+                SP.toast(res.info || '保存失败', 'err');
+            }
+        }, 'json');
+    });
+});
+});
+</script>
+</body>
+</html>

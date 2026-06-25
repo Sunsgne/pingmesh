@@ -1,0 +1,17 @@
+# Created by .ignore support plugin (hsz.mobi)  
+  
+  
+## File-based project format:  
+*.exe
+*.a
+bin/*
+*-journal
+*.db-journal
+db/database.db
+conf/config.json
+logs/*
+html/.assets-ver
+db/*.db-wal
+db/*.db-shm
+.demo/
+deploy/.env

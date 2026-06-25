@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>反向 Ping - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="card">
+    <div class="card-head">
+      <h3>反向 Ping 监控</h3>
+      <span class="sub">选择一个探测节点，查看其他节点到它的网络质量（数据来自各源节点）</span>
+      <span class="spacer"></span>
+      <span class="muted" id="loading"></span>
+    </div>
+    <div class="card-body">
+      <div class="chips mb-4" id="agent-chips"></div>
+      <div class="grid cols-3" id="charts"></div>
+      <div class="empty-state" id="empty" style="display:none">
+        <div class="big">&#128229;</div>
+        没有其他节点监测该目标
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('reverse', '反向 Ping').done(function (ctx) {
+    var cfg = ctx.config;
+    var miniCharts = [];
+
+    // 反向视图 = "其他节点到我的质量", 仅对探测节点有意义
+    var nodes = [];
+    $.each(cfg.Network, function (_, n) { if (n.Pingmesh) nodes.push(n); });
+    nodes.sort(function (a, b) { return a.Addr === cfg.Addr ? -1 : (b.Addr === cfg.Addr ? 1 : (a.Name < b.Name ? -1 : 1)); });
+
+    var box = $('#agent-chips');
+    $.each(nodes, function (_, n) {
+        var chip = $('<span class="chip' + (n.Addr === cfg.Addr ? ' active' : '') + '">' + SP.esc(n.Name) + '</span>');
+        chip.click(function () {
+            $('#agent-chips .chip').removeClass('active');
+            chip.addClass('active');
+            load(n.Addr);
+        });
+        box.append(chip);
+    });
+    load(cfg.Addr);
+
+    function load(targetAddr) {
+        $.each(miniCharts, function (_, c) { c.dispose(); });
+        miniCharts = [];
+        var chartsBox = $('#charts').empty();
+        var found = 0;
+
+        $.each(cfg.Network, function (srcAddr, n) {
+            if (srcAddr === targetAddr) return;
+            if ($.inArray(targetAddr, n.Ping || []) < 0) return;
+            found++;
+            var i = found;
+            var id = 'rmini-' + i;
+            var title = SP.esc(n.Name) + ' &rarr; ' + SP.esc(SP.nodeName(cfg, targetAddr));
+            var card = $(
+                '<div class="card ping-card">' +
+                '<div class="ping-head"><span class="t">' + title + '</span></div>' +
+                '<div class="mini-chart" id="' + id + '"></div>' +
+                '<div class="ping-foot">' +
+                '<span class="badge gray mono">' + SP.esc(srcAddr) + '</span>' +
+                '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
+                '<span class="badge green" id="' + id + '-loss">- %</span>' +
+                '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
+                '</div></div>');
+            chartsBox.append(card);
+
+            var apiurl = (srcAddr === cfg.Addr)
+                ? '/api/ping.json?ip=' + targetAddr
+                : '/api/proxy.json?g=http://' + srcAddr + ':' + cfg.Port + '/api/ping.json?ip=' + targetAddr;
+            card.click(function () {
+                SP.openPingChart(n.Name + ' → ' + SP.nodeName(cfg, targetAddr) + ' (' + targetAddr + ')', apiurl);
+            });
+            SP.asn(srcAddr, function (info) {
+                if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
+            });
+
+            var chart = echarts.init(document.getElementById(id));
+            miniCharts.push(chart);
+            chart.setOption({
+                grid: { left: 38, right: 12, top: 10, bottom: 22 },
+                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 11 } },
+                xAxis: { data: [], boundaryGap: false, axisLabel: { fontSize: 10, color: '#94a3b8' }, axisLine: { show: false }, axisTick: { show: false } },
+                yAxis: [
+                    { type: 'value', axisLabel: { fontSize: 10, color: '#94a3b8' }, splitLine: { lineStyle: { color: '#f1f5f9' } }, splitNumber: 3 },
+                    { type: 'value', min: 0, max: 100, show: false }
+                ],
+                series: [
+                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
+                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                          { offset: 0, color: 'rgba(99,102,241,.28)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
+                      data: [] },
+                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
+                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: [] }
+                ]
+            });
+            $.getJSON(apiurl, function (d) {
+                var labels = $.map(d.lastcheck, function (v) { return v.substring(11, 16); });
+                chart.setOption({
+                    xAxis: { data: labels },
+                    series: [{ name: '延迟', data: d.avgdelay }, { name: '丢包', data: d.losspk }]
+                });
+                var lastDelay = '-', lastLoss = '-';
+                for (var k = d.lastcheck.length - 1; k >= 0; k--) {
+                    if (parseFloat(d.avgdelay[k]) > 0 || parseFloat(d.losspk[k]) > 0) {
+                        lastDelay = SP.fmtMs(d.avgdelay[k]); lastLoss = d.losspk[k];
+                        break;
+                    }
+                }
+                $('#' + id + '-delay').text(lastDelay + ' ms');
+                var lossBadge = $('#' + id + '-loss').text(lastLoss + ' %');
+                if (parseFloat(lastLoss) >= 20) lossBadge.removeClass('green').addClass('red');
+                else if (parseFloat(lastLoss) >= 5) lossBadge.removeClass('green').addClass('yellow');
+            });
+        });
+        $('#empty').toggle(found === 0);
+    }
+});
+});
+</script>
+</body>
+</html>

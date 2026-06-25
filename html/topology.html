@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>网络拓扑 - ZENLENET PingMesh</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico">
+<link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/modern.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+
+  <div class="grid" style="grid-template-columns: 1fr 280px;">
+    <div class="card">
+      <div class="card-head" style="flex-wrap:wrap;row-gap:8px">
+        <h3>拓扑</h3>
+        <span class="sub">实线 = 正常，红色虚线 = 告警；<b>点击连线可查看告警判定诊断</b>，可拖拽缩放</span>
+        <span class="spacer"></span>
+        <select class="input" id="topo-view" style="width:auto;padding:5px 8px" title="节点很多时建议用「按分组聚合」总览，点击分组可下钻">
+          <option value="all">全部节点</option>
+          <option value="group">按分组聚合</option>
+        </select>
+        <select class="input" id="topo-group" style="width:auto;max-width:150px;padding:5px 8px" title="只看某个分组">
+          <option value="">全部分组</option>
+        </select>
+        <input type="text" class="input" id="topo-search" placeholder="搜索名称 / IP..." style="width:150px;padding:5px 10px">
+        <label class="flex" style="gap:5px;font-size:12.5px;color:var(--sp-text-2);cursor:pointer;margin:0">
+          <input type="checkbox" id="topo-bad-only" style="margin:0">只看异常
+        </label>
+        <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
+          <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
+          声音报警
+        </span>
+      </div>
+      <div class="card-body" style="position:relative">
+        <div id="topo-chart" style="width:100%;height:calc(100vh - 270px);min-height:460px"></div>
+        <div id="topo-empty" class="empty-state" style="display:none;position:absolute;left:0;right:0;top:45%;pointer-events:none">
+          当前筛选条件下没有匹配的节点 / 链路
+        </div>
+        <div id="topo-hint" class="hint" style="position:absolute;left:18px;bottom:10px;display:none"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card mb-4">
+        <div class="card-head"><h3>节点状态</h3><span class="sub" id="probe-count"></span></div>
+        <div class="card-body" style="padding:8px 0;max-height:430px;overflow-y:auto">
+          <table class="sp-table" id="node-status"><tbody></tbody></table>
+        </div>
+      </div>
+      <a class="btn" style="width:100%" href="alerts.html">查看报警记录 &rarr;</a>
+    </div>
+  </div>
+
+</div>
+
+<!-- 告警判定诊断 -->
+<div class="sp-modal-mask" id="diag-modal">
+  <div class="sp-modal">
+    <div class="m-head"><h3 id="diag-title">告警判定诊断</h3><button class="m-close">&times;</button></div>
+    <div class="m-body" id="diag-body"></div>
+  </div>
+</div>
+
+<script src="assets/js/jquery-1.7.2.min.js"></script>
+<script src="assets/js/echarts.min.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+$(function () {
+SP.init('topology', '网络拓扑').done(function (ctx) {
+    var cfg = ctx.config;
+    var topoCfg = cfg.Topology || {};
+    var chart = echarts.init(document.getElementById('topo-chart'));
+    var nodes = {}, links = {};
+    var hasAlert = false;
+
+    function groupOf(n) { return n.group || '未分组'; }
+
+    /* 构建节点(对缺失字段做防御, 避免半截配置导致整页白屏) */
+    $.each(cfg.Network || {}, function (addr, n) {
+        if (!n) return;
+        nodes[addr] = {
+            name: n.Name || addr, addr: addr, group: n.Group || '',
+            source: (n.Topology || []).length > 0, bad: false
+        };
+    });
+    /* 构建连线; 监测规则指向已被删除节点时补一个占位节点, 不让残缺配置弄垮整张图 */
+    $.each(cfg.Network || {}, function (addr, n) {
+        if (!n) return;
+        $.each(n.Topology || [], function (_, topo) {
+            if (!topo || !topo['Addr']) return;
+            var to = topo['Addr'];
+            if (!nodes[to]) {
+                nodes[to] = { name: topo['Name'] || to, addr: to, group: '', source: false, bad: false, missing: true };
+            }
+            links[addr + '|' + to] = { from: addr, to: to, bad: false, pendingStatus: true };
+        });
+    });
+
+    // 没有任何节点/监测关系时给出引导, 而不是空白画布
+    if ($.isEmptyObject(nodes)) {
+        $('#topo-chart').html('<div class="empty-state" style="padding-top:200px"><div class="big">&#128279;</div>' +
+            '尚无拓扑数据：请到「系统配置 → 节点管理」添加节点并配置监测关系，' +
+            '或检查本节点配置是否完整（系统配置 → 高级 JSON）</div>');
+        return;
+    }
+
+    /* ----- 视图状态(自动刷新后保持用户的筛选条件) ----- */
+    var nodeCount = 0, groupSet = {};
+    $.each(nodes, function (_, n) { nodeCount++; groupSet[groupOf(n)] = 1; });
+    var groupNames = [];
+    $.each(groupSet, function (g) { groupNames.push(g); });
+    groupNames.sort(function (a, b) {
+        if (a === '未分组') return 1;
+        if (b === '未分组') return -1;
+        return a < b ? -1 : 1;
+    });
+
+    var state = null;
+    try { state = JSON.parse(sessionStorage.getItem('sp-topo-state') || 'null'); } catch (e) { }
+    if (!state || typeof state !== 'object') {
+        // 首次进入: 节点很多且有分组时默认聚合总览, 否则平铺全部
+        state = { view: (nodeCount > 40 && groupNames.length >= 2) ? 'group' : 'all', group: '', q: '', badOnly: false };
+    }
+    if (groupNames.length < 2 && state.view === 'group') state.view = 'all';
+    function persistState() {
+        try { sessionStorage.setItem('sp-topo-state', JSON.stringify(state)); } catch (e) { }
+    }
+
+    var groupSel = $('#topo-group');
+    $.each(groupNames, function (_, g) {
+        groupSel.append('<option value="' + SP.esc(g) + '">' + SP.esc(g) + '</option>');
+    });
+    function syncControls() {
+        $('#topo-view').val(state.view);
+        groupSel.val(state.group || '');
+        $('#topo-search').val(state.q || '');
+        $('#topo-bad-only').prop('checked', !!state.badOnly);
+        // 聚合视图下分组/搜索不参与过滤
+        groupSel.attr('disabled', state.view === 'group');
+        $('#topo-search').attr('disabled', state.view === 'group');
+        if (groupNames.length < 2) $('#topo-view').hide();
+    }
+    syncControls();
+
+    $('#topo-view').change(function () { state.view = $(this).val(); syncControls(); persistState(); draw(); });
+    groupSel.change(function () { state.group = $(this).val(); persistState(); draw(); });
+    $('#topo-search').bind('keyup input', function () { state.q = $.trim($(this).val()).toLowerCase(); persistState(); draw(); });
+    $('#topo-bad-only').change(function () { state.badOnly = $(this).is(':checked'); persistState(); draw(); });
+
+    chart.setOption({
+        tooltip: {
+            show: true, backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0,
+            padding: [9, 13], textStyle: { color: '#e2e8f0', fontSize: 12 },
+            formatter: function (p) {
+                if (p.dataType === 'edge') {
+                    var d = p.data || {};
+                    if (d._agg) {
+                        return SP.esc(d._fromName) + ' &harr; ' + SP.esc(d._toName) + '<br>' +
+                            '链路 ' + d._gtotal + ' 条' +
+                            (d._gbad > 0 ? '，<b style="color:#fb7185">异常 ' + d._gbad + ' 条</b>' : '，<span style="color:#34d399">全部正常</span>');
+                    }
+                    return SP.esc(d._fromName) + ' &rarr; ' + SP.esc(d._toName) + '<br>' +
+                        (d._bad ? '<b style="color:#fb7185">触发报警阈值</b>' : '<span style="color:#34d399">监测正常</span>');
+                }
+                var html = '<b>' + SP.esc(p.data._tipName || p.name) + '</b><br>' + (p.data._sub || '');
+                var info = SP.asnCached(p.data._addr || '');
+                if (info) html += '<br><span style="color:#a5b4fc">' + SP.asnShort(info) + '</span>';
+                return html;
+            }
+        },
+        legend: {
+            show: true, top: 0, right: 10, itemWidth: 14, itemHeight: 10,
+            icon: 'circle', textStyle: { color: '#64748b', fontSize: 12 },
+            data: ['探测节点', '被测目标', '异常', '分组']
+        },
+        animationDuration: 300, animationDurationUpdate: 300,
+        series: [{
+            // 环形布局: 节点均匀分布在圆环上, 互PING连线交织在中间, mesh 结构一目了然
+            type: 'graph', layout: 'circular', roam: true, draggable: true,
+            circular: { rotateLabel: false },
+            scaleLimit: { min: .4, max: 5 },
+            categories: [
+                { name: '探测节点', itemStyle: { color: '#6366f1' } },
+                { name: '被测目标', itemStyle: { color: '#10b981' } },
+                { name: '异常', itemStyle: { color: '#f43f5e' } },
+                { name: '分组', itemStyle: { color: '#0ea5e9' } }
+            ],
+            emphasis: { focus: 'adjacency', lineStyle: { width: 4 }, itemStyle: { shadowBlur: 18 }, label: { show: true } },
+            label: {
+                show: true, position: 'bottom', distance: 6,
+                fontSize: 12, fontWeight: 600, color: '#334155',
+                formatter: function (p) {
+                    var name = p.data._label || p.name;
+                    return name.length > 14 ? name.substring(0, 13) + '…' : name;
+                }
+            },
+            edgeSymbol: ['none', 'arrow'], edgeSymbolSize: [0, 9],
+            data: [], links: [],
+            lineStyle: { opacity: .85, curveness: .25 }
+        }]
+    });
+
+    /* ----- 渲染 ----- */
+    function nodeMatches(n) {
+        if (state.group && groupOf(n) !== state.group) return false;
+        if (state.q && (n.name + ' ' + n.addr).toLowerCase().indexOf(state.q) < 0) return false;
+        return true;
+    }
+
+    function buildNodeGraph(data, lns, baseSize, baseLine) {
+        var match = {};
+        $.each(nodes, function (addr, n) { if (nodeMatches(n)) match[addr] = true; });
+        var vis = {};
+        $.each(match, function (a) { vis[a] = 1; });
+        if (state.group || state.q) {
+            // 筛选时把命中节点的链路对端也带上(半透明上下文), 否则只剩孤立的点看不出监测关系
+            $.each(links, function (_, l) {
+                if (match[l.from] && !match[l.to] && !vis[l.to]) vis[l.to] = 2;
+                if (match[l.to] && !match[l.from] && !vis[l.from]) vis[l.from] = 2;
+            });
+        }
+        if (state.badOnly) {
+            // 只保留异常链路两端的节点与本身异常(不可达)的节点
+            var keep = {};
+            $.each(links, function (_, l) {
+                if (l.bad && vis[l.from] && vis[l.to]) { keep[l.from] = vis[l.from]; keep[l.to] = vis[l.to]; }
+            });
+            $.each(nodes, function (addr, n) { if (n.bad && vis[addr]) keep[addr] = vis[addr]; });
+            vis = keep;
+        }
+        var cnt = 0;
+        $.each(vis, function () { cnt++; });
+
+        // 节点数量自适应: 节点越多, 图标越小; 超过 60 个隐藏常显名称(悬浮/异常时仍显示)
+        var size = Math.max(14, Math.round(baseSize * Math.min(1, Math.sqrt(36 / Math.max(cnt, 1)))));
+        var showLabel = cnt <= 60;
+        $('#topo-hint').toggle(!showLabel).text('节点较多(' + cnt + ' 个)已隐藏名称，悬浮可查看；建议用「按分组聚合」或分组筛选缩小范围');
+
+        var idx = {};
+        var colors = ['#6366f1', '#10b981', '#f43f5e'];
+        $.each(nodes, function (addr, n) {
+            if (!vis[addr]) return;
+            var ctx = vis[addr] === 2; // 上下文节点(链路对端), 半透明展示
+            var cat = n.bad ? 2 : (n.source ? 0 : 1);
+            idx[addr] = data.length;
+            data.push({
+                name: n.name + ' (' + addr + ')', _label: n.name, _tipName: n.name, category: cat, draggable: true, _addr: addr,
+                symbolSize: n.source ? size : Math.max(12, Math.round(size * .72)),
+                label: { show: showLabel || n.bad },
+                _sub: '<span class="mono">' + SP.esc(addr) + '</span><br>' +
+                      (n.bad ? '节点不可达' : (n.source ? '探测节点' : '被测目标')) +
+                      (n.group ? ' · ' + SP.esc(n.group) : '') +
+                      (n.missing ? '<br><span style="color:#fbbf24">未注册节点(仅存在于监测规则中)</span>' : ''),
+                itemStyle: {
+                    color: colors[cat],
+                    opacity: ctx ? .45 : 1,
+                    borderColor: '#fff', borderWidth: cnt > 60 ? 1.5 : 3,
+                    shadowBlur: cnt > 60 ? 6 : 14, shadowColor: colors[cat] + '66'
+                }
+            });
+        });
+        // 连线数量自适应透明度, 大规模 mesh 不至于糊成一团
+        var visLinks = [];
+        $.each(links, function (_, l) {
+            if (idx[l.from] === undefined || idx[l.to] === undefined) return;
+            if (state.badOnly && !l.bad) return;
+            visLinks.push(l);
+        });
+        var op = visLinks.length > 300 ? .3 : (visLinks.length > 120 ? .5 : .85);
+        $.each(visLinks, function (_, l) {
+            lns.push({
+                source: idx[l.from], target: idx[l.to],
+                _bad: l.bad, _diag: true,
+                _from: l.from, _to: l.to,
+                _fromName: nodes[l.from].name, _toName: nodes[l.to].name,
+                lineStyle: {
+                    color: l.bad ? '#f43f5e' : (l.pendingStatus ? '#cbd5e1' : '#34d399'),
+                    width: l.bad ? baseLine * 1.4 : baseLine,
+                    opacity: l.bad ? .95 : op,
+                    type: l.bad ? 'dashed' : 'solid',
+                    curveness: .25, shadowBlur: l.bad ? 6 : 0, shadowColor: 'rgba(244,63,94,.4)'
+                }
+            });
+        });
+    }
+
+    function buildGroupGraph(data, lns, baseSize, baseLine) {
+        var gs = {}; // gname -> {count, badNodes, probes}
+        $.each(nodes, function (_, n) {
+            var g = groupOf(n);
+            var e = gs[g] = gs[g] || { count: 0, badNodes: 0, probes: 0 };
+            e.count++;
+            if (n.bad) e.badNodes++;
+            if (n.source) e.probes++;
+        });
+        var ge = {}; // "a|b" -> {total, bad}  跨组链路(按无序组对聚合)
+        $.each(links, function (_, l) {
+            var gf = groupOf(nodes[l.from]), gt = groupOf(nodes[l.to]);
+            var key, inner = (gf === gt);
+            if (inner) key = gf + '|' + gf;
+            else key = gf < gt ? gf + '|' + gt : gt + '|' + gf;
+            var e = ge[key] = ge[key] || { total: 0, bad: 0, inner: inner };
+            e.total++;
+            if (l.bad) e.bad++;
+        });
+
+        var idx = {};
+        $.each(groupNames, function (_, g) {
+            var e = gs[g];
+            if (!e) return;
+            var innerKey = g + '|' + g;
+            var innerBad = ge[innerKey] ? ge[innerKey].bad : 0;
+            var bad = e.badNodes > 0 || innerBad > 0;
+            idx[g] = data.length;
+            data.push({
+                name: g, _label: g + ' (' + e.count + ')', _tipName: g, category: bad ? 2 : 3,
+                draggable: true, _group: g,
+                symbolSize: Math.min(76, 30 + Math.round(Math.sqrt(e.count) * 7)),
+                label: { show: true },
+                _sub: '成员 ' + e.count + ' 个(探测节点 ' + e.probes + ')' +
+                      (ge[innerKey] ? '<br>组内链路 ' + ge[innerKey].total + ' 条' + (innerBad ? '，<b style="color:#fb7185">异常 ' + innerBad + ' 条</b>' : '') : '') +
+                      (e.badNodes ? '<br><b style="color:#fb7185">不可达节点 ' + e.badNodes + ' 个</b>' : '') +
+                      '<br><span style="color:#a5b4fc">点击下钻查看本组节点</span>',
+                itemStyle: {
+                    color: bad ? '#f43f5e' : '#0ea5e9',
+                    borderColor: '#fff', borderWidth: 3,
+                    shadowBlur: 14, shadowColor: (bad ? '#f43f5e' : '#0ea5e9') + '66'
+                }
+            });
+        });
+        $.each(ge, function (key, e) {
+            if (e.inner) return;
+            var parts = key.split('|');
+            if (idx[parts[0]] === undefined || idx[parts[1]] === undefined) return;
+            if (state.badOnly && e.bad === 0) return;
+            lns.push({
+                source: idx[parts[0]], target: idx[parts[1]],
+                symbol: ['none', 'none'], // 聚合链路是双向汇总, 不画箭头
+                _agg: true, _gtotal: e.total, _gbad: e.bad,
+                _fromName: parts[0], _toName: parts[1],
+                lineStyle: {
+                    color: e.bad > 0 ? '#f43f5e' : '#34d399',
+                    width: Math.min(6, baseLine + Math.log(e.total + 1)),
+                    opacity: .8,
+                    type: e.bad > 0 ? 'dashed' : 'solid',
+                    curveness: .2, shadowBlur: e.bad > 0 ? 6 : 0, shadowColor: 'rgba(244,63,94,.4)'
+                }
+            });
+        });
+        if (state.badOnly) {
+            // 只看异常: 去掉既无异常也未挂在异常链路上的组
+            var used = {};
+            $.each(lns, function (_, l) { used[l.source] = 1; used[l.target] = 1; });
+            var data2 = [], remap = {};
+            $.each(data, function (i, d) {
+                if (d.category === 2 || used[i]) { remap[i] = data2.length; data2.push(d); }
+            });
+            $.each(lns, function (_, l) { l.source = remap[l.source]; l.target = remap[l.target]; });
+            data.length = 0;
+            $.each(data2, function (_, d) { data.push(d); });
+        }
+        $('#topo-hint').hide();
+    }
+
+    function draw() {
+        var topoCfg = cfg.Topology || {};
+        // 「基础设置 - 拓扑节点大小 / 连线粗细」生效
+        var baseSize = parseInt(topoCfg['Tsymbolsize'] || 56, 10);
+        if (!(baseSize > 0)) baseSize = 56;
+        var baseLine = parseFloat(topoCfg['Tline'] || 1.8);
+        if (!(baseLine > 0)) baseLine = 1.8;
+        var data = [], lns = [];
+        try {
+            if (state.view === 'group' && groupNames.length >= 2) buildGroupGraph(data, lns, baseSize, baseLine);
+            else buildNodeGraph(data, lns, baseSize, baseLine);
+            $('#topo-empty').toggle(data.length === 0);
+            chart.setOption({ series: [{ data: data, links: lns }] });
+        } catch (e) {
+            // 渲染异常时给出提示而不是静默白屏
+            $('#topo-empty').show().text('拓扑渲染失败: ' + e.message);
+        }
+        if (hasAlert && $('#sound-toggle').is(':checked') && !window.__alertAudio) {
+            // 柔和双音提示, 降低音量避免刺耳
+            var a = new Audio(topoCfg['Tsound'] || '/alert-soft.wav');
+            a.loop = true; a.volume = 0.35;
+            var p = a.play();
+            if (p && p.catch) {
+                p.catch(function () {
+                    // 浏览器自动播放策略: 等待首次交互后再播放
+                    $(document).one('click keydown', function () {
+                        if (window.__alertAudio) window.__alertAudio.play();
+                    });
+                });
+            }
+            window.__alertAudio = a;
+        }
+    }
+
+    draw(); // 先以灰色渲染拓扑, 状态返回后增量更新
+
+    /* ----- 探测节点状态轮询 ----- */
+    var statusBody = $('#node-status tbody');
+    var probeTotal = 0;
+    $.each(nodes, function (addr, n) {
+        if (!n.source) return;
+        probeTotal++;
+        statusBody.append('<tr><td>' + SP.esc(n.name) + '<br><span class="muted mono" style="font-size:11px">' + SP.esc(addr) + '</span></td>' +
+            '<td class="text-right" id="st-' + addr.replace(/[^a-zA-Z0-9]/g, '-') + '"><span class="spinner"></span></td></tr>');
+    });
+    $('#probe-count').text(probeTotal + ' 个探测节点');
+
+    $.each(nodes, function (addr, n) {
+        if (!n.source) return;
+        $.ajax({
+            dataType: 'json',
+            url: '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/topology.json',
+            timeout: ((cfg.Base || {})['Timeout'] || 5) * 1000
+        }).done(function (topodata) {
+            n.bad = false;
+            $('#st-' + addr.replace(/[^a-zA-Z0-9]/g, '-')).html('<span class="badge green"><span class="dot"></span>在线</span>');
+            $.each(topodata, function (toAddr, flag) {
+                var l = links[addr + '|' + toAddr];
+                if (!l) return;
+                l.pendingStatus = false;
+                if (flag === 'true') { l.bad = false; }
+                else { l.bad = true; hasAlert = true; }
+            });
+        }).fail(function () {
+            n.bad = true;
+            hasAlert = true;
+            $('#st-' + addr.replace(/[^a-zA-Z0-9]/g, '-')).html('<span class="badge red"><span class="dot"></span>不可达</span>');
+        }).always(function () {
+            draw();
+        });
+    });
+
+    /* 点击: 连线 → 告警判定诊断; 聚合视图的分组 → 下钻 */
+    chart.on('click', function (p) {
+        if (p.dataType === 'edge') {
+            if (!p.data || !p.data._diag) return;
+            openDiag(p.data._from, p.data._to, p.data._fromName, p.data._toName);
+            return;
+        }
+        if (p.dataType === 'node' && p.data && p.data._group) {
+            state.view = 'all';
+            state.group = p.data._group;
+            syncControls();
+            persistState();
+            draw();
+        }
+    });
+
+    /* 悬浮时按需查询 ASN(有缓存), 避免大规模拓扑一次性发起上百个查询 */
+    chart.on('mouseover', function (p) {
+        if (p.dataType === 'node' && p.data && p.data._addr) SP.asn(p.data._addr, function () { });
+    });
+
+    function openDiag(fromAddr, toAddr, fromName, toName) {
+        $('#diag-title').text('告警判定诊断: ' + fromName + ' → ' + toName);
+        $('#diag-body').html('<div class="empty-state"><span class="spinner"></span> 正在向源节点查询...</div>');
+        SP.openModal('diag-modal');
+        var base = (fromAddr === cfg.Addr) ? '' : '/api/proxy.json?g=http://' + fromAddr + ':' + cfg.Port;
+        var qs = '?target=' + encodeURIComponent(toAddr);
+        $.getJSON(base + '/api/alertdiag.json' + (base === '' ? qs : qs), function (d) {
+            if (d.status !== 'true') {
+                $('#diag-body').html('<div class="empty-state">' + SP.esc(d.info || '查询失败') + '</div>');
+                return;
+            }
+            var r = d.rule || {};
+            var verdictBadge = d.verdict === 'alerting'
+                ? '<span class="badge red"><span class="dot"></span>判定: 告警中</span>'
+                : '<span class="badge green"><span class="dot"></span>判定: 正常</span>';
+            var rows = [
+                ['规则阈值', '延迟 ≥ ' + r['Thdavgdelay'] + 'ms 或 丢包 ≥ ' + r['Thdloss'] + '%' + (r['Thdjitter'] ? ' 或 抖动 ≥ ' + r['Thdjitter'] + 'ms' : '')],
+                ['检测窗口', d.window_sec + ' 秒(最多容纳 ' + d.capacity + ' 个数据点) · 触发次数 ' + d.occ],
+                ['窗口内数据点', d.total + ' 个'],
+                ['异常分钟数', '<b style="color:' + (d.bad >= d.occ ? 'var(--sp-red)' : 'var(--sp-green)') + '">' + d.bad + '</b> / 触发线 ' + d.occ +
+                 '　<span class="muted">(延迟超标 ' + d.bad_delay + ' · 丢包超标 ' + d.bad_loss + (r['Thdjitter'] ? ' · 抖动超标 ' + d.bad_jitter : '') + ')</span>']
+            ];
+            if (d.muted) rows.push(['屏蔽状态', '<span class="badge yellow">屏蔽中</span> 至 ' + SP.esc(d.mute_until) + (d.mute_reason ? ' · ' + SP.esc(d.mute_reason) : '') + '(不发通知)']);
+            var html = '<div class="mb-4">' + verdictBadge + '</div><table class="sp-table">';
+            $.each(rows, function (_, kv) {
+                html += '<tr><td class="muted" style="white-space:nowrap;width:120px">' + kv[0] + '</td><td>' + kv[1] + '</td></tr>';
+            });
+            html += '</table>';
+            if (d.hint) html += '<div class="hint mt-2" style="color:var(--sp-red)">&#9888; ' + SP.esc(d.hint) + '</div>';
+            html += '<div class="hint mt-2">说明: 每分钟产生一个数据点; 窗口内"异常分钟数"达到"触发次数"即判定告警(状态翻转时通知一次)。</div>';
+            $('#diag-body').html(html);
+        }).fail(function () {
+            $('#diag-body').html('<div class="empty-state">源节点不可达</div>');
+        });
+    }
+
+    $('#sound-toggle').change(function () {
+        if (!$(this).is(':checked') && window.__alertAudio) {
+            window.__alertAudio.pause();
+            window.__alertAudio = null;
+        }
+    });
+
+    // 自动刷新(筛选条件已存入 sessionStorage, 刷新后保持)
+    setTimeout(function () { window.location.reload(); }, ((cfg.Base || {})['Refresh'] || 1) * 60 * 1000);
+    chart.resize();
+    $(window).resize(function () { chart.resize(); });
+});
+});
+</script>
+</body>
+</html>
