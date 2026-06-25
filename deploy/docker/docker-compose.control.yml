@@ -3,6 +3,8 @@ services:
   pingmesh:
     image: pingmesh:local
     container_name: pingmesh
+    environment:
+      - TZ=Asia/Shanghai
     network_mode: host
     cap_add:
       - NET_RAW

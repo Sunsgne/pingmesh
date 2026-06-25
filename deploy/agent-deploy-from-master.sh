@@ -28,7 +28,11 @@ deploy_agent() {
   }
   sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -p "$port" "root@${host}" \
     "NAME=${name} ADDR=${addr} MASTER=${MASTER_INTERNAL} BACKUP=${BACKUP_INTERNAL} TOKEN=${JOIN_TOKEN} DIR=${INSTALL_DIR} bash -s" <<'REMOTE'
-apt-get install -y -qq libcap2-bin psmisc curl >/dev/null 2>&1 || true
+apt-get install -y -qq libcap2-bin psmisc curl tzdata >/dev/null 2>&1 || true
+timedatectl set-timezone Asia/Shanghai 2>/dev/null || {
+  ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+  echo 'Asia/Shanghai' > /etc/timezone
+}
 systemctl stop pingmesh 2>/dev/null || true
 pkill -f "${DIR}/pingmesh" 2>/dev/null || true
 sleep 1

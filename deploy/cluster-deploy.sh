@@ -25,7 +25,13 @@ scp_to() {
 
 install_docker_remote() {
   local host="$1" port="${2:-22}"
-  ssh_run "$host" "$port" 'command -v docker >/dev/null || (
+  ssh_run "$host" "$port" 'export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -qq tzdata >/dev/null 2>&1 || true
+    timedatectl set-timezone Asia/Shanghai 2>/dev/null || {
+      ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+      echo Asia/Shanghai > /etc/timezone
+    }
+    command -v docker >/dev/null || (
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y -qq ca-certificates curl

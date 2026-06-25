@@ -37,7 +37,13 @@ ssh_retry() {
 
 install_docker() {
   local host="$1" port="${2:-22}"
-  ssh_retry "$host" "$port" 'command -v docker >/dev/null || (
+  ssh_retry "$host" "$port" 'export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -qq tzdata >/dev/null 2>&1 || true
+    timedatectl set-timezone Asia/Shanghai 2>/dev/null || {
+      ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+      echo Asia/Shanghai > /etc/timezone
+    }
+    command -v docker >/dev/null || (
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq && apt-get install -y -qq ca-certificates curl
     curl -fsSL https://get.docker.com | sh && systemctl enable --now docker
