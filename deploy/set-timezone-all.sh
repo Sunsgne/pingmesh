@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # 将集群全部节点系统时区设为 Asia/Shanghai
+# 优先使用同目录 finish-timezone.py（不依赖 sshpass）
 set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v python3 >/dev/null 2>&1 && [[ -f "${SCRIPT_DIR}/finish-timezone.py" ]]; then
+  exec python3 "${SCRIPT_DIR}/finish-timezone.py" "$@"
+fi
 
 PASSWORD='Monitor@678!9981'
 TZ_NAME='Asia/Shanghai'
