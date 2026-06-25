@@ -2,14 +2,14 @@
 # PingMesh 全集群重新部署
 set -euo pipefail
 
-PASSWORD='Monitor@678!9981'
-MASTER_INTERNAL='10.100.1.8'
-BACKUP_INTERNAL='10.100.1.3'
-MASTER_PUBLIC='43.229.152.50'
-BACKUP_PUBLIC='163.53.245.90'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
+deploy_require_join
+
 INSTALL_DIR='/opt/pingmesh-docker'
 AGENT_DIR='/opt/pingmesh'
-JOIN_TOKEN='smartping'
 
 info()  { echo -e "\033[32m[deploy]\033[0m $*"; }
 warn()  { echo -e "\033[33m[deploy]\033[0m $*"; }
@@ -78,20 +78,8 @@ deploy_control() {
     export NODE_NAME='${name}' NODE_ADDR='${addr}' && docker compose up -d"
   if [[ "$role" == "primary" ]]; then
     sleep 8
-    ssh_run "$host" "$port" "apt-get install -y -qq python3 python3-pip >/dev/null 2>&1 || true
-      pip3 install bcrypt -q 2>/dev/null || true
-      DB=${INSTALL_DIR}/data/db/database.db
-      for i in \$(seq 1 30); do [ -f \"\$DB\" ] && break; sleep 2; done
-      python3 -c \"
-import sqlite3, bcrypt
-h = bcrypt.hashpw(b'njupt@NJ-5353', bcrypt.gensalt()).decode()
-c = sqlite3.connect('${INSTALL_DIR}/data/db/database.db')
-c.execute('DELETE FROM users WHERE username=\\\"admin\\\"')
-c.execute('INSERT OR REPLACE INTO users(username,password,role,created_at) VALUES(?,?,?,datetime(\\\"now\\\"))', ('xiaoqiang', h, 'admin'))
-c.execute('UPDATE users_meta SET rev=rev+1, mtime=datetime(\\\"now\\\") WHERE id=1')
-c.commit()
-\""
-    info "  默认账号 xiaoqiang 已设置"
+    deploy_setup_admin_user "$host" "$port" "$INSTALL_DIR"
+    info "  管理员账号已设置（见 deploy/.env 中 PINGMESH_ADMIN_*）"
   fi
   ssh_run "$host" "$port" "curl -sk https://127.0.0.1:443/healthz; echo; \
     openssl x509 -in ${INSTALL_DIR}/certs/server.crt -noout -dates"
@@ -111,11 +99,16 @@ deploy_agents_from_master() {
   base64 /tmp/pingmesh-bin.gz | ssh_run "$MASTER_PUBLIC" 22 "base64 -d > /tmp/pingmesh-bin.gz"
   base64 /workspace/deploy/agent-deploy-from-master.sh | ssh_run "$MASTER_PUBLIC" 22 \
     "base64 -d > ${INSTALL_DIR}/agent-deploy.sh && chmod +x ${INSTALL_DIR}/agent-deploy.sh"
+  base64 /workspace/deploy/lib.sh | ssh_run "$MASTER_PUBLIC" 22 \
+    "base64 -d > ${INSTALL_DIR}/lib.sh"
+  if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+    scp_to "$MASTER_PUBLIC" 22 "${SCRIPT_DIR}/.env" "${INSTALL_DIR}/.env"
+  else
+    warn "未找到 deploy/.env，请先在主节点设置 PINGMESH_SSH_PASSWORD / PINGMESH_JOIN_TOKEN"
+  fi
   ssh_run "$MASTER_PUBLIC" 22 "apt-get install -y -qq sshpass >/dev/null 2>&1 || true
-    sed -i 's|BACKUP_INTERNAL=.*|BACKUP_INTERNAL=${BACKUP_INTERNAL}|' ${INSTALL_DIR}/agent-deploy.sh
-    sed -i 's|JOIN_TOKEN=.*|JOIN_TOKEN=${JOIN_TOKEN}|' ${INSTALL_DIR}/agent-deploy.sh
-    sed -i 's|BINARY=.*|BINARY=/tmp/pingmesh-bin.gz|' ${INSTALL_DIR}/agent-deploy.sh
-    nohup bash ${INSTALL_DIR}/agent-deploy.sh > /tmp/agent-deploy.log 2>&1 &
+    chmod 600 ${INSTALL_DIR}/.env 2>/dev/null || true
+    nohup bash -c 'set -a; [ -f ${INSTALL_DIR}/.env ] && . ${INSTALL_DIR}/.env; set +a; bash ${INSTALL_DIR}/agent-deploy.sh' > /tmp/agent-deploy.log 2>&1 &
     echo AGENT_DEPLOY_STARTED"
 }
 

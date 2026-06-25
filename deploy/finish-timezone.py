@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """批量将集群节点时区设为 Asia/Shanghai（不依赖 sshpass）。"""
-import json
-import ssl
+import os
 import sys
 import time
-import urllib.parse
-import urllib.request
+from pathlib import Path
 
 try:
     import paramiko
@@ -14,8 +12,29 @@ except ImportError:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'paramiko'])
     import paramiko
 
-PASSWORD = 'Monitor@678!9981'
-MASTER = ('43.229.152.50', 22)
+DEPLOY_DIR = Path(__file__).resolve().parent
+ENV_FILE = DEPLOY_DIR / '.env'
+
+
+def load_env_file():
+    if not ENV_FILE.exists():
+        return
+    for line in ENV_FILE.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, val = line.partition('=')
+        key, val = key.strip(), val.strip().strip('"').strip("'")
+        os.environ.setdefault(key, val)
+
+
+load_env_file()
+PASSWORD = os.environ.get('PINGMESH_SSH_PASSWORD', '')
+if not PASSWORD:
+    print('错误: 未设置 PINGMESH_SSH_PASSWORD，请配置 deploy/.env', file=sys.stderr)
+    sys.exit(1)
+
+MASTER = (os.environ.get('PINGMESH_MASTER_PUBLIC', '43.229.152.50'), 22)
 TZ = 'Asia/Shanghai'
 REMOTE = f'''export DEBIAN_FRONTEND=noninteractive
 apt-get install -y -qq tzdata >/dev/null 2>&1 || true
@@ -57,7 +76,7 @@ INTERNAL = [
 
 def ssh_run(host, port, cmd, retries=3):
     last = None
-    for i in range(retries):
+    for _ in range(retries):
         try:
             c = paramiko.SSHClient()
             c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

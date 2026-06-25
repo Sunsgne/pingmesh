@@ -2,7 +2,10 @@
 # PingMesh 全集群拆除脚本
 set -uo pipefail
 
-PASSWORD='Monitor@678!9981'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
 
 info()  { echo -e "\033[32m[uninstall]\033[0m $*"; }
 

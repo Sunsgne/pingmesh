@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# 从主控制节点通过内网 SSH 批量部署 Agent (关闭 Web, 接入 10.100.1.8)
+# 从主控制节点通过内网 SSH 批量部署 Agent (关闭 Web, 接入主节点)
 set -o pipefail
 
-PASSWORD='Monitor@678!9981'
-MASTER_INTERNAL='10.100.1.8'
-BACKUP_INTERNAL='10.100.1.3'
-JOIN_TOKEN='smartping'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
+deploy_require_join
+
 INSTALL_DIR='/opt/pingmesh'
 BINARY='/tmp/pingmesh-bin.gz'
 

@@ -25,7 +25,7 @@ services:
       - NET_RAW
     # 启动时自动注册到主节点并组成全互联 Pingmesh, 配置每分钟自动同步。
     # -masters 指定容灾备选(可选): 主挂时按顺序自动接管, 配置全网不丢。
-    command: ["-join", "http://10.0.0.1:8899", "-token", "smartping", "-name", "节点B", "-masters", "10.0.0.2:8899"]
+    command: ["-join", "http://10.0.0.1:8899", "-token", "${JOIN_TOKEN:-YOUR_JOIN_TOKEN}", "-name", "节点B", "-masters", "10.0.0.2:8899"]
     volumes:
       - ./data-agent/conf:/app/conf
       - ./data-agent/db:/app/db

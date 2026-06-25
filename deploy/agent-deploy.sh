@@ -2,10 +2,12 @@
 # PingMesh Agent 轻量部署: 上传预编译二进制 + systemd
 set -uo pipefail
 
-PASSWORD='Monitor@678!9981'
-MASTER_INTERNAL='10.100.1.8'
-BACKUP_INTERNAL='10.100.1.2'
-JOIN_TOKEN='smartping'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
+deploy_require_join
+
 INSTALL_DIR='/opt/pingmesh'
 BINARY='/tmp/pingmesh-bin.gz'
 

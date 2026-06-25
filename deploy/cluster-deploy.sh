@@ -2,11 +2,11 @@
 # PingMesh 集群批量部署脚本
 set -euo pipefail
 
-PASSWORD='Monitor@678!9981'
-MASTER_INTERNAL='10.100.1.8'
-BACKUP_INTERNAL='10.100.1.3'
-MASTER_PUBLIC='43.229.152.50'
-BACKUP_PUBLIC='163.53.245.90'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
+
 INSTALL_DIR='/opt/pingmesh-docker'
 
 info()  { echo -e "\033[32m[deploy]\033[0m $*"; }
@@ -63,22 +63,7 @@ gen_cert_remote() {
 
 setup_default_user() {
   local host="$1" port="${2:-22}"
-  ssh_run "$host" "$port" "apt-get install -y -qq sqlite3 python3 python3-pip >/dev/null 2>&1 || true
-    pip3 install bcrypt -q 2>/dev/null || true
-    sleep 5
-    DB=${INSTALL_DIR}/data/db/database.db
-    for i in \$(seq 1 30); do [ -f \"\$DB\" ] && break; sleep 2; done
-    python3 -c \"
-import sqlite3
-import bcrypt
-h = bcrypt.hashpw(b'njupt@NJ-5353', bcrypt.gensalt()).decode()
-c = sqlite3.connect('${INSTALL_DIR}/data/db/database.db')
-c.execute('DELETE FROM users WHERE username=\\\"admin\\\"')
-c.execute('INSERT OR REPLACE INTO users(username,password,role,created_at) VALUES(?,?,?,datetime(\\\"now\\\"))', ('xiaoqiang', h, 'admin'))
-c.execute('UPDATE users_meta SET rev=rev+1, mtime=datetime(\\\"now\\\") WHERE id=1')
-c.commit()
-\"
-  "
+  deploy_setup_admin_user "$host" "$port" "$INSTALL_DIR"
 }
 
 deploy_control() {
@@ -115,9 +100,17 @@ deploy_agent() {
 }
 
 get_token() {
-  ssh_run "$MASTER_PUBLIC" 22 "sqlite3 ${INSTALL_DIR}/data/db/database.db \"select value from config where key='Password'\" 2>/dev/null \
-    || grep -oP '\"Password\"\\s*:\\s*\"\\K[^\"]+' ${INSTALL_DIR}/data/conf/config.json 2>/dev/null \
-    || echo smartping"
+  if [[ -n "$JOIN_TOKEN" ]]; then
+    echo "$JOIN_TOKEN"
+    return
+  fi
+  local t
+  t=$(ssh_run "$MASTER_PUBLIC" 22 "sqlite3 ${INSTALL_DIR}/data/db/database.db \"select value from config where key='Password'\" 2>/dev/null \
+    || grep -oP '\"Password\"\\s*:\\s*\"\\K[^\"]+' ${INSTALL_DIR}/data/conf/config.json 2>/dev/null" | tr -d '\r')
+  if [[ -z "$t" ]]; then
+    deploy_require_join
+  fi
+  echo "$t"
 }
 
 # ---- 主流程 ----
@@ -129,6 +122,7 @@ case "${1:-all}" in
     deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
   ;;
   agents)
+  deploy_require_join
   TOKEN=$(get_token)
   info "接入令牌: ${TOKEN}"
   deploy_agent "106.75.160.24" 20001 "can-xxg" "10.100.1.4" "$TOKEN"
@@ -150,6 +144,7 @@ case "${1:-all}" in
   all)
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
     deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
+    deploy_require_join
     TOKEN=$(get_token)
     info "接入令牌: ${TOKEN}"
     deploy_agent "106.75.160.24" 20001 "can-xxg" "10.100.1.4" "$TOKEN"

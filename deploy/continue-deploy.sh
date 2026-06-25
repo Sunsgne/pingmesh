@@ -2,8 +2,12 @@
 # 自动重试: SSH 恢复后从主节点完成 Agent 部署 + git push
 set -uo pipefail
 
-PRIMARY='43.229.152.50'
-PASSWORD='Monitor@678!9981'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
+
+PRIMARY="${PINGMESH_MASTER_PUBLIC:-43.229.152.50}"
 LOG=/tmp/pingmesh-continue.log
 MAX_SSH=60
 MAX_PUSH=20

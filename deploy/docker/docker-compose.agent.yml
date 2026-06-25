@@ -14,7 +14,7 @@ services:
       - -join
       - "${MASTER_URL:-http://10.100.1.8:8899}"
       - -token
-      - "${JOIN_TOKEN:-smartping}"
+      - "${JOIN_TOKEN:?请设置 PINGMESH_JOIN_TOKEN 或 JOIN_TOKEN}"
       - -name
       - "${NODE_NAME:-agent}"
       - -addr

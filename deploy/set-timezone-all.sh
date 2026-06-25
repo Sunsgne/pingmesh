@@ -6,11 +6,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if command -v python3 >/dev/null 2>&1 && [[ -f "${SCRIPT_DIR}/finish-timezone.py" ]]; then
   exec python3 "${SCRIPT_DIR}/finish-timezone.py" "$@"
 fi
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+deploy_require_ssh
 
-PASSWORD='Monitor@678!9981'
 TZ_NAME='Asia/Shanghai'
-
-info()  { echo -e "\033[32m[tz]\033[0m $*"; }
 warn()  { echo -e "\033[33m[tz]\033[0m $*"; }
 err()   { echo -e "\033[31m[tz]\033[0m $*"; }
 

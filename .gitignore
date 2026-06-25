@@ -14,3 +14,4 @@ html/.assets-ver
 db/*.db-wal
 db/*.db-shm
 .demo/
+deploy/.env

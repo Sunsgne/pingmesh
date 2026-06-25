@@ -19,7 +19,7 @@ NODE_ADDR='10.100.1.19'
 NODE_GROUP='ZENLENET'
 MASTER_INTERNAL='10.100.1.8'
 BACKUP_INTERNAL='10.100.1.3'
-JOIN_TOKEN='smartping'
+JOIN_TOKEN="${PINGMESH_JOIN_TOKEN:-}"
 LISTEN_PORT='8899'
 INSTALL_DIR='/opt/pingmesh'
 TZ_NAME='Asia/Shanghai'
@@ -34,6 +34,7 @@ warn()  { echo -e "\033[33m[can-hxy]\033[0m $*"; }
 fatal() { echo -e "\033[31m[can-hxy]\033[0m $*"; exit 1; }
 
 [[ $(id -u) -eq 0 ]] || fatal "请使用 root 执行"
+[[ -n "$JOIN_TOKEN" ]] || fatal "请先设置接入令牌: export PINGMESH_JOIN_TOKEN='你的主控接入令牌'"
 
 info "===== 1/6 系统准备 ====="
 export DEBIAN_FRONTEND=noninteractive
@@ -78,9 +79,13 @@ done
 
 if [[ -z "$FOUND" ]] && ping -c 1 -W 3 "${MASTER_INTERNAL}" >/dev/null 2>&1; then
   info "尝试从主节点 ${MASTER_INTERNAL} 拉取二进制..."
-  if sshpass -p 'Monitor@678!9981' scp -o StrictHostKeyChecking=no \
-      "root@${MASTER_INTERNAL}:/tmp/pingmesh-bin.gz" /tmp/pingmesh-bin.gz 2>/dev/null; then
-    FOUND=/tmp/pingmesh-bin.gz
+  if [[ -n "${PINGMESH_SSH_PASSWORD:-}" ]] && command -v sshpass >/dev/null 2>&1; then
+    if sshpass -p "${PINGMESH_SSH_PASSWORD}" scp -o StrictHostKeyChecking=no \
+        "root@${MASTER_INTERNAL}:/tmp/pingmesh-bin.gz" /tmp/pingmesh-bin.gz 2>/dev/null; then
+      FOUND=/tmp/pingmesh-bin.gz
+    fi
+  else
+    warn "未设置 PINGMESH_SSH_PASSWORD 或未安装 sshpass，跳过从主节点自动拉取二进制"
   fi
 fi
 
@@ -88,13 +93,11 @@ fi
 未找到 pingmesh 二进制。请先获取后重试:
 
 【推荐】在你的电脑上，从主节点下载再传到 can-hxy:
-  scp root@43.229.152.50:/tmp/pingmesh-bin.gz /tmp/
+  scp root@<主节点公网IP>:/tmp/pingmesh-bin.gz /tmp/
   scp -P 20001 /tmp/pingmesh-bin.gz root@42.240.152.238:/tmp/
 
 或从主节点 Docker 导出:
-  ssh root@43.229.152.50 'docker cp pingmesh:/app/pingmesh /tmp/pingmesh-bin && gzip -c /tmp/pingmesh-bin > /tmp/pingmesh-bin.gz'
-  scp root@43.229.152.50:/tmp/pingmesh-bin.gz /tmp/
-  scp -P 20001 /tmp/pingmesh-bin.gz root@42.240.152.238:/tmp/
+  ssh root@<主节点公网IP> 'docker cp pingmesh:/app/pingmesh /tmp/pingmesh-bin && gzip -c /tmp/pingmesh-bin > /tmp/pingmesh-bin.gz'
 
 然后重新运行本脚本。
 EOF
@@ -165,7 +168,7 @@ cat <<'POST'
 ================================================================================
 Agent 本机安装完成。还需在主控 Web 添加节点（否则不会出现在拓扑/Pingmesh）:
 
-1. 打开 https://43.229.152.50  登录 xiaoqiang / njupt@NJ-5353
+1. 打开主控 Web（HTTPS 443）并用管理员账号登录
 2. 系统配置 → 节点管理 → 「+ 添加节点」
 3. 填写:
      名称:   CAN-HXY
