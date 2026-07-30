@@ -1,7 +1,10 @@
 package g
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/cihub/seelog"
@@ -270,6 +273,73 @@ func UpdateUserPassword(username, password string) error {
 	}
 	DLock.Unlock()
 	return err
+}
+
+// OAuthDomainAllowed 邮箱域名是否在 OAuth 允许列表中(空列表表示不限制)
+func OAuthDomainAllowed(email string, allowedDomains []string) bool {
+	if len(allowedDomains) == 0 {
+		return true
+	}
+	parts := strings.SplitN(strings.ToLower(strings.TrimSpace(email)), "@", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return false
+	}
+	domain := parts[1]
+	for _, d := range allowedDomains {
+		if strings.EqualFold(strings.TrimSpace(d), domain) {
+			return true
+		}
+	}
+	return false
+}
+
+func randomOAuthPassword() string {
+	b := make([]byte, 24)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// GetOrCreateOAuthUser Microsoft 等 OAuth 登录: 已有用户直接返回, 否则按策略自动创建
+func GetOrCreateOAuthUser(email, displayName string, autoCreate bool, defaultRole string, allowedDomains []string) (User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return User{}, errors.New("无法获取邮箱地址")
+	}
+	if !OAuthDomainAllowed(email, allowedDomains) {
+		return User{}, errors.New("该邮箱域未被允许登录")
+	}
+	if u, err := GetUser(email); err == nil {
+		now := time.Now().Format("2006-01-02 15:04:05")
+		DLock.Lock()
+		Db.Exec("update users set last_login = ? where username = ?", now, u.Username)
+		DLock.Unlock()
+		u.LastLogin = now
+		return u, nil
+	}
+	if !autoCreate {
+		return User{}, errors.New("账号未开通, 请联系管理员")
+	}
+	role := defaultRole
+	if role != RoleAdmin && role != RoleViewer {
+		role = RoleViewer
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(randomOAuthPassword()), bcrypt.DefaultCost)
+	if err != nil {
+		return User{}, err
+	}
+	now := time.Now().Format("2006-01-02 15:04:05")
+	DLock.Lock()
+	_, err = Db.Exec("insert into users(username,password,role,created_at,last_login) values(?,?,?,?,?)",
+		email, string(hash), role, now, now)
+	if err == nil {
+		touchUserRev()
+	}
+	DLock.Unlock()
+	if err != nil {
+		return User{}, errors.New("创建用户失败")
+	}
+	seelog.Info("[func:GetOrCreateOAuthUser] oauth user created: ", email, " (", displayName, ") role=", role)
+	return GetUser(email)
 }
 
 // DeleteUser 删除用户(保护最后一个管理员)

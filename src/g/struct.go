@@ -11,6 +11,7 @@ type Config struct {
 	Base       map[string]int
 	Topology   map[string]string
 	Brand      map[string]string
+	OAuth      map[string]string
 	Alert      map[string]string
 	Channels   []AlertChannel
 	Network    map[string]NetworkMember

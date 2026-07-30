@@ -384,6 +384,23 @@ func ParseConfig(ver string) {
 			Cfg.Brand[k] = v
 		}
 	}
+	if Cfg.OAuth == nil {
+		Cfg.OAuth = map[string]string{}
+	}
+	oauthDefaults := map[string]string{
+		"Enabled":        "0",
+		"ClientId":       "",
+		"ClientSecret":   "",
+		"TenantId":       "organizations",
+		"AllowedDomains": "",
+		"AutoCreate":     "1",
+		"DefaultRole":    "viewer",
+	}
+	for k, v := range oauthDefaults {
+		if _, ok := Cfg.OAuth[k]; !ok {
+			Cfg.OAuth[k] = v
+		}
+	}
 	// 配置自愈落盘: 补全/修复的配置写回 config.json, 页面「高级 JSON」与后续升级都能看到完整配置
 	if len(healedKeys) > 0 {
 		log.Println("[init] config healed:", strings.Join(healedKeys, ", "))
