@@ -99,14 +99,31 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
     var timer = null;
 
     function rebuildTopo() {
+        // 行列使用同一探测节点顺序, 自测格子排成对角线; 非探测目标追加在末尾
         sources = SP.sourceNodes(cfg);
+        var targetSet = {};
+        $.each(sources, function (_, s) {
+            targetSet[s.Addr] = true;
+            $.each(s.Ping || [], function (_, t) { targetSet[t] = true; });
+        });
         targets = [];
         var seen = {};
         $.each(sources, function (_, s) {
-            $.each(s.Ping || [], function (_, t) {
-                if (!seen[t]) { seen[t] = true; targets.push(t); }
-            });
+            if (targetSet[s.Addr] && !seen[s.Addr]) {
+                seen[s.Addr] = true;
+                targets.push(s.Addr);
+            }
         });
+        var extras = [];
+        $.each(targetSet, function (t) {
+            if (!seen[t]) extras.push(t);
+        });
+        extras.sort(function (a, b) {
+            var na = SP.nodeName(cfg, a), nb = SP.nodeName(cfg, b);
+            if (na === nb) return a < b ? -1 : 1;
+            return na < nb ? -1 : 1;
+        });
+        targets = targets.concat(extras);
     }
 
     $('#win-seg button').click(function () {
