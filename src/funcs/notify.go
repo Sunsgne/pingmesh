@@ -69,7 +69,7 @@ func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][
 	m.Fields = append(m.Fields, [2]string{"链路", m.Link})
 	m.Fields = append(m.Fields, [2]string{"源节点", l.Fromname + " (" + l.Fromip + ")"})
 	m.Fields = append(m.Fields, [2]string{"目标", l.Targetname + " (" + l.Targetip + ")"})
-	if avg, loss, jitter, ok := recentStat(l.Targetip, 15); ok {
+	if avg, loss, jitter, ok := recentStat(l.Targetip, 15); ok && (l.Fromip == "" || l.Fromip == g.Cfg.Addr) {
 		m.Fields = append(m.Fields, [2]string{"近15分钟实测", fmt.Sprintf("平均延迟 %.1f ms / 丢包 %.0f%% / 抖动 %.1f ms", avg, loss, jitter)})
 	}
 	if rule != nil && !recovered {

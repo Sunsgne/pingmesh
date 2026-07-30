@@ -169,6 +169,15 @@ func configApiRoutes() {
 		RenderJson(w, preout)
 	})
 
+	// 告警健康快照: 主节点汇总各探测节点状态后统一发通知
+	http.HandleFunc("/api/alerthealth.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthData(r) {
+			deny(w)
+			return
+		}
+		RenderJson(w, funcs.LocalAlertHealth())
+	})
+
 	//报警API
 	http.HandleFunc("/api/alert.json", func(w http.ResponseWriter, r *http.Request) {
 		if !AuthData(r) {
