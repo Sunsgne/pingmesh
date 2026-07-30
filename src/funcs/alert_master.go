@@ -60,22 +60,36 @@ func LocalAlertHealth() AlertHealthSnapshot {
 
 func fetchAlertHealth(endpoint string, timeout time.Duration) (AlertHealthSnapshot, bool) {
 	snap := AlertHealthSnapshot{Links: map[string]AlertLinkHealth{}}
-	url := "http://" + endpoint + "/api/alerthealth.json"
 	client := http.Client{Timeout: timeout}
+	// 优先新接口; 旧 Agent 回退到 topology.json
+	url := "http://" + endpoint + "/api/alerthealth.json"
 	resp, err := client.Get(g.SignURL(url, g.Cfg.Password))
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if resp.StatusCode == 200 && json.Unmarshal(body, &snap) == nil {
+			if snap.Links == nil {
+				snap.Links = map[string]AlertLinkHealth{}
+			}
+			return snap, true
+		}
+	}
+	url = "http://" + endpoint + "/api/topology.json"
+	resp2, err := client.Get(g.SignURL(url, g.Cfg.Password))
 	if err != nil {
 		return snap, false
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != 200 {
+	defer resp2.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp2.Body, 1<<20))
+	if resp2.StatusCode != 200 {
 		return snap, false
 	}
-	if err := json.Unmarshal(body, &snap); err != nil {
+	raw := map[string]string{}
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return snap, false
 	}
-	if snap.Links == nil {
-		snap.Links = map[string]AlertLinkHealth{}
+	for addr, st := range raw {
+		snap.Links[addr] = AlertLinkHealth{OK: st == "true", Name: addr}
 	}
 	return snap, true
 }
