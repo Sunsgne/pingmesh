@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/jakecoffman/cron"
 	"github.com/zenlenet/pingmesh/src/funcs"
@@ -71,6 +72,11 @@ func main() {
 		if g.Cfg.Mode["Type"] == "cloud" || g.ClusterActive() {
 			go funcs.ClusterSync()
 		}
+		// 代理主节点汇总全网链路健康并统一发送告警; 延迟数秒等待各节点本轮探测入库
+		go func() {
+			time.Sleep(8 * time.Second)
+			funcs.MasterAlertSweep()
+		}()
 	}, "ping")
 	c.AddFunc("0 0 * * * *", func() {
 		go funcs.ClearArchive()
