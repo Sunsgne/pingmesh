@@ -42,7 +42,7 @@ install_docker_remote() {
 
 build_image_remote() {
   local host="$1" port="${2:-22}"
-  ssh_run "$host" "$port" "mkdir -p ${INSTALL_DIR}/src"
+  ssh_run "$host" "$port" "rm -rf ${INSTALL_DIR}/src && mkdir -p ${INSTALL_DIR}/src"
   scp_to "$host" "$port" "/workspace/Dockerfile" "${INSTALL_DIR}/src/Dockerfile"
   scp_to "$host" "$port" "/workspace/go.mod" "${INSTALL_DIR}/src/go.mod"
   scp_to "$host" "$port" "/workspace/go.sum" "${INSTALL_DIR}/src/go.sum"
