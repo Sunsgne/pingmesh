@@ -76,8 +76,8 @@ var SP = (function () {
         return v >= 100 ? v.toFixed(0) : v.toFixed(1);
     }
     function delayLevel(delay, loss, baseline) {
-        // 相对基线涨幅着色: 正常绿 / ≥10%黄 / ≥20%橙 / ≥30%红
-        // baseline 为该链路近期正常延迟; 缺省时按当前延迟视为正常(绿)
+        // 延迟: 相对基线涨幅 ≥10%黄 / ≥20%橙 / ≥30%红
+        // 丢包: ≥5%黄 / ≥20%橙 / ≥50%红 (与延迟取较高档)
         var lvl = 0;
         delay = Number(delay) || 0;
         loss = Number(loss) || 0;
@@ -87,9 +87,7 @@ var SP = (function () {
             if (pct >= 30) lvl = 4;
             else if (pct >= 20) lvl = 3;
             else if (pct >= 10) lvl = 2;
-            else lvl = 0;
         }
-        // 丢包仍按硬阈值升级(与延迟取较高档)
         if (loss >= 50) lvl = Math.max(lvl, 4);
         else if (loss >= 20) lvl = Math.max(lvl, 3);
         else if (loss >= 5) lvl = Math.max(lvl, 2);
