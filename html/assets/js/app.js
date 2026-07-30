@@ -75,15 +75,33 @@ var SP = (function () {
         if (isNaN(v)) return '-';
         return v >= 100 ? v.toFixed(0) : v.toFixed(1);
     }
-    function delayLevel(delay, loss) {
-        // flashcat pingmesh 风格的健康度分级
-        if (loss >= 50) return 4;
-        if (loss >= 20) return 3;
-        if (delay >= 300) return 4;
-        if (delay >= 150) return 3;
-        if (delay >= 80 || loss >= 5) return 2;
-        if (delay >= 30) return 1;
-        return 0;
+    function delayLevel(delay, loss, baseline) {
+        // 相对基线涨幅着色: 正常绿 / ≥10%黄 / ≥20%橙 / ≥30%红
+        // baseline 为该链路近期正常延迟; 缺省时按当前延迟视为正常(绿)
+        var lvl = 0;
+        delay = Number(delay) || 0;
+        loss = Number(loss) || 0;
+        baseline = Number(baseline) || 0;
+        if (baseline > 0 && delay > 0) {
+            var pct = (delay - baseline) / baseline * 100;
+            if (pct >= 30) lvl = 4;
+            else if (pct >= 20) lvl = 3;
+            else if (pct >= 10) lvl = 2;
+            else lvl = 0;
+        }
+        // 丢包仍按硬阈值升级(与延迟取较高档)
+        if (loss >= 50) lvl = Math.max(lvl, 4);
+        else if (loss >= 20) lvl = Math.max(lvl, 3);
+        else if (loss >= 5) lvl = Math.max(lvl, 2);
+        return lvl;
+    }
+
+    // 相对基线涨幅百分比(用于提示文案); 无基线返回 null
+    function delayRisePct(delay, baseline) {
+        delay = Number(delay) || 0;
+        baseline = Number(baseline) || 0;
+        if (baseline <= 0 || delay <= 0) return null;
+        return (delay - baseline) / baseline * 100;
     }
 
     /* ---------- shared big ping chart modal ---------- */
@@ -524,6 +542,7 @@ var SP = (function () {
         proxy: proxy,
         fmtMs: fmtMs,
         delayLevel: delayLevel,
+        delayRisePct: delayRisePct,
         openPingChart: openPingChart,
         sourceNodes: sourceNodes,
         nodeName: nodeName,
