@@ -97,7 +97,7 @@ SP.init('index', '概览').done(function (ctx) {
             var sum = 0, n = 0, bad = 0;
             $.each(row.cells, function (_, c) {
                 sum += c.avgdelay; n++;
-                if (SP.delayLevel(c.avgdelay, c.loss) >= 3) bad++;
+                if (SP.delayLevel(c.avgdelay, c.loss, c.baseline) >= 3) bad++;
             });
             $('#st-delay').text(n > 0 ? SP.fmtMs(sum / n) + ' ms' : '-');
             $('#st-bad').text(n > 0 ? bad : '-');

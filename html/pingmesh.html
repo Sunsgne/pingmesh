@@ -73,11 +73,10 @@
       </div>
 
       <div class="mesh-legend mt-4">
-        <span class="lg"><span class="sq" style="background:#10b981"></span>&lt;30ms</span>
-        <span class="lg"><span class="sq" style="background:#6ee7b7"></span>30-80ms</span>
-        <span class="lg"><span class="sq" style="background:#fcd34d"></span>80-150ms / 丢包&ge;5%</span>
-        <span class="lg"><span class="sq" style="background:#fb923c"></span>150-300ms / 丢包&ge;20%</span>
-        <span class="lg"><span class="sq" style="background:#f43f5e"></span>&ge;300ms / 丢包&ge;50%</span>
+        <span class="lg"><span class="sq" style="background:#10b981"></span>正常</span>
+        <span class="lg"><span class="sq" style="background:#fcd34d"></span>延迟升高≥10% / 丢包≥5%</span>
+        <span class="lg"><span class="sq" style="background:#fb923c"></span>延迟升高≥20% / 丢包≥20%</span>
+        <span class="lg"><span class="sq" style="background:#f43f5e"></span>延迟升高≥30% / 丢包≥50%</span>
         <span class="lg"><span class="sq" style="background:#eef2f7"></span>无数据</span>
         <span class="lg"><span class="sq" style="border:1px dashed var(--sp-border)"></span>自身</span>
       </div>
@@ -233,14 +232,17 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
                     html += '<td><div class="mesh-cell na" title="' + hint + '">' + (row && row.error ? '&#9888;' : '·') + '</div></td>';
                     return;
                 }
-                var lvl = SP.delayLevel(c.avgdelay, c.loss);
+                var lvl = SP.delayLevel(c.avgdelay, c.loss, c.baseline);
                 stTotal++; stSum += c.avgdelay; stCnt++;
                 if (lvl >= 3) stBad++; else stOk++;
                 var main = metric === 'delay' ? SP.fmtMs(c.avgdelay) : c.loss.toFixed(0) + '%';
                 if (c.loss >= 99.5) main = '&#10005;'; // 完全不通显示 ✕
+                var rise = SP.delayRisePct(c.avgdelay, c.baseline);
+                var riseTxt = rise == null ? '' : ('\n相对基线 ' + (rise >= 0 ? '+' : '') + rise.toFixed(0) + '% (基线 ' + SP.fmtMs(c.baseline) + 'ms)');
                 var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
                     '\n平均 ' + SP.fmtMs(c.avgdelay) + 'ms · 最大 ' + SP.fmtMs(c.maxdelay) + 'ms' +
-                    '\n抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次\n' + c.lastcheck;
+                    '\n抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次' +
+                    riseTxt + '\n' + c.lastcheck;
                 html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +
                     main + '</div></td>';
             });

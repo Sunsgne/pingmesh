@@ -339,7 +339,7 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .mesh-cell.self { background: transparent; border: 1px dashed var(--sp-border); cursor: default; color: #cbd5e1; }
 .mesh-cell.self:hover { transform: none; box-shadow: none; }
 .mesh-l0 { background: #10b981; }
-.mesh-l1 { background: #6ee7b7; color: #064e3b; }
+.mesh-l1 { background: #10b981; } /* 与正常同色: 相对基线未超 10% */
 .mesh-l2 { background: #fcd34d; color: #78350f; }
 .mesh-l3 { background: #fb923c; color: #7c2d12; }
 .mesh-l4 { background: #f43f5e; }

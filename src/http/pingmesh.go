@@ -16,6 +16,7 @@ type PingmeshCell struct {
 	MinDelay  float64 `json:"mindelay"`
 	Loss      float64 `json:"loss"`
 	Jitter    float64 `json:"jitter"`
+	Baseline  float64 `json:"baseline"` // 近24小时正常延迟基线, 用于相对涨幅着色
 	LastCheck string  `json:"lastcheck"`
 	Points    int     `json:"points"`
 }
@@ -83,6 +84,36 @@ func configPingmeshRoutes() {
 				row.Cells[target] = c
 			}
 			rows.Close()
+		}
+		// 近24小时基线(有效样本: 有延迟且非全丢包), 供前端按相对涨幅着色
+		baseStart := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04")
+		baseEnd := time.Now().Format("2006-01-02 15:04")
+		baseSql := "select target, avg(avgdelay) from pinglog where logtime >= ? and logtime <= ? and avgdelay > 0 and losspk < 100 group by target"
+		g.DLock.Lock()
+		brows, berr := g.Db.Query(baseSql, baseStart, baseEnd)
+		g.DLock.Unlock()
+		if berr != nil {
+			seelog.Error("[func:/api/pingmesh.json] Baseline ", berr)
+		} else {
+			for brows.Next() {
+				var target string
+				var base float64
+				if err := brows.Scan(&target, &base); err != nil {
+					continue
+				}
+				if c, ok := row.Cells[target]; ok {
+					c.Baseline = base
+					row.Cells[target] = c
+				}
+			}
+			brows.Close()
+		}
+		// 无历史基线时用当前窗口均值兜底 → 稳态链路显示为绿色
+		for t, c := range row.Cells {
+			if c.Baseline <= 0 && c.AvgDelay > 0 && c.Loss < 100 {
+				c.Baseline = c.AvgDelay
+				row.Cells[t] = c
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		RenderJson(w, row)

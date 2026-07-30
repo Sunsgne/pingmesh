@@ -32,11 +32,10 @@
       </div>
       <div id="echarts-map" style="width:100%;height:560px"></div>
       <div class="mesh-legend">
-        <span class="lg"><span class="sq" style="background:#10b981"></span>&lt;30ms</span>
-        <span class="lg"><span class="sq" style="background:#6ee7b7"></span>30-80ms</span>
-        <span class="lg"><span class="sq" style="background:#fcd34d"></span>80-150ms</span>
-        <span class="lg"><span class="sq" style="background:#fb923c"></span>150-300ms</span>
-        <span class="lg"><span class="sq" style="background:#f43f5e"></span>&ge;300ms</span>
+        <span class="lg"><span class="sq" style="background:#10b981"></span>正常</span>
+        <span class="lg"><span class="sq" style="background:#fcd34d"></span>延迟升高≥10% / 丢包≥5%</span>
+        <span class="lg"><span class="sq" style="background:#fb923c"></span>延迟升高≥20% / 丢包≥20%</span>
+        <span class="lg"><span class="sq" style="background:#f43f5e"></span>延迟升高≥30% / 丢包≥50%</span>
         <span class="lg"><span class="sq" style="background:#94a3b8"></span>不可达</span>
         <span class="lg"><span class="sq" style="background:#eef2f7"></span>未配置探测</span>
       </div>
@@ -178,10 +177,36 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
         return out;
     }
 
+    function mapBaseline(seriesData) {
+        var vals = [];
+        $.each(seriesData || [], function (_, it) {
+            if (it && it.value != null && !isNaN(it.value) && it.value < UNREACH && it.value > 0) vals.push(Number(it.value));
+        });
+        if (vals.length === 0) return 0;
+        vals.sort(function (a, b) { return a - b; });
+        return vals[Math.floor(vals.length / 2)];
+    }
+
     function renderMap() {
         var seriesData = [];
         if (data) {
             seriesData = (activeLine === '全部') ? mergedAll() : (data.avgdelay[activeLine] || []);
+        }
+        var base = mapBaseline(seriesData);
+        var pieces;
+        if (base > 0) {
+            pieces = [
+                { min: 0, max: base * 1.1, color: '#10b981', label: '正常' },
+                { min: base * 1.1, max: base * 1.2, color: '#fcd34d', label: '≥10%' },
+                { min: base * 1.2, max: base * 1.3, color: '#fb923c', label: '≥20%' },
+                { min: base * 1.3, max: UNREACH, color: '#f43f5e', label: '≥30%' },
+                { min: UNREACH, color: '#94a3b8', label: '不可达' }
+            ];
+        } else {
+            pieces = [
+                { min: 0, max: UNREACH, color: '#10b981', label: '正常' },
+                { min: UNREACH, color: '#94a3b8', label: '不可达' }
+            ];
         }
         chart.setOption({
             title: {
@@ -198,21 +223,19 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
                 formatter: function (p) {
                     if (p.value == null || isNaN(p.value)) return p.name + '<br>未配置探测点';
                     if (p.value >= UNREACH) return p.name + ' · ' + activeLine + '<br><b style="color:#f87171">不可达</b>';
-                    return p.name + ' · ' + activeLine + '<br>平均延迟 <b>' + Number(p.value).toFixed(1) + ' ms</b>';
+                    var extra = '';
+                    if (base > 0) {
+                        var pct = (Number(p.value) - base) / base * 100;
+                        extra = '<br>相对基线 ' + (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%';
+                    }
+                    return p.name + ' · ' + activeLine + '<br>平均延迟 <b>' + Number(p.value).toFixed(1) + ' ms</b>' + extra;
                 }
             },
             visualMap: {
                 type: 'piecewise', left: 10, bottom: 10, showLabel: true,
                 textStyle: { color: '#64748b', fontSize: 11 },
                 itemWidth: 14, itemHeight: 10, show: false,
-                pieces: [
-                    { min: 0, max: 30, color: '#10b981' },
-                    { min: 30, max: 80, color: '#6ee7b7' },
-                    { min: 80, max: 150, color: '#fcd34d' },
-                    { min: 150, max: 300, color: '#fb923c' },
-                    { min: 300, max: UNREACH, color: '#f43f5e' },
-                    { min: UNREACH, color: '#94a3b8', label: '不可达' }
-                ]
+                pieces: pieces
             },
             series: [{
                 name: activeLine, type: 'map', map: 'world',
@@ -227,16 +250,17 @@ SP.init('mapping', '全球延迟').done(function (ctx) {
                 data: seriesData
             }]
         }, true);
+        window._mapBaseline = base;
     }
 
     /* ---------- 搜索 + 列表 ---------- */
     function levelBadge(v) {
         if (v >= UNREACH) return '<span class="badge gray">不可达</span>';
-        var lvl = SP.delayLevel(v, 0);
-        if (lvl <= 1) return '<span class="badge green"><span class="dot"></span>优秀</span>';
-        if (lvl === 2) return '<span class="badge yellow">一般</span>';
-        if (lvl === 3) return '<span class="badge yellow">较差</span>';
-        return '<span class="badge red"><span class="dot"></span>异常</span>';
+        var lvl = SP.delayLevel(v, 0, window._mapBaseline || 0);
+        if (lvl <= 1) return '<span class="badge green"><span class="dot"></span>正常</span>';
+        if (lvl === 2) return '<span class="badge yellow">升高≥10%</span>';
+        if (lvl === 3) return '<span class="badge yellow">升高≥20%</span>';
+        return '<span class="badge red"><span class="dot"></span>升高≥30%</span>';
     }
 
     function renderList() {
