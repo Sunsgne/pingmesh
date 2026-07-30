@@ -34,6 +34,9 @@ func configApiRoutes() {
 			if nconf.Alert["SendEmailPassword"] != "" {
 				nconf.Alert["SendEmailPassword"] = "samepasswordasbefore"
 			}
+			if nconf.OAuth != nil && nconf.OAuth["ClientSecret"] != "" {
+				nconf.OAuth["ClientSecret"] = "samepasswordasbefore"
+			}
 		}
 		//fmt.Print(g.Cfg.Alert["SendEmailPassword"])
 		onconf, _ := json.Marshal(nconf)
@@ -529,6 +532,11 @@ func configApiRoutes() {
 		}
 		if nconfig.Alert["SendEmailPassword"] == "samepasswordasbefore" {
 			nconfig.Alert["SendEmailPassword"] = g.Cfg.Alert["SendEmailPassword"]
+		}
+		if nconfig.OAuth != nil && nconfig.OAuth["ClientSecret"] == "samepasswordasbefore" {
+			if g.Cfg.OAuth != nil {
+				nconfig.OAuth["ClientSecret"] = g.Cfg.OAuth["ClientSecret"]
+			}
 		}
 		// 管理员保存属权威写入: 自增纪元, 使本次改动在集群内 LWW 收敛
 		g.BumpEpochInPlace(&nconfig)

@@ -119,6 +119,7 @@ func StartHttp() {
 		seelog.Info("[func:StartHttp] sessions invalidated after cluster user sync")
 	}
 	configAuthRoutes()
+	configOAuthRoutes()
 	configApiRoutes()
 	configPingmeshRoutes()
 	configJoinRoutes()

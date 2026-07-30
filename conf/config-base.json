@@ -31,6 +31,15 @@
 		"Slogan": "PingMesh · 网络质量监控平台",
 		"Logo": ""
 	},
+	"OAuth": {
+		"Enabled": "0",
+		"ClientId": "",
+		"ClientSecret": "",
+		"TenantId": "organizations",
+		"AllowedDomains": "",
+		"AutoCreate": "1",
+		"DefaultRole": "viewer"
+	},
 	"Alert": {
 		"EmailHost": "",
 		"RevcEmailList": "",

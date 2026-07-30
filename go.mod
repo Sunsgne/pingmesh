@@ -7,6 +7,7 @@ require (
 	github.com/jakecoffman/cron v0.0.0-20190106200828-7e2009c226a5
 	golang.org/x/crypto v0.53.0
 	golang.org/x/net v0.56.0
+	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.52.0
 )
 

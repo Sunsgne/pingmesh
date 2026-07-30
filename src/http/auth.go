@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -197,9 +198,14 @@ func configAuthRoutes() {
 
 	// 登录页元信息: 默认账号是否仍有效(改掉默认密码后提示自动消失)
 	http.HandleFunc("/api/loginmeta.json", func(w http.ResponseWriter, r *http.Request) {
+		msOAuth := false
+		if g.Cfg.OAuth != nil && (g.Cfg.OAuth["Enabled"] == "1" || strings.EqualFold(g.Cfg.OAuth["Enabled"], "true")) {
+			msOAuth = strings.TrimSpace(g.Cfg.OAuth["ClientId"]) != "" && strings.TrimSpace(g.Cfg.OAuth["ClientSecret"]) != ""
+		}
 		RenderJson(w, map[string]interface{}{
 			"defaultcreds": g.DefaultCredsActive(),
 			"brand":        g.Cfg.Brand,
+			"microsoft_oauth": msOAuth,
 		})
 	})
 
@@ -230,18 +236,7 @@ func configAuthRoutes() {
 			return
 		}
 		loginRecordSuccess(ip)
-		token := newToken()
-		sessionsLock.Lock()
-		sessions[token] = &Session{Username: u.Username, Role: u.Role, Expire: time.Now().Add(sessionTTL)}
-		sessionsLock.Unlock()
-		http.SetCookie(w, &http.Cookie{
-			Name:     sessionCookie,
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   int(sessionTTL.Seconds()),
-		})
+		setSessionCookie(w, r, u.Username, u.Role)
 		seelog.Info("[func:/api/login.json] user ", username, " login from ", r.RemoteAddr)
 		renderOk(w, map[string]interface{}{"user": u})
 	})

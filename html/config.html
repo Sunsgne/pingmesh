@@ -14,6 +14,7 @@
   <div class="card">
     <div class="tabs" id="cfg-tabs">
       <button data-t="basic" class="active">基础设置</button>
+      <button data-t="auth">登录认证</button>
       <button data-t="nodes">节点管理</button>
       <button data-t="join">节点接入</button>
       <button data-t="alert">报警通道</button>
@@ -120,6 +121,50 @@
           <label>全球延迟功能</label>
           <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-chinamap"><span class="track"></span></label>
           <span class="hint" style="display:inline;margin-left:8px">关闭后停止探测并隐藏菜单入口</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录认证 -->
+    <div class="tab-pane card-body" id="tab-auth" style="max-width:760px">
+      <h3 style="font-size:14.5px;margin-bottom:10px">Microsoft 365 / Office 邮箱登录</h3>
+      <div class="muted mb-4" style="font-size:13px;line-height:1.9">
+        在 Azure 门户注册应用后, 将 Client ID / Secret 填入下方并启用。回调地址需注册为:
+        <code id="oauth-redirect-uri" style="background:var(--sp-bg);padding:2px 6px;border-radius:4px;word-break:break-all"></code>
+      </div>
+      <div class="grid cols-2">
+        <div class="field" style="grid-column:1 / -1">
+          <label>启用 Microsoft 登录</label>
+          <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-oauth-enabled"><span class="track"></span></label>
+        </div>
+        <div class="field">
+          <label>Application (Client) ID</label>
+          <input type="text" class="input mono" id="f-oauth-clientid" placeholder="Azure 应用 Client ID">
+        </div>
+        <div class="field">
+          <label>Client Secret</label>
+          <input type="password" class="input mono" id="f-oauth-clientsecret" placeholder="留空则保持原密钥不变">
+        </div>
+        <div class="field">
+          <label>Directory (Tenant) ID</label>
+          <input type="text" class="input mono" id="f-oauth-tenantid" placeholder="organizations / common / 租户 GUID">
+          <div class="hint">仅允许组织账号填 <code>organizations</code>; 单租户填租户 GUID</div>
+        </div>
+        <div class="field">
+          <label>允许登录的邮箱域</label>
+          <input type="text" class="input mono" id="f-oauth-domains" placeholder="example.com, contoso.com">
+          <div class="hint">逗号分隔, 留空表示不限制域名</div>
+        </div>
+        <div class="field">
+          <label>首次登录自动创建账号</label>
+          <label class="switch" style="margin-top:6px"><input type="checkbox" id="f-oauth-autocreate"><span class="track"></span></label>
+        </div>
+        <div class="field">
+          <label>自动创建账号的默认角色</label>
+          <select class="input" id="f-oauth-role">
+            <option value="viewer">只读 (viewer)</option>
+            <option value="admin">管理员 (admin)</option>
+          </select>
         </div>
       </div>
     </div>
@@ -664,6 +709,15 @@ SP.init('config', '系统配置').done(function (ctx) {
         $('#f-tsymbolsize').val(cfg.Topology['Tsymbolsize']);
         $('#f-tsound').val(cfg.Topology['Tsound']);
         $('#f-authiplist').val(cfg.Authiplist);
+        cfg.OAuth = cfg.OAuth || {};
+        $('#f-oauth-enabled').prop('checked', cfg.OAuth['Enabled'] === '1' || String(cfg.OAuth['Enabled']).toLowerCase() === 'true');
+        $('#f-oauth-clientid').val(cfg.OAuth['ClientId'] || '');
+        $('#f-oauth-clientsecret').val(cfg.OAuth['ClientSecret'] || '');
+        $('#f-oauth-tenantid').val(cfg.OAuth['TenantId'] || 'organizations');
+        $('#f-oauth-domains').val(cfg.OAuth['AllowedDomains'] || '');
+        $('#f-oauth-autocreate').prop('checked', cfg.OAuth['AutoCreate'] !== '0' && String(cfg.OAuth['AutoCreate']).toLowerCase() !== 'false');
+        $('#f-oauth-role').val(cfg.OAuth['DefaultRole'] || 'viewer');
+        $('#oauth-redirect-uri').text(window.location.origin + '/api/oauth/microsoft/callback');
         $('#f-chinamap').prop('checked', cfg.Base['Chinamap'] !== 0);
         $('#f-pinginterval').val(cfg.Base['Pinginterval'] || 2500);
         $('#f-pingcount').val(cfg.Base['Pingcount'] || 20);
@@ -1793,6 +1847,16 @@ SP.init('config', '系统配置').done(function (ctx) {
         cfg.Topology['Tsymbolsize'] = String($('#f-tsymbolsize').val() || '70');
         cfg.Topology['Tsound'] = $('#f-tsound').val();
         cfg.Authiplist = $.trim($('#f-authiplist').val());
+        cfg.OAuth = cfg.OAuth || {};
+        cfg.OAuth['Enabled'] = $('#f-oauth-enabled').is(':checked') ? '1' : '0';
+        cfg.OAuth['ClientId'] = $.trim($('#f-oauth-clientid').val());
+        var sec = $('#f-oauth-clientsecret').val();
+        if (sec) cfg.OAuth['ClientSecret'] = sec;
+        else if (cfg.OAuth['ClientSecret']) cfg.OAuth['ClientSecret'] = 'samepasswordasbefore';
+        cfg.OAuth['TenantId'] = $.trim($('#f-oauth-tenantid').val()) || 'organizations';
+        cfg.OAuth['AllowedDomains'] = $.trim($('#f-oauth-domains').val());
+        cfg.OAuth['AutoCreate'] = $('#f-oauth-autocreate').is(':checked') ? '1' : '0';
+        cfg.OAuth['DefaultRole'] = $('#f-oauth-role').val() || 'viewer';
         cfg.Alert['EmailHost'] = $.trim($('#f-emailhost').val());
         cfg.Alert['SendEmailAccount'] = $.trim($('#f-emailaccount').val());
         cfg.Alert['SendEmailPassword'] = $('#f-emailpassword').val();
