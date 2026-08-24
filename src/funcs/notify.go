@@ -51,6 +51,15 @@ func recentStat(target string, mins int) (avg float64, loss float64, jitter floa
 	return avg, loss, jitter, err == nil && cnt > 0
 }
 
+func hasExtra(extras [][2]string, label string) bool {
+	for _, e := range extras {
+		if e[0] == label {
+			return true
+		}
+	}
+	return false
+}
+
 func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][2]string) alertMsg {
 	recovered := kind == "recovery"
 	m := alertMsg{Recovered: recovered}
@@ -69,6 +78,15 @@ func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][
 	m.Fields = append(m.Fields, [2]string{"链路", m.Link})
 	m.Fields = append(m.Fields, [2]string{"源节点", l.Fromname + " (" + l.Fromip + ")"})
 	m.Fields = append(m.Fields, [2]string{"目标", l.Targetname + " (" + l.Targetip + ")"})
+	if l.AlertType != "" && !hasExtra(extras, "告警类型") {
+		m.Fields = append(m.Fields, [2]string{"告警类型", AlertTypeLabel(l.AlertType)})
+	}
+	if l.Tag != "" && !hasExtra(extras, "故障 Tag") {
+		m.Fields = append(m.Fields, [2]string{"故障 Tag", l.Tag})
+	}
+	if l.Reason != "" && !hasExtra(extras, "触发原因") && !recovered {
+		m.Fields = append(m.Fields, [2]string{"触发原因", l.Reason})
+	}
 	if avg, loss, jitter, ok := recentStat(l.Targetip, 15); ok && (l.Fromip == "" || l.Fromip == g.Cfg.Addr) {
 		m.Fields = append(m.Fields, [2]string{"近15分钟实测", fmt.Sprintf("平均延迟 %.1f ms / 丢包 %.0f%% / 抖动 %.1f ms", avg, loss, jitter)})
 	}

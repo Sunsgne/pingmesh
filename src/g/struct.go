@@ -88,6 +88,14 @@ type AlertLog struct {
 	Ackby      string
 	Ackreason  string
 	Acktime    string
+	// 告警类型/原因/指纹: 便于列表直接看出为啥, 以及识别重复故障
+	AlertType string  // delay|loss|jitter|delay+loss|...
+	Reason    string  // 人类可读触发说明
+	Tag       string  // 稳定指纹, 如同链路同类型故障共用
+	AvgDelay  float64 // 触发时近窗均值(可选)
+	Loss      float64
+	Jitter    float64
+	Occur     int // 同 Tag 历史出现次数(含本次, 查询时填充)
 }
 
 type ChinaMp struct {

@@ -221,15 +221,28 @@ func configApiRoutes() {
 			}
 			rows.Close()
 		}
-		querySql = "select rowid,logtime,targetname,targetip,tracert,ifnull(ack,0),ifnull(ackby,''),ifnull(ackreason,''),ifnull(acktime,'') from alertlog where logtime between ? and ? order by logtime desc limit 1000"
+		querySql = "select rowid,logtime,targetname,targetip,tracert,ifnull(ack,0),ifnull(ackby,''),ifnull(ackreason,''),ifnull(acktime,''),ifnull(alerttype,''),ifnull(reason,''),ifnull(tag,''),ifnull(avgdelay,0),ifnull(loss,0),ifnull(jitter,0) from alertlog where logtime between ? and ? order by logtime desc limit 1000"
 		rows, err = g.Db.Query(querySql, rangeStart, rangeEnd)
 		seelog.Debug("[func:/api/alert.json] Query ", querySql)
 		if err != nil {
 			seelog.Error("[func:/api/alert.json] Query ", err)
 		} else {
+			tagTotal := map[string]int{}
+			trows, terr := g.Db.Query("select tag, count(1) from alertlog where ifnull(tag,'') != '' group by tag")
+			if terr == nil {
+				for trows.Next() {
+					var tag string
+					var cnt int
+					if trows.Scan(&tag, &cnt) == nil {
+						tagTotal[tag] = cnt
+					}
+				}
+				trows.Close()
+			}
 			for rows.Next() {
 				l := new(g.AlertLog)
-				err := rows.Scan(&l.Id, &l.Logtime, &l.Targetname, &l.Targetip, &l.Tracert, &l.Ack, &l.Ackby, &l.Ackreason, &l.Acktime)
+				err := rows.Scan(&l.Id, &l.Logtime, &l.Targetname, &l.Targetip, &l.Tracert, &l.Ack, &l.Ackby, &l.Ackreason, &l.Acktime,
+					&l.AlertType, &l.Reason, &l.Tag, &l.AvgDelay, &l.Loss, &l.Jitter)
 				l.Fromname = g.Cfg.Name
 				l.Fromip = g.Cfg.Addr
 				// 名称按当前配置解析: 节点改名后历史告警同步显示新名
@@ -239,6 +252,26 @@ func configApiRoutes() {
 				if err != nil {
 					seelog.Error("[/api/alert.json] Rows", err)
 					continue
+				}
+				// 老数据无类型时补全展示(不写回库)
+				if l.AlertType == "" || l.Tag == "" {
+					rule := map[string]string{}
+					for _, t := range g.SelfCfg.Topology {
+						if t["Addr"] == l.Targetip {
+							rule = t
+							break
+						}
+					}
+					if l.AvgDelay == 0 && l.Loss == 0 && l.Jitter == 0 {
+						l.AlertType = "quality"
+						l.Reason = "历史告警(升级前未记录类型)"
+						l.Tag = "QUALITY:" + l.Fromip + "→" + l.Targetip
+					} else if len(rule) > 0 {
+						l.AlertType, l.Reason, l.Tag = funcs.ClassifyAlert(l.Fromip, l.Targetip, rule, l.AvgDelay, l.Loss, l.Jitter)
+					}
+				}
+				if l.Tag != "" {
+					l.Occur = tagTotal[l.Tag]
 				}
 				datapreout = append(datapreout, *l)
 			}
