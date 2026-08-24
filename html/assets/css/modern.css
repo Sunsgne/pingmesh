@@ -203,7 +203,7 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 }
 .sp-combo.open .sp-combo-caret { margin-top: -7px; border-top-color: transparent; border-bottom-color: var(--sp-text-3); }
 .sp-combo .sp-combo-list {
-  display: none; position: absolute; left: 0; right: auto; min-width: 100%; width: max-content; max-width: 320px;
+  display: none; position: absolute; left: 0; right: auto; min-width: 100%; width: 320px; max-width: calc(100vw - 32px);
   top: calc(100% + 4px); max-height: 280px; overflow-y: auto; z-index: 80;
   background: #fff; border: 1px solid var(--sp-border); border-radius: 8px;
   box-shadow: var(--sp-shadow-lg);

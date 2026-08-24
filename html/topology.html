@@ -27,7 +27,7 @@
         <div class="sp-combo" id="topo-search-combo" title="从列表选择节点，可输入名称或 IP 快速匹配">
           <input type="text" class="input" id="topo-search" placeholder="选择节点..." autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false">
           <span class="sp-combo-caret"></span>
-          <div class="sp-combo-list" id="topo-search-list" role="listbox"></div>
+        <div class="sp-combo-list" id="topo-search-list" role="listbox"></div>
         </div>
         <label class="flex" style="gap:5px;font-size:12.5px;color:var(--sp-text-2);cursor:pointer;margin:0">
           <input type="checkbox" id="topo-bad-only" style="margin:0">只看异常
@@ -165,7 +165,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     function comboItems() { return comboList.find('.sp-combo-item'); }
     function renderComboList(q) {
         q = $.trim(q || '').toLowerCase();
-        var html = '<div class="sp-combo-item" data-addr="">全部节点</div>';
+        var html = '<div class="sp-combo-item" data-addr="" role="option">全部节点</div>';
         var n = 0, hi = 0;
         $.each(nodeCatalog, function (_, it) {
             var hay = (it.name + ' ' + it.addr + ' ' + (it.group || '')).toLowerCase();
@@ -190,7 +190,9 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         comboHi = i;
         items.removeClass('active').eq(i).addClass('active');
         var el = items.get(i);
-        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+        if (el && el.scrollIntoView) {
+            try { el.scrollIntoView(false); } catch (e) { el.scrollIntoView(); }
+        }
     }
     function openCombo() {
         if (combo.hasClass('disabled')) return;
@@ -240,8 +242,9 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
 
     $('#topo-view').change(function () { state.view = $(this).val(); syncControls(); persistState(); draw(); });
     groupSel.change(function () { state.group = $(this).val(); persistState(); draw(); });
-    comboInput.bind('focus click', function () { openCombo(); });
-    comboInput.bind('input', function () {
+    function onComboInputChange(e) {
+        var key = e ? (e.keyCode || e.which) : 0;
+        if (e && e.type === 'keyup' && (key === 13 || key === 27 || key === 38 || key === 40)) return;
         var v = $.trim($(this).val());
         state.qAddr = '';
         state.q = v.toLowerCase();
@@ -249,7 +252,9 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         renderComboList(v);
         combo.addClass('open');
         draw();
-    });
+    }
+    comboInput.bind('focus click', function () { openCombo(); });
+    comboInput.bind('input keyup', onComboInputChange);
     comboInput.bind('keydown', function (e) {
         var key = e.keyCode || e.which;
         if (key === 40) { // down
