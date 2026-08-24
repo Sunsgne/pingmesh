@@ -24,7 +24,8 @@
         <select class="input" id="topo-group" style="width:auto;max-width:150px;padding:5px 8px" title="只看某个分组">
           <option value="">全部分组</option>
         </select>
-        <input type="text" class="input" id="topo-search" placeholder="搜索名称 / IP..." style="width:150px;padding:5px 10px">
+        <input type="text" class="input" id="topo-search" list="topo-search-list" placeholder="搜索名称 / IP..." style="width:150px;padding:5px 10px">
+        <datalist id="topo-search-list"></datalist>
         <label class="flex" style="gap:5px;font-size:12.5px;color:var(--sp-text-2);cursor:pointer;margin:0">
           <input type="checkbox" id="topo-bad-only" style="margin:0">只看异常
         </label>
@@ -131,6 +132,18 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     var groupSel = $('#topo-group');
     $.each(groupNames, function (_, g) {
         groupSel.append('<option value="' + SP.esc(g) + '">' + SP.esc(g) + '</option>');
+    });
+    var topoSearchList = $('#topo-search-list');
+    var topoSearchOptions = {};
+    function appendSearchOption(v) {
+        v = $.trim(v || '');
+        if (!v || topoSearchOptions[v]) return;
+        topoSearchOptions[v] = true;
+        topoSearchList.append('<option value="' + SP.esc(v) + '"></option>');
+    }
+    $.each(nodes, function (addr, n) {
+        appendSearchOption(n.name);
+        appendSearchOption(addr);
     });
     function syncControls() {
         $('#topo-view').val(state.view);
