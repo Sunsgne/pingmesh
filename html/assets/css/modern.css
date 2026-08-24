@@ -194,6 +194,32 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .input-row { display: flex; gap: 10px; }
 .input-row > * { flex: 1; }
 
+/* 可搜索下拉(输入快速匹配 + 从列表选择) */
+.sp-combo { position: relative; display: inline-block; vertical-align: middle; z-index: 1; }
+.sp-combo > .input { width: 220px; padding: 5px 28px 5px 10px; }
+.sp-combo .sp-combo-caret {
+  position: absolute; right: 8px; top: 50%; margin-top: -3px;
+  border: 5px solid transparent; border-top-color: var(--sp-text-3); pointer-events: none;
+}
+.sp-combo.open .sp-combo-caret { margin-top: -7px; border-top-color: transparent; border-bottom-color: var(--sp-text-3); }
+.sp-combo .sp-combo-list {
+  display: none; position: absolute; left: 0; right: auto; min-width: 100%; width: 320px; max-width: calc(100vw - 32px);
+  top: calc(100% + 4px); max-height: 280px; overflow-y: auto; z-index: 80;
+  background: #fff; border: 1px solid var(--sp-border); border-radius: 8px;
+  box-shadow: var(--sp-shadow-lg);
+}
+.sp-combo.open { z-index: 40; }
+.sp-combo.open .sp-combo-list { display: block; }
+.sp-combo .sp-combo-item {
+  padding: 7px 12px; cursor: pointer; font-size: 13px; color: var(--sp-text); white-space: nowrap;
+}
+.sp-combo .sp-combo-item .sub { font-size: 11px; color: var(--sp-text-3); margin-top: 1px; }
+.sp-combo .sp-combo-item:hover,
+.sp-combo .sp-combo-item.active { background: var(--sp-primary-soft); color: var(--sp-primary); }
+.sp-combo .sp-combo-item.active .sub { color: var(--sp-primary-2); }
+.sp-combo .sp-combo-empty { padding: 12px; font-size: 12.5px; color: var(--sp-text-3); }
+.sp-combo.disabled { opacity: .55; pointer-events: none; }
+
 .switch { position: relative; display: inline-block; width: 38px; height: 22px; vertical-align: middle; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .switch .track {
