@@ -13,7 +13,7 @@
 
   <div class="grid" style="grid-template-columns: 1fr 280px;">
     <div class="card">
-      <div class="card-head" style="flex-wrap:wrap;row-gap:8px">
+      <div class="card-head" style="flex-wrap:wrap;row-gap:8px;position:relative;z-index:8">
         <h3>拓扑</h3>
         <span class="sub">实线 = 正常，红色虚线 = 告警；<b>点击连线可查看告警判定诊断</b>，可拖拽缩放</span>
         <span class="spacer"></span>
@@ -24,7 +24,11 @@
         <select class="input" id="topo-group" style="width:auto;max-width:150px;padding:5px 8px" title="只看某个分组">
           <option value="">全部分组</option>
         </select>
-        <input type="text" class="input" id="topo-search" placeholder="搜索名称 / IP..." style="width:150px;padding:5px 10px">
+        <div class="sp-combo" id="topo-search-combo" title="从列表选择节点，可输入名称或 IP 快速匹配">
+          <input type="text" class="input" id="topo-search" placeholder="选择节点..." autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false">
+          <span class="sp-combo-caret"></span>
+          <div class="sp-combo-list" id="topo-search-list" role="listbox"></div>
+        </div>
         <label class="flex" style="gap:5px;font-size:12.5px;color:var(--sp-text-2);cursor:pointer;margin:0">
           <input type="checkbox" id="topo-bad-only" style="margin:0">只看异常
         </label>
@@ -117,36 +121,164 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         return a < b ? -1 : 1;
     });
 
+    var nodeCatalog = [];
+    $.each(nodes, function (addr, n) {
+        nodeCatalog.push({ addr: addr, name: n.name, group: n.group, source: n.source });
+    });
+    nodeCatalog.sort(function (a, b) {
+        if (a.name === b.name) return a.addr < b.addr ? -1 : 1;
+        return a.name < b.name ? -1 : 1;
+    });
+
     var state = null;
     try { state = JSON.parse(sessionStorage.getItem('sp-topo-state') || 'null'); } catch (e) { }
     if (!state || typeof state !== 'object') {
         // 首次进入: 节点很多且有分组时默认聚合总览, 否则平铺全部
-        state = { view: (nodeCount > 40 && groupNames.length >= 2) ? 'group' : 'all', group: '', q: '', badOnly: false };
+        state = { view: (nodeCount > 40 && groupNames.length >= 2) ? 'group' : 'all', group: '', q: '', qAddr: '', badOnly: false };
     }
     if (groupNames.length < 2 && state.view === 'group') state.view = 'all';
+    // 历史残留的自由文本(如浏览器把用户名填进搜索框)若匹配不到任何节点则清空
+    if (state.qAddr && !nodes[state.qAddr]) state.qAddr = '';
+    if (state.q && !state.qAddr) {
+        var qHit = false, ql = String(state.q).toLowerCase();
+        $.each(nodes, function (addr, n) {
+            if ((n.name + ' ' + addr).toLowerCase().indexOf(ql) >= 0) qHit = true;
+        });
+        if (!qHit) state.q = '';
+    }
     function persistState() {
         try { sessionStorage.setItem('sp-topo-state', JSON.stringify(state)); } catch (e) { }
     }
+    function searchLabel() {
+        if (state.qAddr && nodes[state.qAddr]) return nodes[state.qAddr].name;
+        return state.q || '';
+    }
 
     var groupSel = $('#topo-group');
+    var combo = $('#topo-search-combo');
+    var comboInput = $('#topo-search');
+    var comboList = $('#topo-search-list');
+    var comboHi = -1;
     $.each(groupNames, function (_, g) {
         groupSel.append('<option value="' + SP.esc(g) + '">' + SP.esc(g) + '</option>');
     });
+    function comboItems() { return comboList.find('.sp-combo-item'); }
+    function renderComboList(q) {
+        q = $.trim(q || '').toLowerCase();
+        var html = '<div class="sp-combo-item" data-addr="">全部节点</div>';
+        var n = 0, hi = 0;
+        $.each(nodeCatalog, function (_, it) {
+            var hay = (it.name + ' ' + it.addr + ' ' + (it.group || '')).toLowerCase();
+            if (q && hay.indexOf(q) < 0) return;
+            html += '<div class="sp-combo-item" data-addr="' + SP.esc(it.addr) + '" role="option">' +
+                '<b>' + SP.esc(it.name) + '</b>' +
+                '<div class="sub mono">' + SP.esc(it.addr) + (it.group ? ' · ' + SP.esc(it.group) : '') +
+                (it.source ? ' · 探测' : '') + '</div></div>';
+            n++;
+            if (state.qAddr === it.addr) hi = n;
+        });
+        if (!n) html += '<div class="sp-combo-empty">无匹配节点</div>';
+        comboList.html(html);
+        if (!state.qAddr && q && n > 0) hi = 1; // 输入匹配时默认高亮第一条节点
+        highlightCombo(hi);
+    }
+    function highlightCombo(i) {
+        var items = comboItems();
+        if (!items.length) { comboHi = -1; return; }
+        if (i < 0) i = items.length - 1;
+        if (i >= items.length) i = 0;
+        comboHi = i;
+        items.removeClass('active').eq(i).addClass('active');
+        var el = items.get(i);
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+    function openCombo() {
+        if (combo.hasClass('disabled')) return;
+        renderComboList(comboInput.val());
+        combo.addClass('open');
+        comboInput.attr('aria-expanded', 'true');
+    }
+    function closeCombo() {
+        combo.removeClass('open');
+        comboInput.attr('aria-expanded', 'false');
+        comboHi = -1;
+    }
+    function applyNodeFilter(addr, typed) {
+        if (addr) {
+            state.qAddr = addr;
+            state.q = ((nodes[addr] && nodes[addr].name) || addr).toLowerCase();
+            comboInput.val(nodes[addr] ? nodes[addr].name : addr);
+        } else {
+            state.qAddr = '';
+            state.q = $.trim(typed || '').toLowerCase();
+            comboInput.val(typed || '');
+        }
+        persistState();
+        draw();
+    }
+    function pickComboItem(el) {
+        if (!el || !el.length) return;
+        var addr = el.attr('data-addr') || '';
+        applyNodeFilter(addr, addr ? '' : '');
+        closeCombo();
+    }
+
     function syncControls() {
         $('#topo-view').val(state.view);
         groupSel.val(state.group || '');
-        $('#topo-search').val(state.q || '');
+        comboInput.val(searchLabel());
         $('#topo-bad-only').prop('checked', !!state.badOnly);
         // 聚合视图下分组/搜索不参与过滤
-        groupSel.attr('disabled', state.view === 'group');
-        $('#topo-search').attr('disabled', state.view === 'group');
+        var grouped = state.view === 'group';
+        groupSel.attr('disabled', grouped);
+        combo.toggleClass('disabled', grouped);
+        comboInput.attr('disabled', grouped);
+        if (grouped) closeCombo();
         if (groupNames.length < 2) $('#topo-view').hide();
     }
     syncControls();
 
     $('#topo-view').change(function () { state.view = $(this).val(); syncControls(); persistState(); draw(); });
     groupSel.change(function () { state.group = $(this).val(); persistState(); draw(); });
-    $('#topo-search').bind('keyup input', function () { state.q = $.trim($(this).val()).toLowerCase(); persistState(); draw(); });
+    comboInput.bind('focus click', function () { openCombo(); });
+    comboInput.bind('input', function () {
+        var v = $.trim($(this).val());
+        state.qAddr = '';
+        state.q = v.toLowerCase();
+        persistState();
+        renderComboList(v);
+        combo.addClass('open');
+        draw();
+    });
+    comboInput.bind('keydown', function (e) {
+        var key = e.keyCode || e.which;
+        if (key === 40) { // down
+            if (!combo.hasClass('open')) openCombo();
+            else highlightCombo(comboHi + 1);
+            e.preventDefault();
+        } else if (key === 38) { // up
+            if (!combo.hasClass('open')) openCombo();
+            else highlightCombo(comboHi - 1);
+            e.preventDefault();
+        } else if (key === 13) { // enter
+            if (combo.hasClass('open')) {
+                pickComboItem(comboItems().eq(comboHi));
+                e.preventDefault();
+            }
+        } else if (key === 27) { // esc
+            closeCombo();
+            e.preventDefault();
+        }
+    });
+    comboList.delegate('.sp-combo-item', 'mousedown', function (e) {
+        e.preventDefault();
+        pickComboItem($(this));
+    });
+    $(document).bind('mousedown', function (e) {
+        if (!combo.hasClass('open')) return;
+        if ($(e.target).closest('#topo-search-combo').length) return;
+        closeCombo();
+    });
     $('#topo-bad-only').change(function () { state.badOnly = $(this).is(':checked'); persistState(); draw(); });
 
     chart.setOption({
@@ -205,6 +337,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     /* ----- 渲染 ----- */
     function nodeMatches(n) {
         if (state.group && groupOf(n) !== state.group) return false;
+        if (state.qAddr) return n.addr === state.qAddr;
         if (state.q && (n.name + ' ' + n.addr).toLowerCase().indexOf(state.q) < 0) return false;
         return true;
     }
