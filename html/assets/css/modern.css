@@ -230,6 +230,15 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .badge.gray { background: #f1f5f9; color: var(--sp-text-2); }
 .badge.indigo { background: var(--sp-primary-soft); color: var(--sp-primary); }
 
+.alert-tag {
+  display: inline-block; max-width: 100%;
+  padding: 3px 8px; border-radius: 6px;
+  background: #f1f5f9; color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px; line-height: 1.35;
+  word-break: break-all; border: 1px solid #e2e8f0;
+}
+
 /* ---------- Segmented control / chips ---------- */
 .seg { display: inline-flex; background: #e2e8f0; border-radius: 9px; padding: 3px; gap: 2px; }
 .seg button {

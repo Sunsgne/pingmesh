@@ -41,14 +41,14 @@
         <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
         <button class="btn primary sm" id="cr-apply">查询</button>
       </span>
-      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 原因..." style="width:200px;padding:6px 10px">
+      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 类型 / Tag..." style="width:230px;padding:6px 10px">
       <span class="muted" id="loading"></span>
     </div>
     <div class="card-body" style="padding:0">
       <table class="sp-table">
         <thead>
           <tr>
-            <th>报警时间</th><th>链路</th><th>状态</th><th style="width:70px">MTR</th><th style="width:200px">操作</th>
+            <th>报警时间</th><th>链路</th><th>类型 / 原因</th><th>Tag</th><th>状态</th><th style="width:70px">MTR</th><th style="width:180px">操作</th>
           </tr>
         </thead>
         <tbody id="alertlist"></tbody>
@@ -217,10 +217,26 @@ SP.init('alerts', '报警记录').done(function (ctx) {
                 ? '<span class="badge green" title="' + SP.esc((r.Ackby || '') + ' ' + (r.Acktime || '')) + '">已确认</span>' +
                   (r.Ackreason ? '<div class="muted" style="font-size:11px;max-width:260px">' + SP.esc(r.Ackreason) + '</div>' : '')
                 : '<span class="badge red"><span class="dot"></span>未确认</span>';
-            box.append('<tr data-s="' + SP.esc((r.Fromname + ' ' + r.Fromip + ' ' + r.Targetname + ' ' + r.Targetip + ' ' + (r.Ackreason || '')).toLowerCase()) + '">' +
+            var typeHtml = renderAlertTypes(r.AlertType);
+            var reason = r.Reason || '';
+            if (!reason && (r.AvgDelay || r.Loss || r.Jitter)) {
+                reason = '延迟 ' + Number(r.AvgDelay || 0).toFixed(1) + 'ms / 丢包 ' + Number(r.Loss || 0).toFixed(0) + '% / 抖动 ' + Number(r.Jitter || 0).toFixed(1) + 'ms';
+            }
+            var tag = r.Tag || '';
+            var occur = parseInt(r.Occur, 10) || 0;
+            var tagHtml = tag
+                ? '<span class="alert-tag" title="相同链路+相同类型的故障共用此 Tag">' + SP.esc(tag) + '</span>' +
+                  (occur > 1 ? '<div class="muted" style="font-size:11px;margin-top:3px">复发 <b>' + occur + '</b> 次</div>' : '')
+                : '<span class="muted">-</span>';
+            var searchBlob = [r.Fromname, r.Fromip, r.Targetname, r.Targetip, r.Ackreason, r.AlertType, typeLabel(r.AlertType), reason, tag].join(' ').toLowerCase();
+            box.append('<tr data-s="' + SP.esc(searchBlob) + '">' +
                 '<td style="white-space:nowrap">' + SP.esc(r.Logtime) + '</td>' +
                 '<td><b>' + SP.esc(r.Fromname) + '</b> <span class="muted">&rarr;</span> <b>' + SP.esc(r.Targetname) + '</b>' +
                 '<div class="muted mono" style="font-size:11px">' + SP.esc(r.Fromip) + ' &rarr; ' + SP.esc(r.Targetip) + '</div></td>' +
+                '<td style="min-width:160px">' + typeHtml +
+                (reason ? '<div class="muted" style="font-size:12px;margin-top:4px;max-width:320px;line-height:1.35">' + SP.esc(reason) + '</div>' : '') +
+                '</td>' +
+                '<td style="max-width:220px">' + tagHtml + '</td>' +
                 '<td>' + status + '</td>' +
                 '<td><a class="mtr-link" data-i="' + mid + '">查看</a></td>' +
                 '<td>' +
@@ -237,6 +253,28 @@ SP.init('alerts', '报警记录').done(function (ctx) {
         $('.a-ack').click(function () { openAck(allRows[parseInt($(this).attr('data-i'), 10)]); });
         $('.a-mute').click(function () { openMute(allRows[parseInt($(this).attr('data-i'), 10)]); });
         applyFilter();
+    }
+
+    function typeLabel(t) {
+        if (!t) return '未知';
+        return String(t).split('+').map(function (p) {
+            if (p === 'delay') return '延迟';
+            if (p === 'loss') return '丢包';
+            if (p === 'jitter') return '抖动';
+            if (p === 'quality') return '质量异常';
+            return p;
+        }).join('+');
+    }
+    function renderAlertTypes(t) {
+        if (!t) return '<span class="badge gray">未知</span>';
+        return String(t).split('+').map(function (p) {
+            var cls = 'gray', label = p;
+            if (p === 'delay') { cls = 'yellow'; label = '延迟'; }
+            else if (p === 'loss') { cls = 'red'; label = '丢包'; }
+            else if (p === 'jitter') { cls = 'indigo'; label = '抖动'; }
+            else if (p === 'quality') { cls = 'gray'; label = '质量异常'; }
+            return '<span class="badge ' + cls + '" style="margin:0 4px 2px 0">' + SP.esc(label) + '</span>';
+        }).join('');
     }
 
     /* ---------- 确认 ---------- */

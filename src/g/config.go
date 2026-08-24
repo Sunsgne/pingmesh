@@ -233,16 +233,23 @@ func InitDbSchema() {
 			log.Fatalln("[Fault]db schema init fail.", err)
 		}
 	}
-	// 告警确认字段(老库升级, 已存在时报错忽略)
+	// 告警确认/类型字段(老库升级, 已存在时报错忽略)
 	for _, s := range []string{
 		`ALTER TABLE pinglog ADD COLUMN jitter FLOAT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ack INT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ackby VARCHAR(64)`,
 		`ALTER TABLE alertlog ADD COLUMN ackreason TEXT`,
 		`ALTER TABLE alertlog ADD COLUMN acktime VARCHAR(32)`,
+		`ALTER TABLE alertlog ADD COLUMN alerttype VARCHAR(32) DEFAULT ''`,
+		`ALTER TABLE alertlog ADD COLUMN reason TEXT`,
+		`ALTER TABLE alertlog ADD COLUMN tag VARCHAR(128) DEFAULT ''`,
+		`ALTER TABLE alertlog ADD COLUMN avgdelay FLOAT DEFAULT 0`,
+		`ALTER TABLE alertlog ADD COLUMN loss FLOAT DEFAULT 0`,
+		`ALTER TABLE alertlog ADD COLUMN jitter FLOAT DEFAULT 0`,
 	} {
 		Db.Exec(s)
 	}
+	Db.Exec(`CREATE INDEX IF NOT EXISTS idx_alertlog_tag ON alertlog (tag)`)
 }
 
 func ParseConfig(ver string) {

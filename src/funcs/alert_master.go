@@ -236,14 +236,20 @@ func MasterAlertSweep() {
 				masterSetStatus(key, false)
 				st.BadSince = time.Now()
 				st.AckedUntil = time.Time{}
-				go AlertStorage(l)
+				l.AvgDelay, l.Loss, l.Jitter = h.AvgDelay, h.Loss, h.Jitter
+				l.AlertType, l.Reason, l.Tag = ClassifyAlert(addr, target, r, h.AvgDelay, h.Loss, h.Jitter)
+				// 落库由探测节点本地 StartAlert 负责; 主节点只发通知, 避免错误记到主节点库
 				if h.Muted {
 					st.MutedSkip = true
 					seelog.Info("[func:MasterAlertSweep] ", key, " muted, notification skipped")
 				} else {
 					st.LastNotify = time.Now()
-					extras := [][2]string{}
-					if h.AvgDelay > 0 || h.Loss > 0 {
+					extras := [][2]string{
+						{"告警类型", AlertTypeLabel(l.AlertType)},
+						{"故障 Tag", l.Tag},
+						{"触发原因", l.Reason},
+					}
+					if h.AvgDelay > 0 || h.Loss > 0 || h.Jitter > 0 {
 						extras = append(extras, [2]string{"近15分钟实测",
 							"平均延迟 " + strconv.FormatFloat(h.AvgDelay, 'f', 1, 64) + " ms / 丢包 " +
 								strconv.FormatFloat(h.Loss, 'f', 0, 64) + "% / 抖动 " +

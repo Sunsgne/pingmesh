@@ -79,6 +79,7 @@ func StartAlert() {
 			seelog.Debug("[func:StartAlert] ", v["Addr"]+" Alert (local, notify deferred to master)")
 			g.AlertStatus[v["Addr"]] = false
 			l := newAlertLog(v)
+			FillAlertClassification(&l, v)
 			mtrString := ""
 			hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
 			if nil != err {
@@ -118,6 +119,100 @@ func newAlertLog(v map[string]string) g.AlertLog {
 	l.Targetname = v["Name"]
 	l.Targetip = v["Addr"]
 	return l
+}
+
+// ClassifyAlert 根据规则与实测指标判定触发类型, 生成可读原因与稳定 Tag。
+// types 取值: delay / loss / jitter (可多选, 用 + 连接)
+func ClassifyAlert(fromIP, targetIP string, rule map[string]string, avg, loss, jitter float64) (alertType, reason, tag string) {
+	thdDelay, _ := strconv.ParseFloat(rule["Thdavgdelay"], 64)
+	thdLoss, _ := strconv.ParseFloat(rule["Thdloss"], 64)
+	thdJitter := 0.0
+	hasJitter := rule["Thdjitter"] != ""
+	if hasJitter {
+		thdJitter, _ = strconv.ParseFloat(rule["Thdjitter"], 64)
+	}
+	var kinds []string
+	var parts []string
+	if thdDelay > 0 && avg >= thdDelay {
+		kinds = append(kinds, "delay")
+		parts = append(parts, "延迟 "+formatMetric(avg)+"ms ≥ "+rule["Thdavgdelay"]+"ms")
+	}
+	if loss >= thdLoss {
+		kinds = append(kinds, "loss")
+		parts = append(parts, "丢包 "+formatMetric(loss)+"% ≥ "+rule["Thdloss"]+"%")
+	}
+	if hasJitter && jitter >= thdJitter {
+		kinds = append(kinds, "jitter")
+		parts = append(parts, "抖动 "+formatMetric(jitter)+"ms ≥ "+rule["Thdjitter"]+"ms")
+	}
+	if len(kinds) == 0 {
+		// 窗口内曾超标但当前均值已回落: 仍按规则兜底标为质量异常
+		kinds = append(kinds, "quality")
+		parts = append(parts, "链路质量超阈值(延迟/丢包/抖动)")
+	}
+	alertType = strings.Join(kinds, "+")
+	win := rule["Thdchecksec"]
+	occ := rule["Thdoccnum"]
+	reason = strings.Join(parts, "；")
+	if win != "" && occ != "" {
+		reason += "（窗口 " + win + "s / " + occ + " 次）"
+	}
+	// Tag: 主类型 + 源→目标, 同链路同类型故障共用, 便于识别复发
+	primary := kinds[0]
+	tag = strings.ToUpper(primary) + ":" + fromIP + "→" + targetIP
+	return alertType, reason, tag
+}
+
+func formatMetric(v float64) string {
+	if v >= 100 || v == float64(int64(v)) {
+		return strconv.FormatFloat(v, 'f', 0, 64)
+	}
+	return strconv.FormatFloat(v, 'f', 1, 64)
+}
+
+// AlertTypeLabel 告警类型中文展示
+func AlertTypeLabel(alertType string) string {
+	if alertType == "" {
+		return "未知"
+	}
+	parts := strings.Split(alertType, "+")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		switch p {
+		case "delay":
+			out = append(out, "延迟")
+		case "loss":
+			out = append(out, "丢包")
+		case "jitter":
+			out = append(out, "抖动")
+		case "quality":
+			out = append(out, "质量异常")
+		default:
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, "+")
+}
+
+// FillAlertClassification 用本机 pinglog 近窗均值填充告警类型/原因/Tag
+func FillAlertClassification(l *g.AlertLog, rule map[string]string) {
+	mins := 15
+	if sec, err := strconv.Atoi(rule["Thdchecksec"]); err == nil && sec > 0 {
+		mins = (sec + 59) / 60
+		if mins < 1 {
+			mins = 1
+		}
+	}
+	avg, loss, jitter, ok := recentStat(l.Targetip, mins)
+	if !ok {
+		avg, loss, jitter, _ = recentStat(l.Targetip, 15)
+	}
+	l.AvgDelay, l.Loss, l.Jitter = avg, loss, jitter
+	from := l.Fromip
+	if from == "" {
+		from = g.SelfCfg.Addr
+	}
+	l.AlertType, l.Reason, l.Tag = ClassifyAlert(from, l.Targetip, rule, avg, loss, jitter)
 }
 
 func CheckAlertStatus(v map[string]string) bool {
@@ -161,12 +256,12 @@ func CheckAlertStatus(v map[string]string) bool {
 }
 
 func AlertStorage(t g.AlertLog) {
-	seelog.Info("[func:AlertStorage] ", "(", t.Logtime, ")Starting AlertStorage ", t.Targetname)
-	sql := "INSERT INTO alertlog (logtime, targetip, targetname, tracert) values(?,?,?,?)"
+	seelog.Info("[func:AlertStorage] ", "(", t.Logtime, ")Starting AlertStorage ", t.Targetname, " type=", t.AlertType, " tag=", t.Tag)
+	sql := "INSERT INTO alertlog (logtime, targetip, targetname, tracert, alerttype, reason, tag, avgdelay, loss, jitter) values(?,?,?,?,?,?,?,?,?,?)"
 	g.DLock.Lock()
-	_, err := g.Db.Exec(sql, t.Logtime, t.Targetip, t.Targetname, t.Tracert)
+	_, err := g.Db.Exec(sql, t.Logtime, t.Targetip, t.Targetname, t.Tracert, t.AlertType, t.Reason, t.Tag, t.AvgDelay, t.Loss, t.Jitter)
 	if err != nil {
-		seelog.Error("[func:StartPing] Sql Error ", err)
+		seelog.Error("[func:AlertStorage] Sql Error ", err)
 	}
 	g.DLock.Unlock()
 	seelog.Info("[func:AlertStorage] ", "(", t.Logtime, ") AlertStorage on ", t.Targetname, " finish!")
