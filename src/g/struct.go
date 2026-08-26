@@ -59,7 +59,8 @@ func (n *NetworkMember) UnmarshalJSON(b []byte) error {
 type PingSt struct {
 	SendPk   int
 	RevcPk   int
-	LossPk   int
+	// LossPk 丢包率百分比(可带小数, 如 0.37); 保留精度避免 int 截断低估
+	LossPk   float64
 	MinDelay float64
 	AvgDelay float64
 	MaxDelay float64

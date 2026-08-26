@@ -40,6 +40,11 @@ deploy_agent() {
     rm -f /tmp/pingmesh-bin.gz
     chmod 755 ${INSTALL_DIR}/pingmesh
     setcap cap_net_raw+ep ${INSTALL_DIR}/pingmesh 2>/dev/null || true
+    cat > /etc/sysctl.d/99-pingmesh-icmp.conf <<'SYSCTL'
+net.ipv4.icmp_msgs_per_sec = 10000
+net.ipv4.icmp_msgs_burst = 500
+SYSCTL
+    sysctl -p /etc/sysctl.d/99-pingmesh-icmp.conf >/dev/null 2>&1 || true
     cat > ${INSTALL_DIR}/pingmesh.env <<ENV
 PINGMESH_OPTS=-p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${MASTER_INTERNAL}:8899,${BACKUP_INTERNAL}:8899
 ENV
