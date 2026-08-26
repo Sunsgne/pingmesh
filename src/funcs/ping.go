@@ -125,8 +125,8 @@ func pingCyclePaced(targets []string) []targetResult {
 		ip     *net.IPAddr
 	}
 	// 固定 worker 池替代「每包一 goroutine」, 降低 GC/调度抖动导致的整批齐超时假丢包
-	const workers = 128
-	jobs := make(chan job, workers*2)
+	const workers = 256
+	jobs := make(chan job, 4096)
 	var pwg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		go func() {
@@ -142,19 +142,17 @@ func pingCyclePaced(targets []string) []targetResult {
 		}()
 	}
 
-	next := time.Now()
+	// 均匀节拍: 固定 sleep(slot), 禁止 catch-up 连发(否则 worker 短暂堵塞后会重新打成突发)
 	for pi := 0; pi < count; pi++ {
 		for ti := 0; ti < n; ti++ {
-			if wait := time.Until(next); wait > 0 {
-				time.Sleep(wait)
-			}
-			next = next.Add(slot)
 			ip := ipaddrs[ti]
-			if ip == nil {
-				continue
+			if ip != nil {
+				pwg.Add(1)
+				jobs <- job{ti: ti, pi: pi, ip: ip}
 			}
-			pwg.Add(1)
-			jobs <- job{ti: ti, pi: pi, ip: ip}
+			if pi < count-1 || ti < n-1 {
+				time.Sleep(slot)
+			}
 		}
 	}
 	pwg.Wait()
