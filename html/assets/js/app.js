@@ -251,11 +251,11 @@ var SP = (function () {
             bigChart.setOption({
                 xAxis: { data: data.lastcheck },
                 series: [
-                    { name: '最大延迟', data: data.maxdelay },
-                    { name: '最小延迟', data: data.mindelay },
-                    { name: '平均延迟', data: data.avgdelay },
-                    { name: '丢包率', data: data.losspk },
-                    { name: '抖动', data: data.jitter || [] }
+                    { name: '最大延迟', data: sanitizeSeries(data.maxdelay) },
+                    { name: '最小延迟', data: sanitizeSeries(data.mindelay) },
+                    { name: '平均延迟', data: sanitizeSeries(data.avgdelay) },
+                    { name: '丢包率', data: sanitizeSeries(data.losspk) },
+                    { name: '抖动', data: sanitizeSeries(data.jitter || []) }
                 ]
             });
         }).fail(function () {
