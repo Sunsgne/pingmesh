@@ -102,11 +102,55 @@ var SP = (function () {
         return (delay - baseline) / baseline * 100;
     }
 
+    function sanitizeSeries(arr) {
+        // API 用 "-" 表示空洞; 统一转 null, 避免异常打断渲染
+        if (!arr || !arr.length) return [];
+        var out = new Array(arr.length);
+        for (var i = 0; i < arr.length; i++) {
+            var v = arr[i];
+            if (v === '-' || v === '' || v === null || typeof v === 'undefined') out[i] = null;
+            else {
+                var n = typeof v === 'number' ? v : parseFloat(v);
+                out[i] = isNaN(n) ? null : n;
+            }
+        }
+        return out;
+    }
+
+    function lastMetric(avgdelay, losspk) {
+        var lastDelay = '-', lastLoss = '-';
+        if (!avgdelay || !avgdelay.length) return { delay: lastDelay, loss: lastLoss };
+        for (var k = avgdelay.length - 1; k >= 0; k--) {
+            var d = avgdelay[k], l = losspk ? losspk[k] : null;
+            if (d === '-' || d === '' || d === null || typeof d === 'undefined') continue;
+            var dn = parseFloat(d);
+            if (isNaN(dn)) continue;
+            lastDelay = fmtMs(dn);
+            if (l !== '-' && l !== '' && l !== null && typeof l !== 'undefined') {
+                var ln = parseFloat(l);
+                if (!isNaN(ln)) lastLoss = ln;
+            }
+            break;
+        }
+        return { delay: lastDelay, loss: lastLoss };
+    }
+
     /* ---------- shared echarts helpers ---------- */
     function miniChartOption() {
+        var area = null;
+        try {
+            area = {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    { offset: 0, color: 'rgba(99,102,241,.28)' },
+                    { offset: 1, color: 'rgba(99,102,241,.02)' }
+                ])
+            };
+        } catch (e) {
+            area = { color: 'rgba(99,102,241,.15)' };
+        }
         return {
             animation: false,
-            grid: { left: 2, right: 8, top: 12, bottom: 2, containLabel: true },
+            grid: { left: 8, right: 12, top: 14, bottom: 8, containLabel: true },
             tooltip: {
                 trigger: 'axis',
                 backgroundColor: 'rgba(15,23,42,.92)',
@@ -132,6 +176,7 @@ var SP = (function () {
             yAxis: [
                 {
                     type: 'value',
+                    scale: true,
                     axisLabel: { fontSize: 10, color: '#94a3b8', hideOverlap: true },
                     splitLine: { lineStyle: { color: '#f1f5f9' } },
                     splitNumber: 3
@@ -142,12 +187,7 @@ var SP = (function () {
                 {
                     name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
                     clip: true, itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
-                    areaStyle: {
-                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                            { offset: 0, color: 'rgba(99,102,241,.28)' },
-                            { offset: 1, color: 'rgba(99,102,241,.02)' }
-                        ])
-                    },
+                    areaStyle: area,
                     data: []
                 },
                 {
@@ -639,6 +679,8 @@ var SP = (function () {
         openPingChart: openPingChart,
         miniChartOption: miniChartOption,
         bindChartResize: bindChartResize,
+        sanitizeSeries: sanitizeSeries,
+        lastMetric: lastMetric,
         sourceNodes: sourceNodes,
         nodeName: nodeName,
         asn: asnGet,

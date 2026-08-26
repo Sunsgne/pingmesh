@@ -367,7 +367,7 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 /* ---------- Mini chart card ---------- */
 .ping-card {
   cursor: pointer; transition: box-shadow .15s, transform .15s;
-  overflow: hidden; display: flex; flex-direction: column;
+  overflow: hidden;
 }
 .ping-card:hover { box-shadow: var(--sp-shadow-lg); transform: translateY(-2px); }
 .ping-card .ping-head { display: flex; align-items: center; padding: 14px 16px 4px; gap: 8px; min-width: 0; }
@@ -377,9 +377,9 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
   letter-spacing: -.01em;
 }
 .ping-card .mini-chart {
-  height: 132px; width: 100%;
-  padding: 0 6px; box-sizing: border-box;
-  overflow: hidden;
+  height: 140px; width: 100%;
+  min-height: 140px;
+  box-sizing: border-box;
 }
 .ping-card .ping-foot {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
