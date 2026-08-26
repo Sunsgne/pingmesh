@@ -176,7 +176,8 @@ var SP = (function () {
             yAxis: [
                 {
                     type: 'value',
-                    scale: true,
+                    min: 0,
+                    scale: false,
                     axisLabel: { fontSize: 10, color: '#94a3b8', hideOverlap: true },
                     splitLine: { lineStyle: { color: '#f1f5f9' } },
                     splitNumber: 3
