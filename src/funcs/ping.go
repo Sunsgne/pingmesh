@@ -62,16 +62,17 @@ func lossPercent(lost, sent int) float64 {
 	return math.Round(float64(lost)/float64(sent)*10000) / 100
 }
 
-// nodePhaseOffset 在周期余量内错开本节点启动时刻(最多约 3s)
+// nodePhaseOffset 在周期余量内错开本节点启动时刻。
+// 平滑轮转耗时 ≈ count×interval(发包) + timeout(收尾), 与旧的 (count-1)×interval 不同。
 func nodePhaseOffset() time.Duration {
 	interval, count, timeout, _ := probeParams()
-	cycleMs := (count-1)*interval + timeout + 200 // 平滑调度略多一点余量
-	spare := 58000 - cycleMs
+	cycleMs := count*interval + timeout + 300
+	spare := 56000 - cycleMs // 留 4s 余量给 cron/GC, 避免跳轮
 	if spare <= 0 {
 		return 0
 	}
-	if spare > 3000 {
-		spare = 3000
+	if spare > 2000 {
+		spare = 2000
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(g.Cfg.Addr))
