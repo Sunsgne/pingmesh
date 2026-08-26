@@ -63,16 +63,16 @@ func lossPercent(lost, sent int) float64 {
 }
 
 // nodePhaseOffset 在周期余量内错开本节点启动时刻。
-// 平滑轮转耗时 ≈ count×interval(发包) + timeout(收尾), 与旧的 (count-1)×interval 不同。
+// 平滑轮转耗时 ≈ count×interval(发包) + timeout(收尾)。
 func nodePhaseOffset() time.Duration {
 	interval, count, timeout, _ := probeParams()
-	cycleMs := count*interval + timeout + 300
-	spare := 56000 - cycleMs // 留 4s 余量给 cron/GC, 避免跳轮
+	cycleMs := count*interval + timeout + 200
+	spare := 55000 - cycleMs // 严格留余量, 避免跳轮
 	if spare <= 0 {
 		return 0
 	}
-	if spare > 2000 {
-		spare = 2000
+	if spare > 1500 {
+		spare = 1500
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(g.Cfg.Addr))
@@ -121,35 +121,23 @@ func pingCyclePaced(targets []string) []targetResult {
 	}
 	to := time.Duration(timeout) * time.Millisecond
 
-	type job struct {
-		ti, pi int
-		ip     *net.IPAddr
-	}
-	// 固定 worker 池替代「每包一 goroutine」, 降低 GC/调度抖动导致的整批齐超时假丢包
-	const workers = 256
-	jobs := make(chan job, 4096)
+	// 每包异步等待应答, 发送侧严格 sleep(slot) 错峰; 不用 worker 池,
+	// 避免超时占满 worker 时任务排队把整轮拖过 60s 导致跳轮断点。
 	var pwg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		go func() {
-			for j := range jobs {
-				delay, err := nettools.RunPingFrom(j.ip, to, size, "")
-				if err == nil {
-					rtts[j.ti][j.pi] = delay
-				} else {
-					rtts[j.ti][j.pi] = -1
-				}
-				pwg.Done()
-			}
-		}()
-	}
-
-	// 均匀节拍: 固定 sleep(slot), 禁止 catch-up 连发(否则 worker 短暂堵塞后会重新打成突发)
 	for pi := 0; pi < count; pi++ {
 		for ti := 0; ti < n; ti++ {
 			ip := ipaddrs[ti]
 			if ip != nil {
 				pwg.Add(1)
-				jobs <- job{ti: ti, pi: pi, ip: ip}
+				go func(ti, pi int, ip *net.IPAddr) {
+					defer pwg.Done()
+					delay, err := nettools.RunPingFrom(ip, to, size, "")
+					if err == nil {
+						rtts[ti][pi] = delay
+					} else {
+						rtts[ti][pi] = -1
+					}
+				}(ti, pi, ip)
 			}
 			if pi < count-1 || ti < n-1 {
 				time.Sleep(slot)
@@ -157,7 +145,6 @@ func pingCyclePaced(targets []string) []targetResult {
 		}
 	}
 	pwg.Wait()
-	close(jobs)
 
 	batch := make([]targetResult, 0, n)
 	for i, addr := range targets {
