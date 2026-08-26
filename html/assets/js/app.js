@@ -303,7 +303,7 @@ var SP = (function () {
                     axisTick: { show: false }
                 },
                 yAxis: [
-                    { type: 'value', name: '延迟(ms)', position: 'left', nameTextStyle: { color: '#94a3b8' },
+                    { type: 'value', name: '延迟(ms)', min: 0, scale: false, position: 'left', nameTextStyle: { color: '#94a3b8' },
                       axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true },
                       splitLine: { lineStyle: { color: '#f1f5f9' } } },
                     { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },

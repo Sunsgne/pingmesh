@@ -375,14 +375,18 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 }
 .mesh-cell {
   width: 100%;
-  height: var(--mesh-cell); line-height: var(--mesh-cell);
+  height: var(--mesh-cell);
   border-radius: var(--mesh-radius); text-align: center;
   font-size: var(--mesh-font); font-weight: 700; cursor: pointer; color: #fff;
   transition: transform .1s ease, box-shadow .1s ease, filter .1s ease;
   position: relative;
   font-variant-numeric: tabular-nums; box-sizing: border-box;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; line-height: 1.1; padding: 2px 1px;
 }
+.mesh-cell .v-d { font-weight: 800; letter-spacing: -.02em; }
+.mesh-cell .v-l { font-weight: 600; opacity: .92; font-size: .78em; }
 .mesh-cell:hover { transform: scale(1.08); box-shadow: var(--sp-shadow-lg); z-index: 5; filter: brightness(1.05); }
 .mesh-cell.na { background: #eef2f7; color: #94a3b8; cursor: default; font-weight: 500; }
 .mesh-cell.na:hover { transform: none; box-shadow: none; filter: none; }

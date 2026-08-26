@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
 <link href="assets/css/bootstrap.min.css" rel="stylesheet">
-<link href="assets/css/modern.css?v=20260826d" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260826e" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -28,7 +28,7 @@
   <div class="card">
     <div class="card-head">
       <h3>Pingmesh</h3>
-      <span class="sub">行 = 探测源，列 = 目标 · 点击色块查看历史曲线</span>
+      <span class="sub">行 = 探测源，列 = 目标 · 色块内为延迟 / 丢包 · 点击查看历史</span>
       <span class="spacer"></span>
       <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
         <label class="switch"><input type="checkbox" id="auto-refresh" checked><span class="track"></span></label>
@@ -57,19 +57,18 @@
           </span>
         </div>
         <div class="tb-group">
-          <span class="tb-label">视图</span>
+          <span class="tb-label">密度</span>
           <div class="seg" id="zoom-seg">
-            <button data-v="std" class="active" title="显示数值与节点 IP">详细</button>
-            <button data-v="compact" title="缩小格子，隐藏 IP">紧凑</button>
-            <button data-v="heat" title="纯色块铺满宽度，悬停看详情">色块</button>
+            <button data-v="std" class="active" title="较大格子，显示节点 IP">标准</button>
+            <button data-v="compact" title="较小格子，隐藏 IP">紧凑</button>
+            <button data-v="heat" title="最密色块，仍显示延迟/丢包">色块</button>
           </div>
         </div>
         <div class="tb-group">
-          <span class="tb-label">指标</span>
-          <div class="seg" id="metric-seg">
-            <button data-v="delay" class="active">延迟</button>
-            <button data-v="loss">丢包</button>
-          </div>
+          <label class="mesh-check" title="隐藏 DNS 等纯被测目标，只看探测节点之间的 Mesh">
+            <input type="checkbox" id="mesh-only">
+            <span>仅节点 Mesh</span>
+          </label>
         </div>
         <span class="spacer"></span>
         <span class="muted" id="fit-hint" style="font-size:11.5px"></span>
@@ -94,22 +93,29 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260826d"></script>
+<script src="assets/js/app.js?v=20260826e"></script>
 <script>
 $(function () {
 SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
     var cfg = ctx.config;
-    var mins = 15, custom = null, metric = 'delay', zoom = 'std';
+    var mins = 15, custom = null, zoom = 'std', meshOnly = false;
     var meshData = {};
     var sources = [], targets = [];
     var timer = null;
+    var cellPx = 96;
 
     function rebuildTopo() {
         sources = SP.sourceNodes(cfg);
+        var meshAddrs = {};
+        $.each(sources, function (_, s) { meshAddrs[s.Addr] = true; });
+
         var targetSet = {};
         $.each(sources, function (_, s) {
             targetSet[s.Addr] = true;
-            $.each(s.Ping || [], function (_, t) { targetSet[t] = true; });
+            $.each(s.Ping || [], function (_, t) {
+                if (meshOnly && !meshAddrs[t]) return;
+                targetSet[t] = true;
+            });
         });
         targets = [];
         var seen = {};
@@ -119,50 +125,62 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
                 targets.push(s.Addr);
             }
         });
-        var extras = [];
-        $.each(targetSet, function (t) {
-            if (!seen[t]) extras.push(t);
-        });
-        extras.sort(function (a, b) {
-            var na = SP.nodeName(cfg, a), nb = SP.nodeName(cfg, b);
-            if (na === nb) return a < b ? -1 : 1;
-            return na < nb ? -1 : 1;
-        });
-        targets = targets.concat(extras);
+        if (!meshOnly) {
+            var extras = [];
+            $.each(targetSet, function (t) {
+                if (!seen[t]) extras.push(t);
+            });
+            extras.sort(function (a, b) {
+                var na = SP.nodeName(cfg, a), nb = SP.nodeName(cfg, b);
+                if (na === nb) return a < b ? -1 : 1;
+                return na < nb ? -1 : 1;
+            });
+            targets = targets.concat(extras);
+        }
     }
 
-    /* 按容器宽度自适应格子尺寸, 色块模式尽量铺满 */
     function fitMesh() {
         var wrap = document.getElementById('mesh-wrap');
         if (!wrap || !targets.length) return;
         var n = targets.length;
-        var rowW = zoom === 'std' ? 132 : (zoom === 'compact' ? 108 : 100);
+        var rowW = zoom === 'std' ? 132 : (zoom === 'compact' ? 108 : 104);
         var gap = zoom === 'heat' ? 2 : (zoom === 'compact' ? 3 : 4);
         var avail = Math.max(200, wrap.clientWidth - rowW - 8);
         var raw = Math.floor((avail - gap * (n + 1)) / n);
         var cell, font;
         if (zoom === 'heat') {
-            cell = Math.max(14, Math.min(40, raw));
-            font = 0;
+            // 色块也要能放下延迟+丢包两行
+            cell = Math.max(34, Math.min(52, raw > 0 ? raw : 40));
+            font = cell >= 42 ? 10.5 : 9.5;
         } else if (zoom === 'compact') {
-            cell = Math.max(44, Math.min(72, raw > 0 ? raw : 56));
-            font = cell >= 56 ? 11.5 : 10.5;
+            cell = Math.max(52, Math.min(78, raw > 0 ? raw : 60));
+            font = cell >= 60 ? 11.5 : 10.5;
         } else {
-            cell = Math.max(64, Math.min(112, raw > 0 ? raw : 88));
-            font = cell >= 88 ? 12.5 : 11.5;
+            cell = Math.max(72, Math.min(118, raw > 0 ? raw : 92));
+            font = cell >= 90 ? 12.5 : 11.5;
         }
+        cellPx = cell;
         wrap.style.setProperty('--mesh-cell', cell + 'px');
         wrap.style.setProperty('--mesh-row', rowW + 'px');
         wrap.style.setProperty('--mesh-gap', gap + 'px');
-        wrap.style.setProperty('--mesh-font', font ? (font + 'px') : '0');
-        wrap.style.setProperty('--mesh-radius', zoom === 'heat' ? '3px' : (zoom === 'compact' ? '5px' : '7px'));
-        var fills = (cell * n + gap * (n + 1) + rowW) >= wrap.clientWidth * 0.92;
-        $('#fit-hint').text(zoom === 'heat'
-            ? (fills ? '色块已铺满当前宽度' : ('色块 ' + cell + 'px · ' + n + ' 列'))
-            : ('格子 ' + cell + 'px · ' + n + ' 列'));
+        wrap.style.setProperty('--mesh-font', font + 'px');
+        wrap.style.setProperty('--mesh-radius', zoom === 'heat' ? '4px' : (zoom === 'compact' ? '5px' : '7px'));
+        $('#fit-hint').text(n + ' 列 · 格宽 ' + cell + 'px' + (meshOnly ? ' · 仅 Mesh' : ''));
     }
 
-    function applyZoom(z) {
+    function cellHtml(c) {
+        if (c.loss >= 99.5) return '<span class="v-d">&#10005;</span>';
+        var d = SP.fmtMs(c.avgdelay);
+        var l = (Math.round(c.loss * 10) / 10) + '%';
+        if (l.indexOf('.') < 0 && String(c.loss).indexOf('.') >= 0) l = c.loss.toFixed(1) + '%';
+        // 小格子用单行, 否则两行: 延迟 / 丢包
+        if (cellPx < 40) {
+            return '<span class="v-d">' + d + '</span><span class="v-l">/' + l + '</span>';
+        }
+        return '<span class="v-d">' + d + '</span><span class="v-l">' + l + '</span>';
+    }
+
+    function applyZoom(z, doRender) {
         zoom = z || 'std';
         $('#mesh-wrap').removeClass('mesh-zoom-compact mesh-zoom-heat');
         if (zoom === 'compact') $('#mesh-wrap').addClass('mesh-zoom-compact');
@@ -170,7 +188,8 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         $('#zoom-seg button').removeClass('active');
         $('#zoom-seg button[data-v="' + zoom + '"]').addClass('active');
         try { localStorage.setItem('mesh-zoom', zoom); } catch (e) {}
-        fitMesh();
+        if (doRender !== false) render();
+        else fitMesh();
     }
 
     $('#win-seg button').click(function () {
@@ -196,19 +215,24 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         custom = { start: s.replace('T', ' '), end: e.replace('T', ' ') };
         load();
     });
-    $('#metric-seg button').click(function () {
-        $('#metric-seg button').removeClass('active'); $(this).addClass('active');
-        metric = $(this).attr('data-v');
+    $('#refresh-btn').click(load);
+    $('#zoom-seg button').click(function () { applyZoom($(this).attr('data-v'), true); });
+
+    try {
+        meshOnly = localStorage.getItem('mesh-only') === '1';
+        $('#mesh-only').prop('checked', meshOnly);
+    } catch (e) {}
+    $('#mesh-only').change(function () {
+        meshOnly = $(this).is(':checked');
+        try { localStorage.setItem('mesh-only', meshOnly ? '1' : '0'); } catch (e) {}
+        rebuildTopo();
         render();
     });
-    $('#refresh-btn').click(load);
-    $('#zoom-seg button').click(function () { applyZoom($(this).attr('data-v')); });
 
     var savedZoom = 'std';
     try { savedZoom = localStorage.getItem('mesh-zoom') || 'std'; } catch (e) {}
-    // 旧「热力图」记忆迁移为色块
-    if (savedZoom === 'heat' || savedZoom === 'std' || savedZoom === 'compact') applyZoom(savedZoom);
-    else applyZoom('std');
+    if (savedZoom !== 'heat' && savedZoom !== 'compact' && savedZoom !== 'std') savedZoom = 'std';
+    applyZoom(savedZoom, false);
 
     $('#fs-btn').click(function () {
         var el = document.getElementById('sp-content');
@@ -221,7 +245,7 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
     $(document).bind('fullscreenchange webkitfullscreenchange', function () {
         var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
         $('#fs-btn').html(on ? '&#x2716; 退出全屏' : '&#x26F6; 全屏');
-        setTimeout(fitMesh, 50);
+        setTimeout(function () { fitMesh(); render(); }, 50);
     });
     $(window).on('resize.meshFit', function () { fitMesh(); });
     $('#auto-refresh').change(setupTimer);
@@ -268,6 +292,7 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
     }
 
     function render() {
+        fitMesh();
         var html = '<tr><th class="row-h corner">源 \\ 目标</th>';
         $.each(targets, function (_, t) {
             html += '<th class="col-h" title="' + SP.esc(SP.nodeName(cfg, t)) + ' · ' + SP.esc(t) + '">' +
@@ -277,39 +302,33 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         html += '</tr>';
 
         var stTotal = 0, stOk = 0, stBad = 0, stSum = 0, stCnt = 0;
-        var showNum = zoom !== 'heat';
 
         $.each(sources, function (_, s) {
             html += '<tr><th class="row-h"><span class="src-name">' + SP.esc(s.Name) + '</span><span class="src-ip mono">' + SP.esc(s.Addr) + '</span></th>';
             var row = meshData[s.Addr];
             $.each(targets, function (_, t) {
                 if (t === s.Addr) {
-                    html += '<td><div class="mesh-cell self" title="自身">·</div></td>';
+                    html += '<td><div class="mesh-cell self" title="自身"></div></td>';
                     return;
                 }
                 var monitored = $.inArray(t, (cfg.Network[s.Addr] || {}).Ping || []) >= 0;
                 var c = row && row.cells ? row.cells[t] : null;
                 if (!monitored || !row || row.error || !c || c.points === 0) {
                     var hint = row && row.error ? '节点不可达' : '无数据';
-                    html += '<td><div class="mesh-cell na" title="' + hint + '">' + (showNum ? (row && row.error ? '!' : '·') : '') + '</div></td>';
+                    html += '<td><div class="mesh-cell na" title="' + hint + '">' + (row && row.error ? '!' : '') + '</div></td>';
                     return;
                 }
                 var lvl = SP.delayLevel(c.avgdelay, c.loss, c.baseline);
                 stTotal++; stSum += c.avgdelay; stCnt++;
                 if (lvl >= 3) stBad++; else stOk++;
-                var main = '';
-                if (showNum) {
-                    main = metric === 'delay' ? SP.fmtMs(c.avgdelay) : c.loss.toFixed(0) + '%';
-                    if (c.loss >= 99.5) main = '&#10005;';
-                }
                 var rise = SP.delayRisePct(c.avgdelay, c.baseline);
                 var riseTxt = rise == null ? '' : ('\n相对基线 ' + (rise >= 0 ? '+' : '') + rise.toFixed(0) + '% (基线 ' + SP.fmtMs(c.baseline) + 'ms)');
                 var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
-                    '\n平均 ' + SP.fmtMs(c.avgdelay) + 'ms · 最大 ' + SP.fmtMs(c.maxdelay) + 'ms' +
-                    '\n抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 丢包 ' + c.loss.toFixed(1) + '% · 采样 ' + c.points + ' 次' +
+                    '\n延迟 ' + SP.fmtMs(c.avgdelay) + 'ms · 丢包 ' + c.loss.toFixed(1) + '%' +
+                    '\n最大 ' + SP.fmtMs(c.maxdelay) + 'ms · 抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 采样 ' + c.points + ' 次' +
                     riseTxt + '\n' + c.lastcheck;
                 html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +
-                    main + '</div></td>';
+                    cellHtml(c) + '</div></td>';
             });
             html += '</tr>';
         });
@@ -322,19 +341,7 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
         $('#ms-bad').text(stBad);
         $('#ms-avg').text(stCnt > 0 ? SP.fmtMs(stSum / stCnt) + ' ms' : '-');
 
-        $.each(targets, function (_, t) {
-            SP.asn(t, function (info) {
-                if (!info) return;
-                var line = '\nASN: ' + SP.asnShort(info);
-                $('#mesh .mesh-cell[data-dst="' + t + '"]').each(function () {
-                    if (($(this).attr('title') || '').indexOf('ASN:') < 0) {
-                        $(this).attr('title', $(this).attr('title') + line);
-                    }
-                });
-            });
-        });
-
-        $('#mesh .mesh-cell[data-src]').click(function () {
+        $('#mesh .mesh-cell[data-src]').off('click').click(function () {
             var src = $(this).attr('data-src'), dst = $(this).attr('data-dst');
             var apiurl = (src === cfg.Addr)
                 ? '/api/ping.json?ip=' + dst
