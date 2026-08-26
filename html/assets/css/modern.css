@@ -209,6 +209,7 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 
 /* ---------- Tables ---------- */
 .sp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .sp-table th {
   text-align: left; padding: 11px 16px; color: var(--sp-text-3);
   font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
@@ -258,7 +259,7 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .chip.active { background: var(--sp-primary); border-color: var(--sp-primary); color: #fff; }
 
 /* ---------- Tabs ---------- */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--sp-border); padding: 0 18px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--sp-border); padding: 0 18px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tabs button {
   border: none; background: none; padding: 13px 14px; font-size: 13.5px; font-weight: 600;
   color: var(--sp-text-3); cursor: pointer; border-bottom: 2px solid transparent;
@@ -287,7 +288,10 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
   padding: 16px 20px; border-bottom: 1px solid var(--sp-border);
   display: flex; align-items: center;
 }
-.sp-modal .m-head h3 { font-size: 15px; font-weight: 700; flex: 1; }
+.sp-modal .m-head h3 {
+  font-size: 15px; font-weight: 700; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .sp-modal .m-close {
   border: none; background: none; font-size: 20px; line-height: 1; cursor: pointer;
   color: var(--sp-text-3); padding: 2px 6px; border-radius: 6px;
@@ -361,12 +365,52 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .mesh-stats .ms.bad b { color: var(--sp-red); }
 
 /* ---------- Mini chart card ---------- */
-.ping-card { cursor: pointer; transition: box-shadow .15s, transform .15s; }
+.ping-card {
+  cursor: pointer; transition: box-shadow .15s, transform .15s;
+  overflow: hidden; display: flex; flex-direction: column;
+}
 .ping-card:hover { box-shadow: var(--sp-shadow-lg); transform: translateY(-2px); }
-.ping-card .ping-head { display: flex; align-items: center; padding: 12px 16px 0; gap: 8px; }
-.ping-card .ping-head .t { font-weight: 700; font-size: 13.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ping-card .mini-chart { height: 120px; width: 100%; }
-.ping-card .ping-foot { display: flex; gap: 8px; padding: 0 16px 12px; }
+.ping-card .ping-head { display: flex; align-items: center; padding: 14px 16px 4px; gap: 8px; min-width: 0; }
+.ping-card .ping-head .t {
+  font-weight: 700; font-size: 13.5px; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  letter-spacing: -.01em;
+}
+.ping-card .mini-chart {
+  height: 132px; width: 100%;
+  padding: 0 6px; box-sizing: border-box;
+  overflow: hidden;
+}
+.ping-card .ping-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 6px 14px 14px; min-width: 0;
+}
+.ping-card .ping-foot .badge {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Chart modal / toolbar */
+.chart-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+}
+.chart-toolbar .chart-time { width: 200px; max-width: 100%; }
+.chart-toolbar .spacer { flex: 1 1 40px; }
+.chart-box-lg { width: 100%; height: 420px; min-height: 260px; }
+
+/* Card head wrapping for dense toolbars */
+.card .card-head { flex-wrap: wrap; row-gap: 8px; }
+.card .card-head .sub { min-width: 0; }
+
+/* Mesh horizontal scroll polish */
+.mesh-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px; margin: 0 -2px;
+}
+.mesh-wrap::-webkit-scrollbar { height: 8px; }
+.mesh-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1; border-radius: 999px;
+}
+.mesh-stats { align-items: center; }
 
 /* ---------- Login ---------- */
 body.login-page {
@@ -479,13 +523,65 @@ body.login-page {
 .mtr-reach td { background: var(--sp-green-soft); }
 
 @media (max-width: 900px) {
-  .sp-sidebar { position: fixed; left: -240px; transition: left .2s; height: 100vh; }
+  .sp-sidebar {
+    position: fixed; left: -248px; transition: left .22s ease;
+    height: 100vh; box-shadow: var(--sp-shadow-lg);
+  }
   .sp-sidebar.open { left: 0; }
+  .sp-sidebar-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 45;
+    background: rgba(15, 23, 42, .45); backdrop-filter: blur(2px);
+  }
+  .sp-sidebar-backdrop.open { display: block; }
   .sp-menu-btn { display: inline-flex !important; }
+  .sp-content { padding: 14px; }
+  .sp-topbar { padding: 0 12px; gap: 8px; height: 56px; }
+  .sp-topbar .page-title { font-size: 15px; }
+  .sp-topbar .node-chip {
+    max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sp-topbar .sync-time { display: none; }
+  .sp-user .uname, .sp-user .urole { display: none; }
+  .sp-user .user-btn { padding: 5px; border: none; background: transparent; }
+  .sp-footer {
+    flex-direction: column; align-items: flex-start; gap: 4px;
+    padding: 0 14px 16px; font-size: 11.5px;
+  }
+  .card .card-head { padding: 12px 14px; }
+  .card .card-body { padding: 14px; }
+  .card .card-head .sub { display: block; width: 100%; flex-basis: 100%; }
+  .stat-card { padding: 14px; }
+  .stat-card .val { font-size: 20px; }
+  .chips { gap: 6px; }
+  .chip { padding: 5px 11px; font-size: 12px; }
+  .ping-card .mini-chart { height: 118px; }
+  .chart-toolbar .chart-time { width: 100%; }
+  .chart-box-lg { height: 300px; }
+  .sp-modal { border-radius: 12px; }
+  .sp-modal .m-body { padding: 14px; }
+  .sp-modal-mask { padding: 3vh 10px; }
+  #sp-toasts { left: 12px; right: 12px; top: 12px; }
+  .sp-toast { max-width: none; }
+  .seg { max-width: 100%; overflow-x: auto; }
+  .mesh-stats { gap: 14px; }
+  .mesh-legend { gap: 10px; }
+  .input-row { flex-direction: column; }
 }
+
+.sp-sidebar-backdrop { display: none; }
+
 .sp-menu-btn {
   display: none; border: 1px solid var(--sp-border); background: #fff;
   border-radius: 8px; padding: 7px 9px; cursor: pointer;
+  align-items: center; justify-content: center; line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+  .sp-topbar .node-chip { display: none; }
+  .ping-card .mini-chart { height: 108px; }
+  .chart-box-lg { height: 260px; }
+  .badge { font-size: 11px; padding: 2px 7px; }
 }
 
 /* ---------- 集群容灾 / 提示横幅 ---------- */

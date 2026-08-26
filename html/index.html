@@ -139,24 +139,8 @@ SP.init('index', '概览').done(function (ctx) {
 
             var chart = echarts.init(document.getElementById(id));
             miniCharts.push(chart);
-            chart.setOption({
-                grid: { left: 38, right: 12, top: 10, bottom: 22 },
-                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 11 } },
-                xAxis: { data: [], boundaryGap: false, axisLabel: { fontSize: 10, color: '#94a3b8' }, axisLine: { show: false }, axisTick: { show: false } },
-                yAxis: [
-                    { type: 'value', axisLabel: { fontSize: 10, color: '#94a3b8' }, splitLine: { lineStyle: { color: '#f1f5f9' } }, splitNumber: 3 },
-                    { type: 'value', min: 0, max: 100, show: false }
-                ],
-                series: [
-                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
-                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
-                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                          { offset: 0, color: 'rgba(99,102,241,.28)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
-                      data: [] },
-                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
-                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: [] }
-                ]
-            });
+            SP.bindChartResize(miniCharts);
+            chart.setOption(SP.miniChartOption());
             $.getJSON(apiurl, function (d) {
                 var labels = $.map(d.lastcheck, function (v) { return v.substring(11, 16); });
                 chart.setOption({

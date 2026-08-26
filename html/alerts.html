@@ -18,10 +18,12 @@
       <span class="sub">屏蔽期间仍记录告警，但不发送任何通知；到期自动恢复</span>
     </div>
     <div class="card-body" style="padding:0">
+      <div class="table-scroll">
       <table class="sp-table">
         <thead><tr><th>源节点</th><th>目标</th><th>屏蔽至</th><th>原因</th><th>操作人</th><th style="width:90px">操作</th></tr></thead>
         <tbody id="mutelist"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -41,10 +43,11 @@
         <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
         <button class="btn primary sm" id="cr-apply">查询</button>
       </span>
-      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 类型 / Tag..." style="width:230px;padding:6px 10px">
+      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 类型 / Tag..." style="width:min(230px,100%);padding:6px 10px">
       <span class="muted" id="loading"></span>
     </div>
     <div class="card-body" style="padding:0">
+      <div class="table-scroll">
       <table class="sp-table">
         <thead>
           <tr>
@@ -55,6 +58,7 @@
       </table>
       <div class="empty-state" id="empty" style="display:none">
         <div class="big">&#127881;</div>该时间范围内没有报警记录
+      </div>
       </div>
     </div>
   </div>

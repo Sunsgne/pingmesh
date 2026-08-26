@@ -102,6 +102,76 @@ var SP = (function () {
         return (delay - baseline) / baseline * 100;
     }
 
+    /* ---------- shared echarts helpers ---------- */
+    function miniChartOption() {
+        return {
+            animation: false,
+            grid: { left: 2, right: 8, top: 12, bottom: 2, containLabel: true },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(15,23,42,.92)',
+                borderWidth: 0,
+                padding: [8, 12],
+                textStyle: { color: '#e2e8f0', fontSize: 11 },
+                confine: true
+            },
+            xAxis: {
+                data: [],
+                boundaryGap: false,
+                axisLabel: {
+                    fontSize: 10,
+                    color: '#94a3b8',
+                    hideOverlap: true,
+                    margin: 6,
+                    showMinLabel: true,
+                    showMaxLabel: true
+                },
+                axisLine: { show: false },
+                axisTick: { show: false }
+            },
+            yAxis: [
+                {
+                    type: 'value',
+                    axisLabel: { fontSize: 10, color: '#94a3b8', hideOverlap: true },
+                    splitLine: { lineStyle: { color: '#f1f5f9' } },
+                    splitNumber: 3
+                },
+                { type: 'value', min: 0, max: 100, show: false }
+            ],
+            series: [
+                {
+                    name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                    clip: true, itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(99,102,241,.28)' },
+                            { offset: 1, color: 'rgba(99,102,241,.02)' }
+                        ])
+                    },
+                    data: []
+                },
+                {
+                    name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
+                    clip: true, itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: []
+                }
+            ]
+        };
+    }
+
+    function bindChartResize(charts) {
+        if (!window._spChartResizeBound) {
+            window._spChartResizeBound = true;
+            $(window).on('resize.spCharts', function () {
+                var list = window._spLiveCharts || [];
+                for (var i = 0; i < list.length; i++) {
+                    try { if (list[i] && !list[i].isDisposed()) list[i].resize(); } catch (e) {}
+                }
+                try { if (bigChart && !bigChart.isDisposed()) bigChart.resize(); } catch (e2) {}
+            });
+        }
+        window._spLiveCharts = charts || [];
+    }
+
     /* ---------- shared big ping chart modal ---------- */
     function ensureChartModal() {
         if ($('#sp-chart-modal').length) return;
@@ -109,16 +179,16 @@ var SP = (function () {
             '<div class="sp-modal-mask" id="sp-chart-modal"><div class="sp-modal lg">' +
             '<div class="m-head"><h3 id="sp-chart-title">历史曲线</h3><button class="m-close">&times;</button></div>' +
             '<div class="m-body">' +
-            '<div class="flex mb-4">' +
+            '<div class="chart-toolbar mb-4">' +
             '<label class="muted" style="font-size:12.5px">开始</label>' +
-            '<input type="datetime-local" class="input" id="sp-chart-start" style="width:200px">' +
+            '<input type="datetime-local" class="input chart-time" id="sp-chart-start">' +
             '<label class="muted" style="font-size:12.5px">结束</label>' +
-            '<input type="datetime-local" class="input" id="sp-chart-end" style="width:200px">' +
+            '<input type="datetime-local" class="input chart-time" id="sp-chart-end">' +
             '<button class="btn primary sm" id="sp-chart-query">查询</button>' +
             '<span class="spacer"></span>' +
             '<span class="muted" id="sp-chart-loading"></span>' +
             '</div>' +
-            '<div id="sp-chart-box" style="width:100%;height:420px"></div>' +
+            '<div id="sp-chart-box" class="chart-box-lg"></div>' +
             '</div></div></div>';
         $('body').append(html);
         $('#sp-chart-query').click(function () {
@@ -166,40 +236,52 @@ var SP = (function () {
                     trigger: 'axis',
                     backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [10, 14],
                     textStyle: { color: '#e2e8f0', fontSize: 12 },
+                    confine: true,
                     axisPointer: { type: 'cross', label: { backgroundColor: '#4f46e5' } }
                 },
                 legend: {
                     data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
                     selected: { '最大延迟': false, '最小延迟': false },
                     icon: 'roundRect', itemWidth: 14, itemHeight: 8,
-                    textStyle: { color: '#475569', fontSize: 12 }
+                    textStyle: { color: '#475569', fontSize: 12 },
+                    type: 'scroll'
                 },
-                grid: { left: 52, right: 58, top: 48, bottom: 62 },
-                dataZoom: [{ height: 22, bottom: 14, borderColor: 'transparent', backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)', handleStyle: { color: '#6366f1' } }],
+                grid: { left: 12, right: 16, top: 52, bottom: 56, containLabel: true },
+                dataZoom: [{
+                    height: 20, bottom: 8, borderColor: 'transparent',
+                    backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)',
+                    handleStyle: { color: '#6366f1' }
+                }],
                 xAxis: {
                     data: [], boundaryGap: false,
                     axisLine: { lineStyle: { color: '#e2e8f0' } },
-                    axisLabel: { color: '#94a3b8', fontSize: 11 }, axisTick: { show: false }
+                    axisLabel: {
+                        color: '#94a3b8', fontSize: 11, hideOverlap: true, margin: 8,
+                        showMinLabel: true, showMaxLabel: true
+                    },
+                    axisTick: { show: false }
                 },
                 yAxis: [
                     { type: 'value', name: '延迟(ms)', position: 'left', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { color: '#94a3b8', fontSize: 11 }, splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                      axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true },
+                      splitLine: { lineStyle: { color: '#f1f5f9' } } },
                     { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11 }, splitLine: { show: false } }
+                      axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11, hideOverlap: true },
+                      splitLine: { show: false } }
                 ],
                 series: [
-                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
                       itemStyle: { color: '#a5b4fc' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
                       itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
                       itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
                       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                           { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
                       data: [] },
-                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
+                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
                       itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
-                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
+                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
                       itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
                 ]
             });
@@ -296,7 +378,20 @@ var SP = (function () {
 
         $('#sp-user-btn').click(function (e) { e.stopPropagation(); $('#sp-user-menu').toggleClass('open'); });
         $(document).click(function () { $('#sp-user-menu').removeClass('open'); });
-        $('#sp-menu-btn').click(function (e) { e.stopPropagation(); $('#sp-sidebar').toggleClass('open'); });
+        if (!$('#sp-sidebar-backdrop').length) {
+            $('body').append('<div class="sp-sidebar-backdrop" id="sp-sidebar-backdrop"></div>');
+        }
+        function closeMobileNav() {
+            $('#sp-sidebar').removeClass('open');
+            $('#sp-sidebar-backdrop').removeClass('open');
+        }
+        $('#sp-menu-btn').click(function (e) {
+            e.stopPropagation();
+            $('#sp-sidebar').toggleClass('open');
+            $('#sp-sidebar-backdrop').toggleClass('open', $('#sp-sidebar').hasClass('open'));
+        });
+        $('#sp-sidebar-backdrop').click(closeMobileNav);
+        $('#sp-sidebar .sp-nav a').click(closeMobileNav);
         $('#sp-menu-logout').click(function () {
             $.getJSON('/api/logout.json').always(function () { window.location.href = '/login.html'; });
         });
@@ -542,6 +637,8 @@ var SP = (function () {
         delayLevel: delayLevel,
         delayRisePct: delayRisePct,
         openPingChart: openPingChart,
+        miniChartOption: miniChartOption,
+        bindChartResize: bindChartResize,
         sourceNodes: sourceNodes,
         nodeName: nodeName,
         asn: asnGet,
