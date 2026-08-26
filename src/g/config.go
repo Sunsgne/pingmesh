@@ -213,7 +213,7 @@ func InitDbSchema() {
 			avgdelay FLOAT,
 			sendpk   INT,
 			revcpk   INT,
-			losspk   FLOAT,
+			losspk   FLOAT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pinglog_target_time ON pinglog (target, logtime)`,
 		`CREATE INDEX IF NOT EXISTS idx_pinglog_time ON pinglog (logtime)`,
