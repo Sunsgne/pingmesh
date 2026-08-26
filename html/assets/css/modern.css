@@ -253,8 +253,9 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .chip {
   padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
   border: 1px solid var(--sp-border); background: #fff; color: var(--sp-text-2); cursor: pointer;
-  transition: all .15s;
+  transition: all .15s; font-family: var(--sp-font);
 }
+button.chip { appearance: none; }
 .chip:hover { border-color: var(--sp-primary-2); color: var(--sp-primary); }
 .chip.active { background: var(--sp-primary); border-color: var(--sp-primary); color: #fff; }
 
@@ -443,6 +444,50 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 }
 .mesh-toolbar .spacer { flex: 1 1 12px; }
 
+/* 通用页面工具栏(与 mesh-toolbar 同风格) */
+.page-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  padding: 12px 14px; margin-bottom: 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  border: 1px solid var(--sp-border); border-radius: 12px;
+}
+.page-toolbar .tb-group {
+  display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0;
+}
+.page-toolbar .tb-label {
+  font-size: 11px; font-weight: 700; color: var(--sp-text-3);
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+}
+.page-toolbar .spacer { flex: 1 1 12px; }
+
+.info-banner {
+  background: var(--sp-primary-soft); border: 1px solid #c7d2fe; color: #3730a3;
+  border-radius: 10px; padding: 11px 14px; font-size: 13px; margin-bottom: 16px; line-height: 1.5;
+}
+.btn.block { width: 100%; display: flex; }
+.btn.ghost { background: transparent; }
+
+.cfg-savebar {
+  position: sticky; bottom: 0; z-index: 30;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 18px; padding: 12px 16px;
+  background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+  border: 1px solid var(--sp-border); border-radius: 12px;
+  box-shadow: 0 -8px 24px rgba(15,23,42,.06);
+}
+.cfg-savebar .hint { font-size: 12.5px; color: var(--sp-text-3); }
+
+.topo-layout {
+  display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start;
+}
+.topo-chart {
+  width: 100%; height: calc(100vh - 270px); min-height: 420px;
+}
+@media (max-width: 960px) {
+  .topo-layout { grid-template-columns: 1fr; }
+  .topo-chart { height: 56vh; min-height: 360px; }
+}
+
 /* 视图档位: 详细 / 紧凑 / 色块 — 尺寸由 --mesh-* 变量驱动 */
 .mesh-zoom-compact {
   --mesh-gap: 3px;
@@ -457,9 +502,9 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 
 .mesh-zoom-heat {
   --mesh-gap: 2px;
-  --mesh-font: 0;
-  --mesh-radius: 3px;
-  --mesh-row: 100px;
+  --mesh-font: 9.5px;
+  --mesh-radius: 4px;
+  --mesh-row: 104px;
 }
 .mesh-zoom-heat .mesh-table th.col-h {
   height: 86px; vertical-align: bottom; padding-bottom: 6px;
@@ -472,9 +517,22 @@ textarea.input { resize: vertical; font-family: ui-monospace, SFMono-Regular, Me
 .mesh-zoom-heat .mesh-table th.col-h .col-ip { display: none; }
 .mesh-zoom-heat .mesh-table th.row-h .src-ip { display: none; }
 .mesh-zoom-heat .mesh-table th.row-h .src-name { font-size: 11px; }
-.mesh-zoom-heat .mesh-cell { cursor: pointer; }
-.mesh-zoom-heat .mesh-cell:hover { transform: scale(1.35); }
+.mesh-zoom-heat .mesh-cell { cursor: pointer; gap: 0; }
+.mesh-zoom-heat .mesh-cell .v-l { font-size: .72em; }
+.mesh-zoom-heat .mesh-cell:hover { transform: scale(1.28); }
 .mesh-zoom-heat .mesh-cell.self { font-size: 0; }
+
+.mesh-check {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 600; color: var(--sp-text-2);
+  cursor: pointer; user-select: none;
+  padding: 5px 10px; border-radius: 8px;
+  border: 1px solid var(--sp-border); background: #fff;
+}
+.mesh-check:hover { border-color: #c7d2fe; color: var(--sp-primary); }
+.mesh-check input {
+  width: 15px; height: 15px; accent-color: var(--sp-primary); cursor: pointer; margin: 0;
+}
 
 /* 大屏全屏 */
 .sp-content:fullscreen {

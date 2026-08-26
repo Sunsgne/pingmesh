@@ -5,8 +5,7 @@
 <title>检测工具 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/bootstrap.min.css" rel="stylesheet">
-<link href="assets/css/modern.css?v=20260826e" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260826f" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -17,24 +16,31 @@
       <span class="sub">从所有探测节点同时发起检测，对比各地连通性与质量</span>
     </div>
     <div class="card-body">
-      <div class="flex mb-2">
-        <select class="input" style="width:150px" id="probe-type">
-          <option value="icmp">ICMP PING</option>
-          <option value="tcp">TCP Ping</option>
-          <option value="http">HTTP (curl)</option>
-          <option value="mtr">MTR 路由追踪</option>
-          <option value="dns">DNS 解析</option>
-        </select>
-        <input type="text" class="input" id="target" placeholder="" style="max-width:430px">
-        <button class="btn primary" id="check-btn">开始检测</button>
-        <span class="spacer"></span>
+      <div class="page-toolbar">
+        <div class="tb-group">
+          <span class="tb-label">类型</span>
+          <select class="input" style="width:150px" id="probe-type">
+            <option value="icmp">ICMP PING</option>
+            <option value="tcp">TCP Ping</option>
+            <option value="http">HTTP (curl)</option>
+            <option value="mtr">MTR 路由追踪</option>
+            <option value="dns">DNS 解析</option>
+          </select>
+        </div>
+        <div class="tb-group" style="flex:1;min-width:200px">
+          <span class="tb-label">目标</span>
+          <input type="text" class="input" id="target" placeholder="" style="min-width:180px;flex:1">
+          <button class="btn primary" id="check-btn">开始检测</button>
+        </div>
       </div>
       <div class="hint mb-4" id="type-hint"></div>
 
+      <div class="table-scroll">
       <table class="sp-table" id="result-table">
         <thead><tr id="thead-row"></tr></thead>
         <tbody id="list"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -49,7 +55,7 @@
 </div>
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
-<script src="assets/js/app.js?v=20260826e"></script>
+<script src="assets/js/app.js?v=20260826f"></script>
 <script>
 $(function () {
 SP.init('tools', '检测工具').done(function (ctx) {

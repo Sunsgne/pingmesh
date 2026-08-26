@@ -48,8 +48,28 @@ var SP = (function () {
     }
 
     /* ---------- modal ---------- */
-    function openModal(id) { $('#' + id).addClass('open'); }
-    function closeModal(id) { $('#' + id).removeClass('open'); }
+    function openModal(id) {
+        $('#' + id).addClass('open').attr('data-sp-open', '1');
+        setTimeout(function () {
+            var $f = $('#' + id).find('input,select,textarea,button').filter(':visible').first();
+            if ($f.length) $f.focus();
+        }, 30);
+    }
+    function closeModal(id) {
+        $('#' + id).removeClass('open').removeAttr('data-sp-open');
+    }
+    // Esc 关闭最上层弹窗
+    $(document).bind('keydown.spModal', function (e) {
+        if (e.keyCode !== 27) return;
+        var $open = $('.sp-modal-mask.open').last();
+        if ($open.length) closeModal($open.attr('id'));
+    });
+    $(document).on('click', '.sp-modal-mask', function (e) {
+        if (e.target === this) closeModal(this.id);
+    });
+    $(document).on('click', '.sp-modal-mask .m-close', function () {
+        closeModal($(this).closest('.sp-modal-mask').attr('id'));
+    });
     // 点击遮罩不关闭弹窗(防误触), 仅通过 × / 取消 按钮主动关闭
     $(document).on('click', '.m-close', function () { $(this).closest('.sp-modal-mask').removeClass('open'); });
 

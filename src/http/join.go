@@ -24,15 +24,30 @@ func configJoinRoutes() {
 		name := r.FormValue("name")
 		addr := r.FormValue("addr")
 		group := r.FormValue("group")
+		if strings.TrimSpace(g.Cfg.Password) == "" {
+			seelog.Warn("[func:/api/join.json] join rejected: empty Password/token")
+			preout["info"] = "主节点未设置接入令牌, 拒绝加入"
+			RenderJson(w, preout)
+			return
+		}
+		// 简易频控: 复用登录失败闸门思路, 同一 IP 过快重试拒绝
+		ip := loginClientIP(r)
+		if loginBlocked(ip) {
+			preout["info"] = "尝试过于频繁, 请稍后再试"
+			RenderJson(w, preout)
+			return
+		}
 		// 优先 HMAC 签名(令牌不出网); 兼容旧版明文令牌
 		signed := g.VerifySign(r.URL.Path, r.FormValue("ts"), r.FormValue("nonce"), r.FormValue("sign"))
 		legacy := r.FormValue("token") != "" && r.FormValue("token") == g.Cfg.Password
 		if !signed && !legacy {
+			loginRecordFail(ip)
 			seelog.Info("[func:/api/join.json] invalid token/signature from ", r.RemoteAddr)
 			preout["info"] = "接入令牌错误"
 			RenderJson(w, preout)
 			return
 		}
+		loginRecordSuccess(ip)
 		if name == "" {
 			preout["info"] = "节点名称不能为空"
 			RenderJson(w, preout)

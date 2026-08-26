@@ -70,6 +70,11 @@ func configToolsRoutes() {
 		case "tcp":
 			toolTcp(target, out)
 		case "http":
+			if err := httpProbeAllowed(target); err != nil {
+				out["error"] = err.Error()
+				RenderJson(w, out)
+				return
+			}
 			toolHttp(target, out)
 		case "mtr":
 			toolMtr(target, out)

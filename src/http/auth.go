@@ -93,7 +93,7 @@ func newToken() string {
 	return hex.EncodeToString(b)
 }
 
-// GetSession 从请求中解析有效会话
+// GetSession 从请求中解析有效会话, 并与数据库角色保持同步(降权立即生效)
 func GetSession(r *http.Request) *Session {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
@@ -106,6 +106,14 @@ func GetSession(r *http.Request) *Session {
 		return nil
 	}
 	if time.Now().After(s.Expire) {
+		delete(sessions, c.Value)
+		return nil
+	}
+	// 角色以数据库为准, 防止降权后旧会话仍是管理员
+	if u, err := g.GetUser(s.Username); err == nil {
+		s.Role = u.Role
+	} else {
+		// 用户已删除
 		delete(sessions, c.Value)
 		return nil
 	}
@@ -163,17 +171,10 @@ func AuthData(r *http.Request) bool {
 	return AuthUser(r) || AuthAgent(r)
 }
 
-// AuthAdmin 管理员访问
+// AuthAdmin 管理员访问: 仅登录会话中的 admin 角色(不再把 IP 白名单视为管理员)
 func AuthAdmin(r *http.Request) bool {
 	s := GetSession(r)
-	if s != nil && s.Role == g.RoleAdmin {
-		return true
-	}
-	// 兼容旧版: 配置了用户IP白名单时, 白名单内IP视为管理员
-	if len(g.AuthUserIpMap) > 0 && AuthUserIp(r.RemoteAddr) {
-		return true
-	}
-	return false
+	return s != nil && s.Role == g.RoleAdmin
 }
 
 func renderErr(w http.ResponseWriter, info string) {
@@ -316,6 +317,8 @@ func configAuthRoutes() {
 					renderErr(w, err.Error())
 					return
 				}
+				// 角色变更后踢掉该用户其他会话, 强制重新登录拿新角色
+				kickUser(username, GetSession(r))
 			}
 			if password != "" {
 				if err := g.UpdateUserPassword(username, password); err != nil {

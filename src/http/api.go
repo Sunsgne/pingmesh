@@ -26,17 +26,14 @@ func configApiRoutes() {
 		nconf := g.Config{}
 		cfgJson, _ := json.Marshal(g.Cfg)
 		json.Unmarshal(cfgJson, &nconf)
-		// 管理员可见配置密码(即节点接入令牌), 其他请求一律隐藏
+		// 管理员可见接入令牌; 非管理员隐藏。
+		// 敏感字段: 仅管理员明文可见; 节点加密同步(AgentSigned)拿完整配置后加密返回。
+		// 注意: 仅凭节点 IP 不再下发明文密钥, 防止经 /api/proxy.json 被只读用户套取。
 		if !AuthAdmin(r) {
 			nconf.Password = ""
 		}
-		if !AuthAgentIp(r.RemoteAddr, false) {
-			if nconf.Alert["SendEmailPassword"] != "" {
-				nconf.Alert["SendEmailPassword"] = "samepasswordasbefore"
-			}
-			if nconf.OAuth != nil && nconf.OAuth["ClientSecret"] != "" {
-				nconf.OAuth["ClientSecret"] = "samepasswordasbefore"
-			}
+		if !AuthAdmin(r) && !AgentSigned(r) {
+			maskConfigSecrets(&nconf)
 		}
 		//fmt.Print(g.Cfg.Alert["SendEmailPassword"])
 		onconf, _ := json.Marshal(nconf)
@@ -191,7 +188,6 @@ func configApiRoutes() {
 			Ldate string
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		r.ParseForm()
 		dtb := time.Unix(time.Now().Unix(), 0).Format("2006-01-02")
 		if len(r.Form["date"]) > 0 {
@@ -580,6 +576,28 @@ func configApiRoutes() {
 				nconfig.OAuth["ClientSecret"] = g.Cfg.OAuth["ClientSecret"]
 			}
 		}
+		// 通道密钥占位还原
+		for i := range nconfig.Channels {
+			np := nconfig.Channels[i].Params
+			if np == nil {
+				continue
+			}
+			var old map[string]string
+			for _, och := range g.Cfg.Channels {
+				if och.Name == nconfig.Channels[i].Name && och.Type == nconfig.Channels[i].Type {
+					old = och.Params
+					break
+				}
+			}
+			if old == nil {
+				continue
+			}
+			for _, k := range []string{"Token", "Webhook", "Url", "Secret", "AccessToken", "AppSecret"} {
+				if np[k] == "samepasswordasbefore" {
+					np[k] = old[k]
+				}
+			}
+		}
 		// 管理员保存属权威写入: 自增纪元, 使本次改动在集群内 LWW 收敛
 		g.BumpEpochInPlace(&nconfig)
 		g.CfgLock.Lock()
@@ -694,7 +712,7 @@ func configApiRoutes() {
 		RenderJson(w, preout)
 	})
 
-	//代理访问
+	//代理访问: 仅允许访问本集群节点白名单 API, 防止 SSRF / 密钥套取
 	http.HandleFunc("/api/proxy.json", func(w http.ResponseWriter, r *http.Request) {
 		if !AuthData(r) {
 			deny(w)
@@ -703,48 +721,51 @@ func configApiRoutes() {
 		w.Header().Set("Content-Type", "application/json")
 		r.ParseForm()
 		if len(r.Form["g"]) == 0 {
-			o := "Url Param Error!"
-			http.Error(w, o, 406)
+			http.Error(w, "Url Param Error!", 406)
+			return
+		}
+		url := strings.Replace(strings.Replace(r.Form["g"][0], "%26", "&", -1), " ", "%20", -1)
+		if err := proxyAllowed(url); err != nil {
+			http.Error(w, "Proxy Denied: "+err.Error(), 403)
 			return
 		}
 		to := strconv.Itoa(g.Cfg.Base["Timeout"])
 		if len(r.Form["t"]) > 0 {
 			to = r.Form["t"][0]
 		}
-		url := strings.Replace(strings.Replace(r.Form["g"][0], "%26", "&", -1), " ", "%20", -1)
-		url = g.SignURL(url, g.Cfg.Password) // 节点间出站请求附加 HMAC 签名
 		defaultto, err := strconv.Atoi(to)
-		if err != nil {
-			o := "Timeout Param Error!"
-			http.Error(w, o, 406)
+		if err != nil || defaultto <= 0 {
+			http.Error(w, "Timeout Param Error!", 406)
 			return
 		}
-		timeout := time.Duration(defaultto) * time.Second
-		client := http.Client{
-			Timeout: timeout,
+		if defaultto > 30 {
+			defaultto = 30
 		}
+		url = g.SignURL(url, g.Cfg.Password)
+		client := http.Client{Timeout: time.Duration(defaultto) * time.Second}
 		resp, err := client.Get(url)
 		if err != nil {
-			o := "Request Remote Data Error:" + err.Error()
-			http.Error(w, o, 503)
+			http.Error(w, "Request Remote Data Error:"+err.Error(), 503)
 			return
 		}
 		defer resp.Body.Close()
 		resCode := resp.StatusCode
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20)) // 最多 8MB
 		if err != nil {
-			o := "Read Remote Data Error:" + err.Error()
-			http.Error(w, o, 503)
+			http.Error(w, "Read Remote Data Error:"+err.Error(), 503)
 			return
 		}
 		if resCode != 200 {
-			o := "Get Remote Data Status Error"
-			http.Error(w, o, resCode)
+			http.Error(w, "Get Remote Data Status Error", resCode)
+			return
 		}
 		var out bytes.Buffer
-		json.Indent(&out, body, "", "\t")
-		o := out.String()
-		fmt.Fprintln(w, o)
+		if err := json.Indent(&out, body, "", "\t"); err != nil {
+			// 非 JSON 时原样返回(截断已限)
+			fmt.Fprintln(w, string(body))
+			return
+		}
+		fmt.Fprintln(w, out.String())
 	})
 
 }

@@ -5,8 +5,7 @@
 <title>报警记录 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/bootstrap.min.css" rel="stylesheet">
-<link href="assets/css/modern.css?v=20260826e" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260826f" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -28,26 +27,35 @@
   </div>
 
   <div class="card">
-    <div class="card-head" style="flex-wrap:wrap;gap:10px">
+    <div class="card-head">
       <h3>报警记录 <span class="badge red" id="alert-count" style="display:none"></span></h3>
+      <span class="sub">确认与屏蔽需管理员权限</span>
       <span class="spacer"></span>
-      <div class="seg" id="range-seg">
-        <button data-v="today" class="active">今天</button>
-        <button data-v="24h">近24小时</button>
-        <button data-v="7d">近7天</button>
-        <button data-v="custom">自定义</button>
-      </div>
-      <span id="custom-range" style="display:none" class="flex">
-        <input type="datetime-local" class="input" id="cr-start" style="width:185px;padding:6px 8px">
-        <span class="muted">~</span>
-        <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
-        <button class="btn primary sm" id="cr-apply">查询</button>
-      </span>
-      <input type="text" class="input" id="search" placeholder="筛选节点 / IP / 类型 / Tag..." style="width:min(230px,100%);padding:6px 10px">
       <span class="muted" id="loading"></span>
     </div>
-    <div class="card-body" style="padding:0">
-      <div class="table-scroll">
+    <div class="card-body" style="padding-top:14px">
+      <div class="page-toolbar">
+        <div class="tb-group">
+          <span class="tb-label">范围</span>
+          <div class="seg" id="range-seg">
+            <button data-v="today" class="active">今天</button>
+            <button data-v="24h">近24小时</button>
+            <button data-v="7d">近7天</button>
+            <button data-v="custom">自定义</button>
+          </div>
+          <span id="custom-range" style="display:none" class="flex">
+            <input type="datetime-local" class="input" id="cr-start" style="width:185px;padding:6px 8px">
+            <span class="muted">~</span>
+            <input type="datetime-local" class="input" id="cr-end" style="width:185px;padding:6px 8px">
+            <button class="btn primary sm" id="cr-apply">查询</button>
+          </span>
+        </div>
+        <div class="tb-group">
+          <span class="tb-label">筛选</span>
+          <input type="text" class="input" id="search" placeholder="节点 / IP / 类型 / Tag..." style="width:min(230px,100%);padding:6px 10px">
+        </div>
+      </div>
+      <div class="table-scroll" style="margin:0 -18px">
       <table class="sp-table">
         <thead>
           <tr>
@@ -57,7 +65,8 @@
         <tbody id="alertlist"></tbody>
       </table>
       <div class="empty-state" id="empty" style="display:none">
-        <div class="big">&#127881;</div>该时间范围内没有报警记录
+        <div class="big muted" style="font-size:28px;opacity:.5">○</div>
+        该时间范围内没有报警记录
       </div>
       </div>
     </div>
@@ -121,7 +130,7 @@
 </div>
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
-<script src="assets/js/app.js?v=20260826e"></script>
+<script src="assets/js/app.js?v=20260826f"></script>
 <script>
 $(function () {
 SP.init('alerts', '报警记录').done(function (ctx) {

@@ -27,8 +27,16 @@ func configOpsRoutes() {
 			return
 		}
 		r.ParseForm()
+		action := r.FormValue("action")
+		if action == "add" || action == "del" {
+			// 变更屏蔽需管理员, 或经节点 HMAC(管理端 proxy 签名转发)
+			if !AuthAdmin(r) && !AuthAgent(r) {
+				deny(w)
+				return
+			}
+		}
 		now := time.Now().Format("2006-01-02 15:04:05")
-		switch r.FormValue("action") {
+		switch action {
 		case "add":
 			target := r.FormValue("target")
 			reason := r.FormValue("reason")

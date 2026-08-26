@@ -504,7 +504,7 @@ func SaveConfig() error {
 		seelog.Error("[func:SaveConfig] Json Parse ", errjson)
 		return errjson
 	}
-	err := os.WriteFile(Root+"/conf/"+"config.json", []byte(out.String()), 0644)
+	err := os.WriteFile(Root+"/conf/"+"config.json", []byte(out.String()), 0600)
 	if err != nil {
 		seelog.Error("[func:SaveConfig] Config File Write", err)
 		return err
