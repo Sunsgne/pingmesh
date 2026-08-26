@@ -120,7 +120,28 @@ func pingCyclePaced(targets []string) []targetResult {
 	}
 	to := time.Duration(timeout) * time.Millisecond
 
+	type job struct {
+		ti, pi int
+		ip     *net.IPAddr
+	}
+	// 固定 worker 池替代「每包一 goroutine」, 降低 GC/调度抖动导致的整批齐超时假丢包
+	const workers = 128
+	jobs := make(chan job, workers*2)
 	var pwg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		go func() {
+			for j := range jobs {
+				delay, err := nettools.RunPingFrom(j.ip, to, size, "")
+				if err == nil {
+					rtts[j.ti][j.pi] = delay
+				} else {
+					rtts[j.ti][j.pi] = -1
+				}
+				pwg.Done()
+			}
+		}()
+	}
+
 	next := time.Now()
 	for pi := 0; pi < count; pi++ {
 		for ti := 0; ti < n; ti++ {
@@ -133,18 +154,11 @@ func pingCyclePaced(targets []string) []targetResult {
 				continue
 			}
 			pwg.Add(1)
-			go func(ti, pi int, ip *net.IPAddr) {
-				defer pwg.Done()
-				delay, err := nettools.RunPingFrom(ip, to, size, "")
-				if err == nil {
-					rtts[ti][pi] = delay
-				} else {
-					rtts[ti][pi] = -1
-				}
-			}(ti, pi, ip)
+			jobs <- job{ti: ti, pi: pi, ip: ip}
 		}
 	}
 	pwg.Wait()
+	close(jobs)
 
 	batch := make([]targetResult, 0, n)
 	for i, addr := range targets {
