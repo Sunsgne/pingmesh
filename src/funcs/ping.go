@@ -121,27 +121,31 @@ func pingCyclePaced(targets []string) []targetResult {
 	}
 	to := time.Duration(timeout) * time.Millisecond
 
-	// 每包异步等待应答, 发送侧严格 sleep(slot) 错峰; 不用 worker 池,
-	// 避免超时占满 worker 时任务排队把整轮拖过 60s 导致跳轮断点。
+	// 绝对时间轴节拍: 避免 time.Sleep 累计误差把整轮拖过 60s 跳轮。
+	// 单次落后只补到下一拍(微赶上), 不会在 worker 堵塞后打成大突发。
 	var pwg sync.WaitGroup
+	start := time.Now()
+	k := 0
 	for pi := 0; pi < count; pi++ {
 		for ti := 0; ti < n; ti++ {
+			if wait := time.Until(start.Add(time.Duration(k) * slot)); wait > 0 {
+				time.Sleep(wait)
+			}
+			k++
 			ip := ipaddrs[ti]
-			if ip != nil {
-				pwg.Add(1)
-				go func(ti, pi int, ip *net.IPAddr) {
-					defer pwg.Done()
-					delay, err := nettools.RunPingFrom(ip, to, size, "")
-					if err == nil {
-						rtts[ti][pi] = delay
-					} else {
-						rtts[ti][pi] = -1
-					}
-				}(ti, pi, ip)
+			if ip == nil {
+				continue
 			}
-			if pi < count-1 || ti < n-1 {
-				time.Sleep(slot)
-			}
+			pwg.Add(1)
+			go func(ti, pi int, ip *net.IPAddr) {
+				defer pwg.Done()
+				delay, err := nettools.RunPingFrom(ip, to, size, "")
+				if err == nil {
+					rtts[ti][pi] = delay
+				} else {
+					rtts[ti][pi] = -1
+				}
+			}(ti, pi, ip)
 		}
 	}
 	pwg.Wait()
