@@ -268,6 +268,12 @@ var SP = (function () {
     }
 
     var bigChart = null;
+    var _chartRaw = null;
+    function fmtChartVal(v) {
+        if (v == null || v === '-') return '-';
+        var n = typeof v === 'number' ? v : parseFloat(v);
+        return isNaN(n) ? '-' : n.toFixed(2);
+    }
     function loadChart(apiurl, start, end) {
         var url = apiurl;
         if (start && end) {
@@ -277,20 +283,31 @@ var SP = (function () {
         $('#sp-chart-loading').html('<span class="spinner"></span>');
         $.getJSON(url).done(function (data) {
             $('#sp-chart-loading').html('');
-            bigChart.setOption({
-                xAxis: { data: data.lastcheck },
-                series: [
-                    { name: '最大延迟', data: sanitizeSeries(data.maxdelay) },
-                    { name: '最小延迟', data: sanitizeSeries(data.mindelay) },
-                    { name: '平均延迟', data: sanitizeSeries(data.avgdelay) },
-                    { name: '丢包率', data: sanitizeSeries(data.losspk) },
-                    { name: '抖动', data: sanitizeSeries(data.jitter || []) }
-                ]
-            });
+            _chartRaw = data;
+            applyChartData(data);
         }).fail(function () {
             $('#sp-chart-loading').html('');
             toast('获取数据失败', 'err');
         });
+    }
+    function applyChartData(data) {
+        if (!bigChart || !data) return;
+        var sel = {};
+        try {
+            var opt = bigChart.getOption();
+            if (opt && opt.legend && opt.legend[0] && opt.legend[0].selected) sel = opt.legend[0].selected;
+        } catch (e) {}
+        var empty = [];
+        bigChart.setOption({
+            xAxis: { data: data.lastcheck || [] },
+            series: [
+                { name: '最大延迟', data: sel['最大延迟'] === false ? empty : sanitizeSeries(data.maxdelay) },
+                { name: '最小延迟', data: sel['最小延迟'] === false ? empty : sanitizeSeries(data.mindelay) },
+                { name: '平均延迟', data: sanitizeSeries(data.avgdelay) },
+                { name: '丢包率', data: sanitizeSeries(data.losspk) },
+                { name: '抖动', data: sanitizeSeries(data.jitter || []) }
+            ]
+        }, { lazyUpdate: true });
     }
 
     function openPingChart(title, apiurl) {
@@ -298,82 +315,84 @@ var SP = (function () {
         S._chartUrl = apiurl;
         $('#sp-chart-title').text(title);
         openModal('sp-chart-modal');
-        if (!bigChart) {
-            bigChart = echarts.init(document.getElementById('sp-chart-box'));
-            bigChart.setOption({
-                tooltip: {
-                    trigger: 'axis',
-                    backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [10, 14],
-                    textStyle: { color: '#e2e8f0', fontSize: 12 },
-                    confine: true,
-                    transitionDuration: 0,
-                    axisPointer: {
-                        type: 'line',
-                        label: {
-                            backgroundColor: '#4f46e5',
-                            formatter: function (p) {
-                                if (p.axisDimension === 'x') return p.value;
-                                var n = parseFloat(p.value);
-                                return isNaN(n) ? p.value : n.toFixed(2);
-                            }
-                        }
-                    },
-                    valueFormatter: function (v) {
-                        if (v == null || v === '-') return '-';
-                        var n = typeof v === 'number' ? v : parseFloat(v);
-                        return isNaN(n) ? '-' : n.toFixed(2);
-                    }
-                },
-                legend: {
-                    data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
-                    selected: { '最大延迟': false, '最小延迟': false },
-                    icon: 'roundRect', itemWidth: 14, itemHeight: 8,
-                    textStyle: { color: '#475569', fontSize: 12 },
-                    type: 'scroll'
-                },
-                grid: { left: 12, right: 16, top: 52, bottom: 56, containLabel: true },
-                dataZoom: [{
-                    height: 20, bottom: 8, borderColor: 'transparent',
-                    backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)',
-                    handleStyle: { color: '#6366f1' },
-                    throttle: 50
-                }],
-                xAxis: {
-                    data: [], boundaryGap: false,
-                    axisLine: { lineStyle: { color: '#e2e8f0' } },
-                    axisLabel: {
-                        color: '#94a3b8', fontSize: 11, hideOverlap: true, margin: 8,
-                        showMinLabel: true, showMaxLabel: true
-                    },
-                    axisTick: { show: false }
-                },
-                yAxis: [
-                    { type: 'value', name: '延迟(ms)', min: 0, scale: false, position: 'left', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true, formatter: function (v) { return Number(v).toFixed(2); } },
-                      splitLine: { lineStyle: { color: '#f1f5f9' } } },
-                    { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11, hideOverlap: true },
-                      splitLine: { show: false } }
-                ],
-                series: [
-                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
-                      itemStyle: { color: '#a5b4fc' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
-                      itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
-                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
-                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                          { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
-                      data: [] },
-                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true, sampling: 'lttb',
-                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
-                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
-                      itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
-                ]
-            });
-        } else {
-            bigChart.resize();
+        var box = document.getElementById('sp-chart-box');
+        if (bigChart) {
+            try { bigChart.dispose(); } catch (e) {}
+            bigChart = null;
         }
+        bigChart = echarts.init(box, null, { renderer: 'canvas', useDirtyRect: true });
+        bigChart.setOption({
+            animation: false,
+            tooltip: {
+                trigger: 'axis',
+                renderMode: 'richText',
+                backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [10, 14],
+                textStyle: { color: '#e2e8f0', fontSize: 12 },
+                confine: true,
+                transitionDuration: 0,
+                showDelay: 0,
+                hideDelay: 0,
+                extraCssText: 'pointer-events:none;box-shadow:none;',
+                axisPointer: {
+                    type: 'line',
+                    animation: false,
+                    snap: true,
+                    label: { show: false },
+                    lineStyle: { color: '#94a3b8', width: 1, type: 'dashed' }
+                },
+                valueFormatter: fmtChartVal
+            },
+            legend: {
+                data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
+                selected: { '最大延迟': false, '最小延迟': false },
+                icon: 'roundRect', itemWidth: 14, itemHeight: 8,
+                textStyle: { color: '#475569', fontSize: 12 },
+                type: 'scroll'
+            },
+            grid: { left: 12, right: 16, top: 52, bottom: 56, containLabel: true },
+            dataZoom: [{
+                type: 'slider',
+                height: 18, bottom: 8, borderColor: 'transparent',
+                backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)',
+                handleStyle: { color: '#6366f1' },
+                realtime: false,
+                throttle: 100,
+                filterMode: 'none'
+            }],
+            xAxis: {
+                data: [], boundaryGap: false,
+                axisLine: { lineStyle: { color: '#e2e8f0' } },
+                axisLabel: {
+                    color: '#94a3b8', fontSize: 11, hideOverlap: true, margin: 8,
+                    showMinLabel: true, showMaxLabel: true
+                },
+                axisTick: { show: false }
+            },
+            yAxis: [
+                { type: 'value', name: '延迟(ms)', min: 0, scale: false, position: 'left', nameTextStyle: { color: '#94a3b8' },
+                  axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true, formatter: fmtChartVal },
+                  splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
+                  axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11, hideOverlap: true },
+                  splitLine: { show: false } }
+            ],
+            series: [
+                { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
+                  hoverAnimation: false, itemStyle: { color: '#a5b4fc' }, lineStyle: { width: 1.2 }, data: [] },
+                { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
+                  hoverAnimation: false, itemStyle: { color: '#c4b5fd' }, lineStyle: { width: 1.2 }, data: [] },
+                { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
+                  hoverAnimation: false, itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 }, data: [] },
+                { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
+                  hoverAnimation: false, itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
+                { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
+                  hoverAnimation: false, itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
+            ]
+        });
+        bigChart.off('legendselectchanged');
+        bigChart.on('legendselectchanged', function () {
+            if (_chartRaw) applyChartData(_chartRaw);
+        });
         var now = new Date();
         var ago = new Date(now.getTime() - 2 * 3600 * 1000);
         function dlocal(d) {

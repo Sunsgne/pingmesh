@@ -5,7 +5,7 @@
 <title>Pingmesh - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260826f" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260827b" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -92,7 +92,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260827a"></script>
+<script src="assets/js/app.js?v=20260827b"></script>
 <script>
 $(function () {
 SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
@@ -253,7 +253,11 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
 
     function setupTimer() {
         if (timer) { clearInterval(timer); timer = null; }
-        if ($('#auto-refresh').is(':checked')) timer = setInterval(load, 60000);
+        if ($('#auto-refresh').is(':checked')) timer = setInterval(function () {
+            // 历史图弹窗打开时暂停刷新, 避免背后矩阵重绘拖慢鼠标
+            if ($('#sp-chart-modal').hasClass('open')) return;
+            load();
+        }, 60000);
     }
 
     function queryStr() {

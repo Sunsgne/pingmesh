@@ -275,7 +275,7 @@ button.chip { appearance: none; }
 .sp-modal-mask {
   display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, .55);
   z-index: 100; align-items: flex-start; justify-content: center;
-  padding: 6vh 16px; overflow-y: auto; backdrop-filter: blur(2px);
+  padding: 6vh 16px; overflow-y: auto;
 }
 .sp-modal-mask.open { display: flex; }
 .sp-modal {
