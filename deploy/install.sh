@@ -275,6 +275,14 @@ install -m 755 /tmp/pingmesh-bin "${INSTALL_DIR}/pingmesh"
 rm -f /tmp/pingmesh-bin
 setcap cap_net_raw+ep "${INSTALL_DIR}/pingmesh" || warn "setcap 失败, 将依赖 root 权限运行"
 
+# 全网状 ICMP 探测时提高 echo 回复配额, 避免内核限速造成假丢包(不降采样率)
+cat > /etc/sysctl.d/99-pingmesh-icmp.conf <<'SYSCTL'
+# ZENLENET PingMesh: allow higher ICMP echo reply rate under full-mesh probing
+net.ipv4.icmp_msgs_per_sec = 10000
+net.ipv4.icmp_msgs_burst = 500
+SYSCTL
+sysctl -p /etc/sysctl.d/99-pingmesh-icmp.conf >/dev/null 2>&1 || true
+
 # 组装启动参数(写入 systemd 引用的环境文件)
 build_opts() {
   local opts=""

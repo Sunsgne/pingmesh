@@ -3,6 +3,7 @@ package http
 import (
 	"crypto/tls"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -225,7 +226,7 @@ func toolIcmp(target string, out map[string]interface{}) {
 		}
 		stat.SendPk++
 	}
-	stat.LossPk = int(float64(loss) / float64(stat.SendPk) * 100)
+	stat.LossPk = math.Round(float64(loss)/float64(stat.SendPk)*10000) / 100
 	if stat.RevcPk > 0 {
 		stat.AvgDelay = stat.AvgDelay / float64(stat.RevcPk)
 	} else {
@@ -270,7 +271,7 @@ func toolTcp(target string, out map[string]interface{}) {
 		stat.SendPk++
 		time.Sleep(100 * time.Millisecond)
 	}
-	stat.LossPk = int(float64(loss) / float64(stat.SendPk) * 100)
+	stat.LossPk = math.Round(float64(loss)/float64(stat.SendPk)*10000) / 100
 	if stat.RevcPk > 0 {
 		stat.AvgDelay = stat.AvgDelay / float64(stat.RevcPk)
 	} else {

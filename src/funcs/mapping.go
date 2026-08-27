@@ -51,7 +51,7 @@ func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 			for i := 0; i < 3; i++ {
 				stat := g.PingSt{}
 				stat.MinDelay = -1
-				stat.LossPk = 0
+				lost := 0
 				delay, err := nettools.RunPing(ipaddr, 3*time.Second, 64, i)
 				if err == nil {
 					stat.AvgDelay = stat.AvgDelay + delay
@@ -65,10 +65,10 @@ func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 					seelog.Debug("[func:StartChinaMapPing IcmpPing] ID:", i, " IP:", ip)
 				} else {
 					seelog.Debug("[func:StartChinaMapPing IcmpPing] ID:", i, " IP:", ip, " | ", err)
-					stat.LossPk = stat.LossPk + 1
+					lost++
 				}
 				stat.SendPk = stat.SendPk + 1
-				stat.LossPk = int((float64(stat.LossPk) / float64(stat.SendPk)) * 100)
+				stat.LossPk = lossPercent(lost, stat.SendPk)
 				if stat.RevcPk > 0 {
 					stat.AvgDelay = stat.AvgDelay / float64(stat.RevcPk)
 				} else {
@@ -91,8 +91,9 @@ func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 	fT := 0
 	effCnt := 0
 	for _, stat := range statMap {
+		// 跳过全丢样本(单包探测失败时 LossPk=100), 最多跳过约 1/4
 		if len(statMap) > 1 && fT < int(math.Ceil(float64(len(statMap)))/4) {
-			if stat.LossPk == 3 {
+			if stat.LossPk >= 100 {
 				fT = fT + 1
 				continue
 			}
@@ -102,7 +103,7 @@ func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 		fStatDetail.AvgDelay = fStatDetail.AvgDelay + stat.AvgDelay
 		fStatDetail.SendPk = fStatDetail.SendPk + stat.SendPk
 		fStatDetail.RevcPk = fStatDetail.RevcPk + stat.RevcPk
-		fStatDetail.LossPk = fStatDetail.SendPk - fStatDetail.RevcPk
+		fStatDetail.LossPk = float64(fStatDetail.SendPk - fStatDetail.RevcPk)
 		effCnt = effCnt + 1
 	}
 	gMapVal := g.MapVal{}

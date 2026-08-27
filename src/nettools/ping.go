@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -25,7 +26,9 @@ var (
 	sockets   = map[string]net.PacketConn{}
 
 	pendingMu sync.Mutex
-	pending   = map[uint64]chan time.Duration{}
+	pending   = map[uint64]chan struct{}{}
+
+	chPool = sync.Pool{New: func() any { return make(chan struct{}, 1) }}
 )
 
 func pingKey(id, seq int) uint64 {
@@ -47,7 +50,18 @@ func getPingSocket(src string) (net.PacketConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 放大收发缓冲, 全网状高 pps 时避免 socket 队列溢出被内核丢掉回包(表现为齐丢)
+	if sc, ok := conn.(syscall.Conn); ok {
+		if rc, err := sc.SyscallConn(); err == nil {
+			_ = rc.Control(func(fd uintptr) {
+				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, 4<<20)
+				_ = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1<<20)
+			})
+		}
+	}
 	sockets[src] = conn
+	// 双读循环: 降低单读协程被调度饿死时整批 in-flight 同时超时的概率
+	go pingReadLoop(conn)
 	go pingReadLoop(conn)
 	return conn, nil
 }
@@ -77,7 +91,7 @@ func pingReadLoop(conn net.PacketConn) {
 		pendingMu.Unlock()
 		if ch != nil {
 			select {
-			case ch <- 0: // 仅作应答信号, 耗时由调用方计算
+			case ch <- struct{}{}:
 			default:
 			}
 		}
@@ -121,15 +135,27 @@ func RunPingFrom(IpAddr *net.IPAddr, maxrtt time.Duration, size int, srcip strin
 		return 0, err
 	}
 
-	ch := make(chan time.Duration, 1)
+	ch := chPool.Get().(chan struct{})
+	// drain if previous use left a signal
+	select {
+	case <-ch:
+	default:
+	}
 	key := pingKey(id, sq)
 	pendingMu.Lock()
 	pending[key] = ch
 	pendingMu.Unlock()
 	cleanup := func() {
 		pendingMu.Lock()
-		delete(pending, key)
+		if pending[key] == ch {
+			delete(pending, key)
+		}
 		pendingMu.Unlock()
+		select {
+		case <-ch:
+		default:
+		}
+		chPool.Put(ch)
 	}
 
 	sendOn := time.Now()
@@ -141,6 +167,11 @@ func RunPingFrom(IpAddr *net.IPAddr, maxrtt time.Duration, size int, srcip strin
 	defer timer.Stop()
 	select {
 	case <-ch:
+		// success: return channel to pool without double-drain issues
+		pendingMu.Lock()
+		delete(pending, key)
+		pendingMu.Unlock()
+		chPool.Put(ch)
 		return float64(time.Since(sendOn).Nanoseconds()) / 1e6, nil
 	case <-timer.C:
 		cleanup()

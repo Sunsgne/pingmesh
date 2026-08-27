@@ -1,6 +1,8 @@
 package funcs
 
 import (
+	"hash/fnv"
+	"math"
 	"net"
 	"strconv"
 	"sync"
@@ -31,22 +33,17 @@ func Ping() {
 		go StartAlert()
 		return
 	}
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxConcurrentTargets)
-	results := make(chan targetResult, len(targets))
-	for _, target := range targets {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(addr string) {
-			defer func() { <-sem; wg.Done() }()
-			results <- targetResult{Addr: addr, Stat: PingTask(addr)}
-		}(target)
+
+	// 节点间错峰: 各 agent 按 Addr 哈希错开启动, 避免整网在同一秒打满对端 ICMP 回复配额
+	if off := nodePhaseOffset(); off > 0 {
+		time.Sleep(off)
 	}
-	wg.Wait()
-	close(results)
-	batch := []targetResult{}
-	for r := range results {
-		batch = append(batch, r)
+
+	var batch []targetResult
+	if canPaceUniform(targets) {
+		batch = pingCyclePaced(targets)
+	} else {
+		batch = pingCycleParallel(targets)
 	}
 	PingStorageBatch(batch)
 	go StartAlert()
@@ -55,6 +52,133 @@ func Ping() {
 type targetResult struct {
 	Addr string
 	Stat g.PingSt
+}
+
+// lossPercent 真实丢包率(保留两位小数), 避免 int 截断把 0.4%~0.9% 记成 0
+func lossPercent(lost, sent int) float64 {
+	if sent <= 0 {
+		return 100
+	}
+	return math.Round(float64(lost)/float64(sent)*10000) / 100
+}
+
+// nodePhaseOffset 在周期余量内错开本节点启动时刻。
+// 平滑轮转耗时 ≈ count×interval(发包) + timeout(收尾)。
+func nodePhaseOffset() time.Duration {
+	interval, count, timeout, _ := probeParams()
+	cycleMs := count*interval + timeout + 200
+	spare := 55000 - cycleMs // 严格留余量, 避免跳轮
+	if spare <= 0 {
+		return 0
+	}
+	if spare > 1500 {
+		spare = 1500
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(g.Cfg.Addr))
+	return time.Duration(h.Sum32()%uint32(spare)) * time.Millisecond
+}
+
+// canPaceUniform 全部目标共用同一套全局探测参数时可走平滑轮转发包
+func canPaceUniform(targets []string) bool {
+	if len(targets) <= 1 {
+		return true
+	}
+	baseI, baseC, baseT, baseS := probeParams()
+	for _, addr := range targets {
+		i, c, t, s, src := probeParamsFor(addr)
+		if src != "" || i != baseI || c != baseC || t != baseT || s != baseS {
+			return false
+		}
+	}
+	return true
+}
+
+// pingCyclePaced 全目标轮转平滑发包:
+// 每目标仍保持原 interval/count(测量精度不变), 但把「同一时刻对 N 个目标齐射」
+// 摊成 interval/N 的均匀节拍, 显著降低本机突发与对端 icmp_msgs 限速误判丢包。
+func pingCyclePaced(targets []string) []targetResult {
+	interval, count, timeout, size := probeParams()
+	n := len(targets)
+	ipaddrs := make([]*net.IPAddr, n)
+	rtts := make([][]float64, n)
+	for i, addr := range targets {
+		rtts[i] = make([]float64, count)
+		ip, err := net.ResolveIPAddr("ip", addr)
+		if err != nil {
+			for j := 0; j < count; j++ {
+				rtts[i][j] = -1
+			}
+			seelog.Debug("[func:pingCyclePaced] ", addr, " unable to resolve")
+			continue
+		}
+		ipaddrs[i] = ip
+	}
+
+	slot := time.Duration(interval) * time.Millisecond / time.Duration(n)
+	if slot < time.Millisecond {
+		slot = time.Millisecond
+	}
+	to := time.Duration(timeout) * time.Millisecond
+
+	// 绝对时间轴节拍: 避免 time.Sleep 累计误差把整轮拖过 60s 跳轮。
+	// 单次落后只补到下一拍(微赶上), 不会在 worker 堵塞后打成大突发。
+	var pwg sync.WaitGroup
+	start := time.Now()
+	k := 0
+	for pi := 0; pi < count; pi++ {
+		for ti := 0; ti < n; ti++ {
+			if wait := time.Until(start.Add(time.Duration(k) * slot)); wait > 0 {
+				time.Sleep(wait)
+			}
+			k++
+			ip := ipaddrs[ti]
+			if ip == nil {
+				continue
+			}
+			pwg.Add(1)
+			go func(ti, pi int, ip *net.IPAddr) {
+				defer pwg.Done()
+				delay, err := nettools.RunPingFrom(ip, to, size, "")
+				if err == nil {
+					rtts[ti][pi] = delay
+				} else {
+					rtts[ti][pi] = -1
+				}
+			}(ti, pi, ip)
+		}
+	}
+	pwg.Wait()
+
+	batch := make([]targetResult, 0, n)
+	for i, addr := range targets {
+		batch = append(batch, targetResult{Addr: addr, Stat: finalizePingStat(rtts[i])})
+	}
+	seelog.Info("[func:pingCyclePaced] paced ", n, " targets x ", count, " pkts, slot=", slot)
+	return batch
+}
+
+// pingCycleParallel 链路级参数不一致时的回退: 每目标独立探测, 但仍做目标间相位错开
+func pingCycleParallel(targets []string) []targetResult {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrentTargets)
+	results := make(chan targetResult, len(targets))
+	n := len(targets)
+	for i, target := range targets {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, addr string) {
+			defer func() { <-sem; wg.Done() }()
+			results <- targetResult{Addr: addr, Stat: PingTask(addr, idx, n)}
+		}(i, target)
+	}
+	wg.Wait()
+	close(results)
+	batch := make([]targetResult, 0, n)
+	for r := range results {
+		batch = append(batch, r)
+	}
+	return batch
 }
 
 // probeParams 探测引擎参数(毫秒级, 适配 IPLC/IEPL 专线监控)
@@ -108,18 +232,22 @@ func probeParamsFor(addr string) (interval, count, timeout, size int, srcip stri
 	return
 }
 
-// PingTask 对单个目标按配置的间隔/包数/超时/包长连续探测, 返回统计(含抖动)
-func PingTask(addr string) g.PingSt {
+// PingTask 对单个目标按配置的间隔/包数/超时/包长连续探测, 返回统计(含抖动)。
+// targetIndex/targetCount 用于目标间相位错开(回退路径); 单目标探测可传 0,1。
+func PingTask(addr string, targetIndex, targetCount int) g.PingSt {
 	seelog.Debug("[func:PingTask] start ", addr)
 	interval, count, timeout, size, srcip := probeParamsFor(addr)
-	stat := g.PingSt{}
-	stat.MinDelay = -1
-	lossPK := 0
 	ipaddr, err := net.ResolveIPAddr("ip", addr)
 	if err != nil {
-		stat.LossPk = 100
+		stat := g.PingSt{LossPk: 100}
 		seelog.Debug("[func:PingTask] ", addr, " unable to resolve")
 		return stat
+	}
+	if targetCount > 1 && targetIndex >= 0 {
+		phase := time.Duration(targetIndex) * time.Duration(interval) * time.Millisecond / time.Duration(targetCount)
+		if phase > 0 {
+			time.Sleep(phase)
+		}
 	}
 	// 按间隔节拍异步发包: 发送节奏不受超时影响,
 	// 整轮耗时 ≈ (count-1)×interval + timeout, 丢包不会拖长周期导致跳轮断点
@@ -141,6 +269,15 @@ func PingTask(addr string) g.PingSt {
 		}
 	}
 	pwg.Wait()
+	stat := finalizePingStat(rtts)
+	seelog.Debug("[func:PingTask] finish ", addr, " avg:", stat.AvgDelay, " loss:", stat.LossPk, " jitter:", stat.Jitter)
+	return stat
+}
+
+func finalizePingStat(rtts []float64) g.PingSt {
+	stat := g.PingSt{}
+	stat.MinDelay = -1
+	lossPK := 0
 	prev := -1.0
 	var jitterSum float64
 	jitterCnt := 0
@@ -155,7 +292,6 @@ func PingTask(addr string) g.PingSt {
 				stat.MinDelay = delay
 			}
 			stat.RevcPk++
-			// 抖动: 相邻成功样本 RTT 差
 			if prev >= 0 {
 				d := delay - prev
 				if d < 0 {
@@ -169,7 +305,7 @@ func PingTask(addr string) g.PingSt {
 			lossPK++
 		}
 	}
-	stat.LossPk = int((float64(lossPK) / float64(stat.SendPk)) * 100)
+	stat.LossPk = lossPercent(lossPK, stat.SendPk)
 	if stat.RevcPk > 0 {
 		stat.AvgDelay = stat.AvgDelay / float64(stat.RevcPk)
 	} else {
@@ -178,7 +314,6 @@ func PingTask(addr string) g.PingSt {
 	if jitterCnt > 0 {
 		stat.Jitter = jitterSum / float64(jitterCnt)
 	}
-	seelog.Debug("[func:PingTask] finish ", addr, " avg:", stat.AvgDelay, " loss:", stat.LossPk, " jitter:", stat.Jitter)
 	return stat
 }
 

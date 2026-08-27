@@ -44,6 +44,11 @@ gunzip -c /tmp/pingmesh-bin.gz > "${DIR}/pingmesh"
 rm -f /tmp/pingmesh-bin.gz
 chmod 755 "${DIR}/pingmesh"
 setcap cap_net_raw+ep "${DIR}/pingmesh" 2>/dev/null || true
+cat > /etc/sysctl.d/99-pingmesh-icmp.conf <<'SYSCTL'
+net.ipv4.icmp_msgs_per_sec = 10000
+net.ipv4.icmp_msgs_burst = 500
+SYSCTL
+sysctl -p /etc/sysctl.d/99-pingmesh-icmp.conf >/dev/null 2>&1 || true
 cat > /etc/systemd/system/pingmesh.service <<UNIT
 [Unit]
 Description=ZENLENET PingMesh Agent
