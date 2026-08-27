@@ -93,7 +93,7 @@ var SP = (function () {
     function fmtMs(v) {
         v = parseFloat(v);
         if (isNaN(v)) return '-';
-        return v >= 100 ? v.toFixed(0) : v.toFixed(1);
+        return v.toFixed(2);
     }
     function delayLevel(delay, loss, baseline) {
         // 延迟: 相对基线涨幅 ≥10%黄 / ≥20%橙 / ≥30%红
@@ -122,8 +122,11 @@ var SP = (function () {
         return (delay - baseline) / baseline * 100;
     }
 
+    function round2(n) {
+        return Math.round(n * 100) / 100;
+    }
     function sanitizeSeries(arr) {
-        // API 用 "-" 表示空洞; 统一转 null, 避免异常打断渲染
+        // API 用 "-" 表示空洞; 统一转 null, 并保留两位小数(延迟/抖动展示够用, 也减轻图表负担)
         if (!arr || !arr.length) return [];
         var out = new Array(arr.length);
         for (var i = 0; i < arr.length; i++) {
@@ -131,10 +134,17 @@ var SP = (function () {
             if (v === '-' || v === '' || v === null || typeof v === 'undefined') out[i] = null;
             else {
                 var n = typeof v === 'number' ? v : parseFloat(v);
-                out[i] = isNaN(n) ? null : n;
+                out[i] = isNaN(n) ? null : round2(n);
             }
         }
         return out;
+    }
+    function chartTooltipValue(params) {
+        // ECharts 系列 valueFormatter / tooltip 统一两位小数
+        if (params == null || params.value == null || params.value === '-') return '-';
+        var n = typeof params.value === 'number' ? params.value : parseFloat(params.value);
+        if (isNaN(n)) return '-';
+        return n.toFixed(2);
     }
 
     function lastMetric(avgdelay, losspk) {
@@ -177,7 +187,12 @@ var SP = (function () {
                 borderWidth: 0,
                 padding: [8, 12],
                 textStyle: { color: '#e2e8f0', fontSize: 11 },
-                confine: true
+                confine: true,
+                valueFormatter: function (v) {
+                    if (v == null || v === '-') return '-';
+                    var n = typeof v === 'number' ? v : parseFloat(v);
+                    return isNaN(n) ? '-' : n.toFixed(2);
+                }
             },
             xAxis: {
                 data: [],
@@ -206,14 +221,14 @@ var SP = (function () {
             ],
             series: [
                 {
-                    name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
-                    clip: true, itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
+                    name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true,
+                    clip: true, sampling: 'lttb', itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
                     areaStyle: area,
                     data: []
                 },
                 {
                     name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
-                    clip: true, itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: []
+                    clip: true, sampling: 'lttb', itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: []
                 }
             ]
         };
@@ -298,7 +313,23 @@ var SP = (function () {
                     backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [10, 14],
                     textStyle: { color: '#e2e8f0', fontSize: 12 },
                     confine: true,
-                    axisPointer: { type: 'cross', label: { backgroundColor: '#4f46e5' } }
+                    transitionDuration: 0,
+                    axisPointer: {
+                        type: 'line',
+                        label: {
+                            backgroundColor: '#4f46e5',
+                            formatter: function (p) {
+                                if (p.axisDimension === 'x') return p.value;
+                                var n = parseFloat(p.value);
+                                return isNaN(n) ? p.value : n.toFixed(2);
+                            }
+                        }
+                    },
+                    valueFormatter: function (v) {
+                        if (v == null || v === '-') return '-';
+                        var n = typeof v === 'number' ? v : parseFloat(v);
+                        return isNaN(n) ? '-' : n.toFixed(2);
+                    }
                 },
                 legend: {
                     data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
@@ -311,7 +342,8 @@ var SP = (function () {
                 dataZoom: [{
                     height: 20, bottom: 8, borderColor: 'transparent',
                     backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)',
-                    handleStyle: { color: '#6366f1' }
+                    handleStyle: { color: '#6366f1' },
+                    throttle: 50
                 }],
                 xAxis: {
                     data: [], boundaryGap: false,
@@ -324,25 +356,25 @@ var SP = (function () {
                 },
                 yAxis: [
                     { type: 'value', name: '延迟(ms)', min: 0, scale: false, position: 'left', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true },
+                      axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true, formatter: function (v) { return Number(v).toFixed(2); } },
                       splitLine: { lineStyle: { color: '#f1f5f9' } } },
                     { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
                       axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11, hideOverlap: true },
                       splitLine: { show: false } }
                 ],
                 series: [
-                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
+                    { name: '最大延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
                       itemStyle: { color: '#a5b4fc' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
+                    { name: '最小延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
                       itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 }, lineStyle: { width: 1.2 }, data: [] },
-                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
+                    { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
                       itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
                       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                           { offset: 0, color: 'rgba(99,102,241,.30)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
                       data: [] },
-                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
+                    { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true, sampling: 'lttb',
                       itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
-                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
+                    { name: '抖动', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true, sampling: 'lttb',
                       itemStyle: { color: '#f59e0b' }, lineStyle: { width: 1.6 }, data: [] }
                 ]
             });
