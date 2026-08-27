@@ -139,13 +139,6 @@ var SP = (function () {
         }
         return out;
     }
-    function chartTooltipValue(params) {
-        // ECharts 系列 valueFormatter / tooltip 统一两位小数
-        if (params == null || params.value == null || params.value === '-') return '-';
-        var n = typeof params.value === 'number' ? params.value : parseFloat(params.value);
-        if (isNaN(n)) return '-';
-        return n.toFixed(2);
-    }
 
     function lastMetric(avgdelay, losspk) {
         var lastDelay = '-', lastLoss = '-';
