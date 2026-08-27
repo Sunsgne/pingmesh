@@ -5,8 +5,7 @@
 <title>反向 Ping - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/bootstrap.min.css" rel="stylesheet">
-<link href="assets/css/modern.css" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260826f" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -32,7 +31,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js"></script>
+<script src="assets/js/app.js?v=20260826f"></script>
 <script>
 $(function () {
 SP.init('reverse', '反向 Ping').done(function (ctx) {
@@ -93,41 +92,33 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
 
             var chart = echarts.init(document.getElementById(id));
             miniCharts.push(chart);
-            chart.setOption({
-                grid: { left: 38, right: 12, top: 10, bottom: 22 },
-                tooltip: { trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12], textStyle: { color: '#e2e8f0', fontSize: 11 } },
-                xAxis: { data: [], boundaryGap: false, axisLabel: { fontSize: 10, color: '#94a3b8' }, axisLine: { show: false }, axisTick: { show: false } },
-                yAxis: [
-                    { type: 'value', axisLabel: { fontSize: 10, color: '#94a3b8' }, splitLine: { lineStyle: { color: '#f1f5f9' } }, splitNumber: 3 },
-                    { type: 'value', min: 0, max: 100, show: false }
-                ],
-                series: [
-                    { name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true,
-                      itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
-                      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                          { offset: 0, color: 'rgba(99,102,241,.28)' }, { offset: 1, color: 'rgba(99,102,241,.02)' }]) },
-                      data: [] },
-                    { name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
-                      itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: [] }
-                ]
-            });
+            if (SP.bindChartResize) SP.bindChartResize(miniCharts);
+            try {
+                chart.setOption(SP.miniChartOption ? SP.miniChartOption() : {});
+            } catch (err) {
+                console.error('mini chart init', err);
+            }
             $.getJSON(apiurl, function (d) {
-                var labels = $.map(d.lastcheck, function (v) { return v.substring(11, 16); });
-                chart.setOption({
-                    xAxis: { data: labels },
-                    series: [{ name: '延迟', data: d.avgdelay }, { name: '丢包', data: d.losspk }]
-                });
-                var lastDelay = '-', lastLoss = '-';
-                for (var k = d.lastcheck.length - 1; k >= 0; k--) {
-                    if (parseFloat(d.avgdelay[k]) > 0 || parseFloat(d.losspk[k]) > 0) {
-                        lastDelay = SP.fmtMs(d.avgdelay[k]); lastLoss = d.losspk[k];
-                        break;
-                    }
+                var labels = $.map(d.lastcheck || [], function (v) { return String(v).substring(11, 16); });
+                var avg = SP.sanitizeSeries ? SP.sanitizeSeries(d.avgdelay) : d.avgdelay;
+                var loss = SP.sanitizeSeries ? SP.sanitizeSeries(d.losspk) : d.losspk;
+                try {
+                    chart.setOption({
+                        xAxis: { data: labels },
+                        series: [{ name: '延迟', data: avg }, { name: '丢包', data: loss }]
+                    });
+                    chart.resize();
+                } catch (err2) {
+                    console.error('mini chart data', err2);
                 }
-                $('#' + id + '-delay').text(lastDelay + ' ms');
-                var lossBadge = $('#' + id + '-loss').text(lastLoss + ' %');
-                if (parseFloat(lastLoss) >= 20) lossBadge.removeClass('green').addClass('red');
-                else if (parseFloat(lastLoss) >= 5) lossBadge.removeClass('green').addClass('yellow');
+                var m = SP.lastMetric ? SP.lastMetric(d.avgdelay, d.losspk) : { delay: '-', loss: '-' };
+                $('#' + id + '-delay').text(m.delay + ' ms');
+                var lossBadge = $('#' + id + '-loss').text(m.loss + ' %');
+                if (parseFloat(m.loss) >= 20) lossBadge.removeClass('green yellow').addClass('red');
+                else if (parseFloat(m.loss) >= 5) lossBadge.removeClass('green red').addClass('yellow');
+                else lossBadge.removeClass('red yellow').addClass('green');
+            }).fail(function () {
+                $('#' + id + '-delay').text('失败');
             });
         });
         $('#empty').toggle(found === 0);

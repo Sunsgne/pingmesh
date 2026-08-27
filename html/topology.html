@@ -5,42 +5,51 @@
 <title>网络拓扑 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/bootstrap.min.css" rel="stylesheet">
-<link href="assets/css/modern.css" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260826f" rel="stylesheet">
 </head>
 <body>
 <div id="app">
 
-  <div class="grid" style="grid-template-columns: 1fr 280px;">
+  <div class="topo-layout">
     <div class="card">
-      <div class="card-head" style="flex-wrap:wrap;row-gap:8px">
+      <div class="card-head">
         <h3>拓扑</h3>
-        <span class="sub">实线 = 正常，红色虚线 = 告警；<b>点击连线可查看告警判定诊断</b>，可拖拽缩放</span>
+        <span class="sub">实线 = 正常，红色虚线 = 告警；点击连线查看诊断</span>
         <span class="spacer"></span>
-        <select class="input" id="topo-view" style="width:auto;padding:5px 8px" title="节点很多时建议用「按分组聚合」总览，点击分组可下钻">
-          <option value="all">全部节点</option>
-          <option value="group">按分组聚合</option>
-        </select>
-        <select class="input" id="topo-group" style="width:auto;max-width:150px;padding:5px 8px" title="只看某个分组">
-          <option value="">全部分组</option>
-        </select>
-        <select class="input" id="topo-node" style="width:auto;max-width:180px;padding:5px 8px" title="只看某个节点">
-          <option value="">全部节点</option>
-        </select>
-        <label class="flex" style="gap:5px;font-size:12.5px;color:var(--sp-text-2);cursor:pointer;margin:0">
-          <input type="checkbox" id="topo-bad-only" style="margin:0">只看异常
-        </label>
-        <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
-          <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
-          声音报警
-        </span>
       </div>
-      <div class="card-body" style="position:relative">
-        <div id="topo-chart" style="width:100%;height:calc(100vh - 270px);min-height:460px"></div>
-        <div id="topo-empty" class="empty-state" style="display:none;position:absolute;left:0;right:0;top:45%;pointer-events:none">
-          当前筛选条件下没有匹配的节点 / 链路
+      <div class="card-body">
+        <div class="page-toolbar">
+          <div class="tb-group">
+            <span class="tb-label">视图</span>
+            <select class="input" id="topo-view" style="width:auto;min-width:120px;padding:5px 8px" title="节点很多时建议用「按分组聚合」">
+              <option value="all">全部节点</option>
+              <option value="group">按分组聚合</option>
+            </select>
+            <select class="input" id="topo-group" style="width:auto;max-width:150px;padding:5px 8px" title="只看某个分组">
+              <option value="">全部分组</option>
+            </select>
+            <select class="input" id="topo-node" style="width:auto;max-width:180px;padding:5px 8px" title="只看某个节点">
+              <option value="">全部节点</option>
+            </select>
+          </div>
+          <div class="tb-group">
+            <label class="mesh-check" style="border:none;padding:4px 0;background:transparent">
+              <input type="checkbox" id="topo-bad-only">
+              <span>只看异常</span>
+            </label>
+            <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
+              <label class="switch"><input type="checkbox" id="sound-toggle" checked><span class="track"></span></label>
+              声音报警
+            </span>
+          </div>
         </div>
-        <div id="topo-hint" class="hint" style="position:absolute;left:18px;bottom:10px;display:none"></div>
+        <div style="position:relative">
+          <div id="topo-chart" class="topo-chart"></div>
+          <div id="topo-empty" class="empty-state" style="display:none;position:absolute;left:0;right:0;top:45%;pointer-events:none">
+            当前筛选条件下没有匹配的节点 / 链路
+          </div>
+          <div id="topo-hint" class="hint" style="position:absolute;left:18px;bottom:10px;display:none"></div>
+        </div>
       </div>
     </div>
 
@@ -51,7 +60,7 @@
           <table class="sp-table" id="node-status"><tbody></tbody></table>
         </div>
       </div>
-      <a class="btn" style="width:100%" href="alerts.html">查看报警记录 &rarr;</a>
+      <a class="btn block" href="alerts.html">查看报警记录 &rarr;</a>
     </div>
   </div>
 
@@ -67,7 +76,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js"></script>
+<script src="assets/js/app.js?v=20260826f"></script>
 <script>
 $(function () {
 SP.init('topology', '网络拓扑').done(function (ctx) {
