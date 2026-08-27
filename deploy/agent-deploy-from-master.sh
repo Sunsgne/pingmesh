@@ -79,23 +79,16 @@ REMOTE
   fi
 }
 
-AGENTS=(
-  "106.75.160.24 20001 can-xxg 10.100.1.4"
-  "42.240.152.238 20001 can-hxy 10.100.1.19"
-  "217.217.29.250 22 fra 10.100.1.7"
-  "129.227.133.75 22 hkg2 10.100.1.12"
-  "163.53.245.136 20001 hkg3 10.100.1.13"
-  "149.119.41.156 22 lax 10.100.1.10"
-  "106.38.203.8 20001 pek 10.100.1.15"
-  "10.100.1.20 22 PVG-GDS 10.100.1.20"
-  "113.31.161.79 20001 sjhl 10.100.1.5"
-  "109.244.32.190 20001 xtl 10.100.1.1"
-  "149.51.125.226 20001 sin2-gs 10.100.1.11"
-  "59.36.211.118 20001 szx 10.100.1.17"
-  "192.169.120.12 22 tpe 10.100.1.18"
-  "10.100.1.2 22 TYO-EQTY8 10.100.1.2"
-  "10.100.1.9 22 TYO-EQTY7 10.100.1.9"
-)
+AGENTS=()
+while read -r host port name addr _; do
+  [[ -z "${host:-}" || "$host" =~ ^# ]] && continue
+  AGENTS+=("$host $port $name $addr")
+done < "${SCRIPT_DIR}/agents.list"
+
+if ((${#AGENTS[@]} == 0)); then
+  err "未找到 Agent 清单: ${SCRIPT_DIR}/agents.list"
+  exit 1
+fi
 
 apt-get install -y -qq sshpass >/dev/null 2>&1 || true
 OK=0 FAIL=0

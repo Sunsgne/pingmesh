@@ -99,6 +99,8 @@ deploy_agents_from_master() {
   base64 /tmp/pingmesh-bin.gz | ssh_run "$MASTER_PUBLIC" 22 "base64 -d > /tmp/pingmesh-bin.gz"
   base64 /workspace/deploy/agent-deploy-from-master.sh | ssh_run "$MASTER_PUBLIC" 22 \
     "base64 -d > ${INSTALL_DIR}/agent-deploy.sh && chmod +x ${INSTALL_DIR}/agent-deploy.sh"
+  base64 /workspace/deploy/agents.list | ssh_run "$MASTER_PUBLIC" 22 \
+    "base64 -d > ${INSTALL_DIR}/agents.list"
   base64 /workspace/deploy/lib.sh | ssh_run "$MASTER_PUBLIC" 22 \
     "base64 -d > ${INSTALL_DIR}/lib.sh"
   if [[ -f "${SCRIPT_DIR}/.env" ]]; then

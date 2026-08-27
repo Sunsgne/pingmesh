@@ -1,5 +1,7 @@
 package g
 
+import "strings"
+
 // 新节点加入时的默认报警阈值
 var defaultTopoRule = map[string]string{
 	"Thdavgdelay": "200",
@@ -38,11 +40,15 @@ func hasTopo(list []map[string]string, addr string) bool {
 // 新节点监测所有既有节点, 所有开启探测的既有节点监测新节点。
 func AddMeshNode(name, addr string) {
 	member, ok := Cfg.Network[addr]
+	displayName := strings.TrimSpace(name)
 	if !ok {
-		member = NetworkMember{Name: name, Addr: addr, Pingmesh: true, Ping: []string{}, Topology: []map[string]string{}}
+		member = NetworkMember{Name: displayName, Addr: addr, Pingmesh: true, Ping: []string{}, Topology: []map[string]string{}}
+	} else if existing := strings.TrimSpace(member.Name); existing != "" {
+		// 已配置过的展示名不因 Agent 重连的 -name 参数被覆盖
+		displayName = existing
+	} else {
+		member.Name = displayName
 	}
-	// 显式 join 提供的名字生效(重启重放旧参数的场景由 agent 侧参数指纹拦截)
-	member.Name = name
 	member.Addr = addr
 	member.Pingmesh = true
 	if member.Ping == nil {
@@ -68,7 +74,7 @@ func AddMeshNode(name, addr string) {
 				changed = true
 			}
 			if !hasTopo(m.Topology, addr) {
-				m.Topology = append(m.Topology, newTopoEntry(addr, name))
+				m.Topology = append(m.Topology, newTopoEntry(addr, displayName))
 				changed = true
 			}
 			if changed {
