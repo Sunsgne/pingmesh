@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,6 +114,10 @@ func ClusterSync() {
 		seelog.Info("[func:ClusterSync] adopting fresher config from ", bestEp,
 			" (epoch ", best.Epoch, " > local ", local.Epoch, ")")
 		syncFromEndpoint("http://" + bestEp + "/api/config.json")
+	} else if g.Cfg.Mode["Type"] == "cloud" {
+		// Agent 在 MasterAuto 下会探测大量节点; 高负载时互探可能全部超时,
+		// 导致 LWW 选不出同步源。此时仍向 Mode.Endpoint(主节点) 兜底拉取。
+		tryCloudEndpointSync(local)
 	} else if selfActing {
 		seelog.Debug("[func:ClusterSync] self is acting master, config is authoritative (epoch ", local.Epoch, ")")
 	} else {
@@ -201,6 +206,53 @@ func probeAll(eps []string, timeout time.Duration) map[string]clusterPeerInfo {
 	}
 	wg.Wait()
 	return out
+}
+
+// tryCloudEndpointSync cloud Agent 向主 Endpoint 兜底同步(仅当远端纪元更新)
+func tryCloudEndpointSync(local g.CfgVersion) {
+	if g.Cfg.Mode == nil {
+		return
+	}
+	ep := strings.TrimSpace(g.Cfg.Mode["Endpoint"])
+	if ep == "" {
+		return
+	}
+	hostport := cloudEndpointHostPort(ep)
+	if hostport == "" || g.IsSelfEndpoint(hostport) {
+		return
+	}
+	info, ok := probeClusterInfo(hostport, 4*time.Second)
+	if !ok {
+		seelog.Info("[func:ClusterSync] cloud endpoint ", hostport, " unreachable, skip fallback sync")
+		return
+	}
+	if info.Legacy {
+		seelog.Info("[func:ClusterSync] cloud endpoint ", hostport, " legacy/unauthorized, skip fallback sync")
+		return
+	}
+	remote := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime}
+	if !g.Fresher(remote, local) {
+		return
+	}
+	seelog.Info("[func:ClusterSync] fallback sync from cloud endpoint ", ep,
+		" (epoch ", remote.Epoch, " > local ", local.Epoch, ")")
+	syncFromEndpoint(ep)
+}
+
+func cloudEndpointHostPort(endpoint string) string {
+	endpoint = strings.TrimSpace(endpoint)
+	if endpoint == "" {
+		return ""
+	}
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	if i := strings.Index(endpoint, "/"); i >= 0 {
+		endpoint = endpoint[:i]
+	}
+	return endpoint
 }
 
 // syncFromEndpoint 从指定 /api/config.json 拉取并落盘配置(沿用加密同步通道)
