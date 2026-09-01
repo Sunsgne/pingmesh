@@ -279,12 +279,56 @@ var SP = (function () {
         var n = typeof v === 'number' ? v : parseFloat(v);
         return isNaN(n) ? '-' : n.toFixed(2);
     }
-    function loadChart(apiurl, start, end) {
-        var url = apiurl;
-        if (start && end) {
-            var sep = apiurl.indexOf('proxy.json') >= 0 ? '%26' : '&';
-            url += sep + 'starttime=' + encodeURIComponent(start) + sep + 'endtime=' + encodeURIComponent(end);
+    function dlocal(d) {
+        function p(n) { return n < 10 ? '0' + n : n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function fmtLocalMinute(d) {
+        function p(n) { return n < 10 ? '0' + n : n; }
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function rangeFromPreset(mins) {
+        var now = new Date();
+        var ago = new Date(now.getTime() - mins * 60 * 1000);
+        return { start: fmtLocalMinute(ago), end: fmtLocalMinute(now) };
+    }
+    function pingUrlWithRange(apiurl, start, end) {
+        if (!start || !end) return apiurl;
+        var sep = apiurl.indexOf('proxy.json') >= 0 ? '%26' : '&';
+        return apiurl + sep + 'starttime=' + encodeURIComponent(start) + sep + 'endtime=' + encodeURIComponent(end);
+    }
+    function meshQueryString(mins, custom) {
+        if (custom && custom.start && custom.end) {
+            return '?start=' + encodeURIComponent(custom.start) + '&end=' + encodeURIComponent(custom.end);
         }
+        return '?mins=' + (mins || 15);
+    }
+    function proxyMeshUrl(addr, port, mins, custom) {
+        var qs = meshQueryString(mins, custom);
+        return '/api/proxy.json?g=http://' + addr + ':' + port + '/api/pingmesh.json' + qs.replace(/&/g, '%26');
+    }
+    function timeWindowLabel(mins, custom) {
+        if (custom) return custom.start + ' ~ ' + custom.end;
+        if (mins < 60) return '近' + mins + '分钟';
+        if (mins < 1440) return '近' + Math.round(mins / 60) + '小时';
+        if (mins === 1440) return '近1天';
+        return '近' + Math.round(mins / 1440) + '天';
+    }
+    function chartAxisLabels(lastcheck) {
+        if (!lastcheck || !lastcheck.length) return [];
+        var showDate = lastcheck.length > 180;
+        var out = new Array(lastcheck.length);
+        for (var i = 0; i < lastcheck.length; i++) {
+            var s = String(lastcheck[i]);
+            if (showDate && s.length >= 16) out[i] = s.substring(5, 16);
+            else if (s.length >= 16) out[i] = s.substring(11, 16);
+            else out[i] = s;
+        }
+        return out;
+    }
+
+    function loadChart(apiurl, start, end) {
+        var url = pingUrlWithRange(apiurl, start, end);
         $('#sp-chart-loading').html('<span class="spinner"></span>');
         $.getJSON(url).done(function (data) {
             $('#sp-chart-loading').html('');
@@ -327,7 +371,7 @@ var SP = (function () {
             return { color: 'rgba(99,102,241,.15)' };
         }
     }
-    function openPingChart(title, apiurl) {
+    function openPingChart(title, apiurl, start, end) {
         ensureChartModal();
         S._chartUrl = apiurl;
         $('#sp-chart-title').text(title);
@@ -420,15 +464,10 @@ var SP = (function () {
         } else {
             bigChart.resize();
         }
-        var now = new Date();
-        var ago = new Date(now.getTime() - 2 * 3600 * 1000);
-        function dlocal(d) {
-            function p(n) { return n < 10 ? '0' + n : n; }
-            return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
-        }
-        $('#sp-chart-start').val(dlocal(ago));
-        $('#sp-chart-end').val(dlocal(now));
-        loadChart(apiurl);
+        var range = (start && end) ? { start: start, end: end } : rangeFromPreset(120);
+        $('#sp-chart-start').val(range.start.replace(' ', 'T'));
+        $('#sp-chart-end').val(range.end.replace(' ', 'T'));
+        loadChart(apiurl, range.start, range.end);
     }
 
     /* ---------- password modal ---------- */
@@ -769,6 +808,13 @@ var SP = (function () {
         delayLevel: delayLevel,
         delayRisePct: delayRisePct,
         openPingChart: openPingChart,
+        dlocal: dlocal,
+        rangeFromPreset: rangeFromPreset,
+        pingUrlWithRange: pingUrlWithRange,
+        meshQueryString: meshQueryString,
+        proxyMeshUrl: proxyMeshUrl,
+        timeWindowLabel: timeWindowLabel,
+        chartAxisLabels: chartAxisLabels,
         miniChartOption: miniChartOption,
         bindChartResize: bindChartResize,
         sanitizeSeries: sanitizeSeries,

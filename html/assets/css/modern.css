@@ -465,6 +465,8 @@ button.chip { appearance: none; }
   letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
 }
 .page-toolbar .spacer { flex: 1 1 12px; }
+.page-toolbar #custom-range { gap: 8px; align-items: center; flex-wrap: wrap; }
+.page-toolbar #range-hint { white-space: nowrap; }
 
 .info-banner {
   background: var(--sp-primary-soft); border: 1px solid #c7d2fe; color: #3730a3;
@@ -691,6 +693,9 @@ body.login-page {
   .chip { padding: 5px 11px; font-size: 12px; }
   .mesh-stats .ms { min-width: 96px; padding: 8px 12px; }
   .mesh-stats .ms b { font-size: 16px; }
+  .page-toolbar { padding: 10px 12px; gap: 10px; }
+  .page-toolbar .tb-label { display: none; }
+  .page-toolbar #range-hint { display: none; }
   .mesh-toolbar { padding: 10px 12px; gap: 10px; }
   .mesh-toolbar .tb-label { display: none; }
   .ping-card .mini-chart { height: 118px; }

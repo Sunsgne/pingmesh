@@ -5,7 +5,7 @@
 <title>概览 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260827c" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260901a" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -21,11 +21,11 @@
     </div>
     <div class="card stat-card">
       <div class="icon ic-yellow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-      <div><div class="val" id="st-delay">-</div><div class="lbl">平均延迟 (近15分钟)</div></div>
+      <div><div class="val" id="st-delay">-</div><div class="lbl" id="st-delay-lbl">平均延迟 (近2小时)</div></div>
     </div>
     <div class="card stat-card">
       <div class="icon ic-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div><div class="val" id="st-bad">-</div><div class="lbl">异常目标 (近15分钟)</div></div>
+      <div><div class="val" id="st-bad">-</div><div class="lbl" id="st-bad-lbl">异常目标 (近2小时)</div></div>
     </div>
   </div>
 
@@ -37,6 +37,28 @@
       <span class="muted" id="loading"></span>
     </div>
     <div class="card-body">
+      <div class="page-toolbar" id="time-toolbar">
+        <div class="tb-group">
+          <span class="tb-label">时间</span>
+          <div class="seg" id="win-seg">
+            <button type="button" data-v="15">15分钟</button>
+            <button type="button" data-v="60">1小时</button>
+            <button type="button" data-v="120" class="active">2小时</button>
+            <button type="button" data-v="360">6小时</button>
+            <button type="button" data-v="1440">24小时</button>
+            <button type="button" data-v="custom">自定义</button>
+          </div>
+          <span id="custom-range" style="display:none" class="flex">
+            <input type="datetime-local" class="input chart-time" id="cr-start">
+            <span class="muted">~</span>
+            <input type="datetime-local" class="input chart-time" id="cr-end">
+            <button type="button" class="btn primary sm" id="cr-apply">应用</button>
+          </span>
+        </div>
+        <span class="spacer"></span>
+        <span class="muted" id="range-hint" style="font-size:11.5px"></span>
+        <span class="muted" style="font-size:11.5px">北京时间 (UTC+8)</span>
+      </div>
       <div class="chips mb-4" id="agent-chips"></div>
       <div class="grid cols-3" id="charts"></div>
       <div class="empty-state" id="empty" style="display:none">
@@ -50,14 +72,95 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260827c"></script>
+<script src="assets/js/app.js?v=20260901a"></script>
 <script>
 $(function () {
 SP.init('index', '概览').done(function (ctx) {
     var rootCfg = ctx.config;
     var miniCharts = [];
+    var timeMins = 120, timeCustom = null;
+    var currentAgent = { addr: null, cfg: null, isSelf: false };
+
+    try {
+        var saved = JSON.parse(localStorage.getItem('index-time') || 'null');
+        if (saved) {
+            if (saved.custom && saved.custom.start && saved.custom.end) {
+                timeCustom = saved.custom;
+                timeMins = 120;
+            } else if (saved.mins) {
+                timeMins = saved.mins;
+                timeCustom = null;
+            }
+        }
+    } catch (e) {}
+
+    function saveTimePref() {
+        try {
+            localStorage.setItem('index-time', JSON.stringify({ mins: timeMins, custom: timeCustom }));
+        } catch (e2) {}
+    }
+
+    function currentRange() {
+        if (timeCustom) return timeCustom;
+        return SP.rangeFromPreset(timeMins);
+    }
+
+    function syncTimeUI() {
+        if (timeCustom) {
+            $('#win-seg button').removeClass('active');
+            $('#win-seg button[data-v="custom"]').addClass('active');
+            $('#custom-range').show();
+            $('#cr-start').val(timeCustom.start.replace(' ', 'T'));
+            $('#cr-end').val(timeCustom.end.replace(' ', 'T'));
+        } else {
+            $('#custom-range').hide();
+            $('#win-seg button').removeClass('active');
+            $('#win-seg button[data-v="' + timeMins + '"]').addClass('active');
+        }
+        var label = SP.timeWindowLabel(timeCustom ? null : timeMins, timeCustom);
+        $('#st-delay-lbl').text('平均延迟 (' + label + ')');
+        $('#st-bad-lbl').text('异常目标 (' + label + ')');
+        var r = currentRange();
+        $('#range-hint').text(r.start + ' ~ ' + r.end);
+    }
+
+    function applyTimeRange() {
+        saveTimePref();
+        syncTimeUI();
+        if (currentAgent.addr) {
+            drawStats(currentAgent.addr, currentAgent.cfg, currentAgent.isSelf);
+            drawCharts(currentAgent.addr, currentAgent.cfg, currentAgent.isSelf);
+        }
+    }
+
+    $('#win-seg button').click(function () {
+        var v = $(this).attr('data-v');
+        if (v === 'custom') {
+            $('#win-seg button').removeClass('active');
+            $(this).addClass('active');
+            $('#custom-range').show();
+            if (!$('#cr-start').val()) {
+                var r = SP.rangeFromPreset(360);
+                $('#cr-start').val(r.start.replace(' ', 'T'));
+                $('#cr-end').val(r.end.replace(' ', 'T'));
+            }
+            return;
+        }
+        timeCustom = null;
+        timeMins = parseInt(v, 10);
+        applyTimeRange();
+    });
+
+    $('#cr-apply').click(function () {
+        var s = $('#cr-start').val(), e = $('#cr-end').val();
+        if (!s || !e) { SP.toast('请选择起止时间', 'err'); return; }
+        if (s >= e) { SP.toast('结束时间需晚于开始时间', 'err'); return; }
+        timeCustom = { start: s.replace('T', ' '), end: e.replace('T', ' ') };
+        applyTimeRange();
+    });
 
     renderChips(rootCfg.Addr);
+    syncTimeUI();
     loadAgent(rootCfg.Addr);
 
     function renderChips(activeAddr) {
@@ -78,6 +181,7 @@ SP.init('index', '概览').done(function (ctx) {
         var base = isSelf ? '' : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port;
         $('#loading').html('<span class="spinner"></span>');
         $.getJSON(base + '/api/config.json').done(function (cfg) {
+            currentAgent = { addr: addr, cfg: cfg, isSelf: isSelf };
             drawStats(addr, cfg, isSelf);
             drawCharts(addr, cfg, isSelf);
         }).fail(function () {
@@ -86,13 +190,16 @@ SP.init('index', '概览').done(function (ctx) {
         });
     }
 
+    function meshUrl(addr, isSelf) {
+        if (isSelf) return '/api/pingmesh.json' + SP.meshQueryString(timeCustom ? null : timeMins, timeCustom);
+        return SP.proxyMeshUrl(addr, rootCfg.Port, timeCustom ? null : timeMins, timeCustom);
+    }
+
     function drawStats(addr, cfg, isSelf) {
         $('#st-agents').text(SP.sourceNodes(rootCfg).length);
         var self = cfg.Network[cfg.Addr] || {};
         $('#st-targets').text((self.Ping || []).length);
-        var meshUrl = isSelf ? '/api/pingmesh.json?mins=15'
-            : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port + '/api/pingmesh.json?mins=15';
-        $.getJSON(meshUrl, function (row) {
+        $.getJSON(meshUrl(addr, isSelf), function (row) {
             var sum = 0, n = 0, bad = 0;
             $.each(row.cells, function (_, c) {
                 sum += c.avgdelay; n++;
@@ -109,6 +216,7 @@ SP.init('index', '概览').done(function (ctx) {
         var box = $('#charts').empty();
         var self = cfg.Network[cfg.Addr] || {};
         var targets = self.Ping || [];
+        var range = currentRange();
         $('#empty').toggle(targets.length === 0);
         $('#loading').html('');
 
@@ -129,8 +237,9 @@ SP.init('index', '概览').done(function (ctx) {
 
             var apiurl = isSelf ? '/api/ping.json?ip=' + t
                 : '/api/proxy.json?g=http://' + addr + ':' + rootCfg.Port + '/api/ping.json?ip=' + t;
+            var dataUrl = SP.pingUrlWithRange(apiurl, range.start, range.end);
             card.click(function () {
-                SP.openPingChart(cfg.Name + ' → ' + tname + ' (' + t + ')', apiurl);
+                SP.openPingChart(cfg.Name + ' → ' + tname + ' (' + t + ')', apiurl, range.start, range.end);
             });
             SP.asn(t, function (info) {
                 if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
@@ -144,8 +253,8 @@ SP.init('index', '概览').done(function (ctx) {
             } catch (err) {
                 console.error('mini chart init', err);
             }
-            $.getJSON(apiurl, function (d) {
-                var labels = $.map(d.lastcheck || [], function (v) { return String(v).substring(11, 16); });
+            $.getJSON(dataUrl, function (d) {
+                var labels = SP.chartAxisLabels(d.lastcheck || []);
                 var avg = SP.sanitizeSeries ? SP.sanitizeSeries(d.avgdelay) : d.avgdelay;
                 var loss = SP.sanitizeSeries ? SP.sanitizeSeries(d.losspk) : d.losspk;
                 try {
