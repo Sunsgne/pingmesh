@@ -538,9 +538,11 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         $('#diag-title').text('告警判定诊断: ' + fromName + ' → ' + toName);
         $('#diag-body').html('<div class="empty-state"><span class="spinner"></span> 正在向源节点查询...</div>');
         SP.openModal('diag-modal');
-        var base = (fromAddr === cfg.Addr) ? '' : '/api/proxy.json?g=http://' + fromAddr + ':' + cfg.Port;
         var qs = '?target=' + encodeURIComponent(toAddr);
-        $.getJSON(base + '/api/alertdiag.json' + (base === '' ? qs : qs), function (d) {
+        var url = (fromAddr === cfg.Addr)
+            ? '/api/alertdiag.json' + qs
+            : SP.proxy(fromAddr, cfg.Port, '/api/alertdiag.json' + qs);
+        $.getJSON(url, function (d) {
             if (d.status !== 'true') {
                 $('#diag-body').html('<div class="empty-state">' + SP.esc(d.info || '查询失败') + '</div>');
                 return;
@@ -553,7 +555,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                 ['规则阈值', '延迟 ≥ ' + r['Thdavgdelay'] + 'ms 或 丢包 ≥ ' + r['Thdloss'] + '%' + (r['Thdjitter'] ? ' 或 抖动 ≥ ' + r['Thdjitter'] + 'ms' : '')],
                 ['检测窗口', d.window_sec + ' 秒(最多容纳 ' + d.capacity + ' 个数据点) · 触发次数 ' + d.occ],
                 ['窗口内数据点', d.total + ' 个'],
-                ['异常分钟数', '<b style="color:' + (d.bad >= d.occ ? 'var(--sp-red)' : 'var(--sp-green)') + '">' + d.bad + '</b> / 触发线 ' + d.occ +
+                ['异常采样点数', '<b style="color:' + (d.bad >= d.occ ? 'var(--sp-red)' : 'var(--sp-green)') + '">' + d.bad + '</b> / 触发线 ' + d.occ +
                  '　<span class="muted">(延迟超标 ' + d.bad_delay + ' · 丢包超标 ' + d.bad_loss + (r['Thdjitter'] ? ' · 抖动超标 ' + d.bad_jitter : '') + ')</span>']
             ];
             if (d.muted) rows.push(['屏蔽状态', '<span class="badge yellow">屏蔽中</span> 至 ' + SP.esc(d.mute_until) + (d.mute_reason ? ' · ' + SP.esc(d.mute_reason) : '') + '(不发通知)']);

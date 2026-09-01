@@ -20,6 +20,7 @@ var proxyPathAllow = map[string]bool{
 	"/api/mapping.json":     true,
 	"/api/mute.json":        true,
 	"/api/alertack.json":    true,
+	"/api/alertdiag.json":   true,
 	"/healthz":              true,
 }
 
