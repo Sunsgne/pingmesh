@@ -5,7 +5,7 @@
 <title>反向 Ping - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260901c" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260901d" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -13,7 +13,7 @@
   <div class="card">
     <div class="card-head">
       <h3>反向 Ping 监控</h3>
-      <span class="sub">选择一个探测节点，查看其他节点到它的网络质量（数据来自各源节点）</span>
+      <span class="sub">选择一个探测节点，查看它到其他节点的网络质量（源节点 → 目标节点）</span>
       <span class="spacer"></span>
       <span class="muted" id="loading"></span>
     </div>
@@ -44,7 +44,7 @@
       <div class="grid cols-3" id="charts"></div>
       <div class="empty-state" id="empty" style="display:none">
         <div class="big">&#128229;</div>
-        没有其他节点监测该目标
+        没有其他探测节点可对比
       </div>
     </div>
   </div>
@@ -53,71 +53,81 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260901c"></script>
+<script src="assets/js/app.js?v=20260901d"></script>
 <script>
 $(function () {
 SP.init('reverse', '反向 Ping').done(function (ctx) {
     var cfg = ctx.config;
     var miniCharts = [];
-    var targetAddr = cfg.Addr;
+    var srcAddr = cfg.Addr;
     var timeFilter = SP.initPageTimeFilter({
         storageKey: 'reverse-time',
         defaultMins: 120,
-        onChange: function () { load(targetAddr); }
+        onChange: function () { load(srcAddr); }
     });
 
-    var nodes = [];
-    $.each(cfg.Network, function (_, n) { if (n.Pingmesh) nodes.push(n); });
-    nodes.sort(function (a, b) { return a.Addr === cfg.Addr ? -1 : (b.Addr === cfg.Addr ? 1 : (a.Name < b.Name ? -1 : 1)); });
-
+    var nodes = SP.sourceNodes(cfg);
     var box = $('#agent-chips');
     $.each(nodes, function (_, n) {
         var chip = $('<span class="chip' + (n.Addr === cfg.Addr ? ' active' : '') + '">' + SP.esc(n.Name) + '</span>');
         chip.click(function () {
             $('#agent-chips .chip').removeClass('active');
             chip.addClass('active');
-            targetAddr = n.Addr;
-            load(targetAddr);
+            load(n.Addr);
         });
         box.append(chip);
     });
     load(cfg.Addr);
 
     function load(addr) {
-        targetAddr = addr;
+        srcAddr = addr;
+        var isSelf = (addr === cfg.Addr);
+        var base = isSelf ? '' : '/api/proxy.json?g=http://' + addr + ':' + cfg.Port;
+        $('#loading').html('<span class="spinner"></span>');
+        $.getJSON(base + '/api/config.json').done(function (agentCfg) {
+            drawCharts(addr, agentCfg, isSelf);
+        }).fail(function () {
+            $('#loading').html('');
+            SP.toast('无法连接节点 ' + addr, 'err');
+        });
+    }
+
+    function drawCharts(addr, agentCfg, isSelf) {
         $.each(miniCharts, function (_, c) { c.dispose(); });
         miniCharts = [];
         var chartsBox = $('#charts').empty();
-        var found = 0;
         var range = timeFilter.currentRange();
+        var srcName = agentCfg.Name || SP.nodeName(cfg, addr);
+        var targets = [];
+        $.each(SP.sourceNodes(cfg), function (_, n) {
+            if (n.Addr !== addr) targets.push(n);
+        });
+        $('#empty').toggle(targets.length === 0);
+        $('#loading').html('');
 
-        $.each(cfg.Network, function (srcAddr, n) {
-            if (srcAddr === targetAddr) return;
-            if ($.inArray(targetAddr, n.Ping || []) < 0) return;
-            found++;
-            var i = found;
+        $.each(targets, function (i, t) {
             var id = 'rmini-' + i;
-            var title = SP.esc(n.Name) + ' &rarr; ' + SP.esc(SP.nodeName(cfg, targetAddr));
+            var title = SP.esc(srcName) + ' &rarr; ' + SP.esc(t.Name);
             var card = $(
                 '<div class="card ping-card">' +
                 '<div class="ping-head"><span class="t">' + title + '</span></div>' +
                 '<div class="mini-chart" id="' + id + '"></div>' +
                 '<div class="ping-foot">' +
-                '<span class="badge gray mono">' + SP.esc(srcAddr) + '</span>' +
+                '<span class="badge gray mono">' + SP.esc(t.Addr) + '</span>' +
                 '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
                 '<span class="badge green" id="' + id + '-loss">- %</span>' +
                 '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
                 '</div></div>');
             chartsBox.append(card);
 
-            var apiurl = (srcAddr === cfg.Addr)
-                ? '/api/ping.json?ip=' + targetAddr
-                : '/api/proxy.json?g=http://' + srcAddr + ':' + cfg.Port + '/api/ping.json?ip=' + targetAddr;
+            var apiurl = isSelf
+                ? '/api/ping.json?ip=' + t.Addr
+                : '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/ping.json?ip=' + t.Addr;
             var dataUrl = SP.pingUrlWithRange(apiurl, range.start, range.end);
             card.click(function () {
-                SP.openPingChart(n.Name + ' → ' + SP.nodeName(cfg, targetAddr) + ' (' + targetAddr + ')', apiurl, range.start, range.end);
+                SP.openPingChart(srcName + ' → ' + t.Name + ' (' + t.Addr + ')', apiurl, range.start, range.end);
             });
-            SP.asn(srcAddr, function (info) {
+            SP.asn(t.Addr, function (info) {
                 if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
             });
 
@@ -152,7 +162,6 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
                 $('#' + id + '-delay').text('失败');
             });
         });
-        $('#empty').toggle(found === 0);
     }
 });
 });
