@@ -157,9 +157,19 @@ func configApiRoutes() {
 			deny(w)
 			return
 		}
+		r.ParseForm()
+		rangeStart := r.FormValue("start")
+		rangeEnd := r.FormValue("end")
+		useRange := rangeStart != "" && rangeEnd != ""
 		preout := make(map[string]string)
 		for _, v := range g.SelfCfg.Topology {
-			if funcs.CheckAlertStatus(v) {
+			var ok bool
+			if useRange {
+				ok = funcs.CheckAlertStatusInRange(v, rangeStart, rangeEnd)
+			} else {
+				ok = funcs.CheckAlertStatus(v)
+			}
+			if ok {
 				preout[v["Addr"]] = "true"
 			} else {
 				preout[v["Addr"]] = "false"

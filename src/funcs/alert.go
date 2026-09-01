@@ -215,16 +215,16 @@ func FillAlertClassification(l *g.AlertLog, rule map[string]string) {
 	l.AlertType, l.Reason, l.Tag = ClassifyAlert(from, l.Targetip, rule, avg, loss, jitter)
 }
 
-func CheckAlertStatus(v map[string]string) bool {
+func checkAlertStatusSince(v map[string]string, timeStartStr, timeEndStr string) bool {
 	type Cnt struct {
 		Cnt int
 	}
-	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
-	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
-	// 达到阈值即计为异常分钟(>=); 窗口起点用 >=(起点截断到分钟, 严格大于会把
-	// 边界分钟排除, 小窗口在一分钟的大部分时间内会变成空窗口 → 误判正常)
 	querysql := "SELECT count(1) cnt FROM pinglog where logtime >= ? and target = ? and (cast(avgdelay as double) >= cast(? as double) or cast(losspk as double) >= cast(? as double)"
 	args := []interface{}{timeStartStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"]}
+	if timeEndStr != "" {
+		querysql = "SELECT count(1) cnt FROM pinglog where logtime >= ? and logtime <= ? and target = ? and (cast(avgdelay as double) >= cast(? as double) or cast(losspk as double) >= cast(? as double)"
+		args = []interface{}{timeStartStr, timeEndStr, v["Addr"], v["Thdavgdelay"], v["Thdloss"]}
+	}
 	// 抖动阈值为可选项, 配置后参与告警判定(IPLC/IEPL 场景)
 	if v["Thdjitter"] != "" {
 		querysql += " or cast(ifnull(jitter,0) as double) >= cast(? as double)"
@@ -232,17 +232,17 @@ func CheckAlertStatus(v map[string]string) bool {
 	}
 	querysql += ")"
 	rows, err := g.Db.Query(querysql, args...)
-	defer rows.Close()
-	seelog.Debug("[func:StartAlert] ", querysql)
 	if err != nil {
-		seelog.Error("[func:StartAlert] Query Error ", err)
+		seelog.Error("[func:checkAlertStatusSince] Query Error ", err)
 		return false
 	}
+	defer rows.Close()
+	seelog.Debug("[func:checkAlertStatusSince] ", querysql)
 	for rows.Next() {
 		l := new(Cnt)
 		err := rows.Scan(&l.Cnt)
 		if err != nil {
-			seelog.Error("[func:StartAlert]", err)
+			seelog.Error("[func:checkAlertStatusSince]", err)
 			return false
 		}
 		Thdoccnum, _ := strconv.Atoi(v["Thdoccnum"])
@@ -253,6 +253,17 @@ func CheckAlertStatus(v map[string]string) bool {
 		return true
 	}
 	return false
+}
+
+func CheckAlertStatus(v map[string]string) bool {
+	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
+	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
+	return checkAlertStatusSince(v, timeStartStr, "")
+}
+
+// CheckAlertStatusInRange 按自定义时间范围判定链路是否告警(用于拓扑历史视图)
+func CheckAlertStatusInRange(v map[string]string, startStr, endStr string) bool {
+	return checkAlertStatusSince(v, startStr, endStr)
 }
 
 func AlertStorage(t g.AlertLog) {

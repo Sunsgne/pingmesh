@@ -5,7 +5,7 @@
 <title>反向 Ping - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260827c" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260901c" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -18,6 +18,28 @@
       <span class="muted" id="loading"></span>
     </div>
     <div class="card-body">
+      <div class="page-toolbar" id="time-toolbar">
+        <span class="tb-label">时间</span>
+        <div class="time-toolbar-main">
+          <div class="seg" id="win-seg">
+            <button type="button" data-v="15">15分钟</button>
+            <button type="button" data-v="60">1小时</button>
+            <button type="button" data-v="120" class="active">2小时</button>
+            <button type="button" data-v="360">6小时</button>
+            <button type="button" data-v="1440">24小时</button>
+            <button type="button" data-v="custom">自定义</button>
+          </div>
+          <span id="custom-range" class="time-custom" style="display:none">
+            <input type="datetime-local" class="input" id="cr-start">
+            <span class="muted">~</span>
+            <input type="datetime-local" class="input" id="cr-end">
+            <button type="button" class="btn primary sm" id="cr-apply">应用</button>
+          </span>
+        </div>
+        <span class="spacer"></span>
+        <span class="muted" id="range-hint" style="font-size:11.5px"></span>
+        <span class="muted time-tz" style="font-size:11.5px">北京时间 (UTC+8)</span>
+      </div>
       <div class="chips mb-4" id="agent-chips"></div>
       <div class="grid cols-3" id="charts"></div>
       <div class="empty-state" id="empty" style="display:none">
@@ -31,14 +53,19 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260827c"></script>
+<script src="assets/js/app.js?v=20260901c"></script>
 <script>
 $(function () {
 SP.init('reverse', '反向 Ping').done(function (ctx) {
     var cfg = ctx.config;
     var miniCharts = [];
+    var targetAddr = cfg.Addr;
+    var timeFilter = SP.initPageTimeFilter({
+        storageKey: 'reverse-time',
+        defaultMins: 120,
+        onChange: function () { load(targetAddr); }
+    });
 
-    // 反向视图 = "其他节点到我的质量", 仅对探测节点有意义
     var nodes = [];
     $.each(cfg.Network, function (_, n) { if (n.Pingmesh) nodes.push(n); });
     nodes.sort(function (a, b) { return a.Addr === cfg.Addr ? -1 : (b.Addr === cfg.Addr ? 1 : (a.Name < b.Name ? -1 : 1)); });
@@ -49,17 +76,20 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
         chip.click(function () {
             $('#agent-chips .chip').removeClass('active');
             chip.addClass('active');
-            load(n.Addr);
+            targetAddr = n.Addr;
+            load(targetAddr);
         });
         box.append(chip);
     });
     load(cfg.Addr);
 
-    function load(targetAddr) {
+    function load(addr) {
+        targetAddr = addr;
         $.each(miniCharts, function (_, c) { c.dispose(); });
         miniCharts = [];
         var chartsBox = $('#charts').empty();
         var found = 0;
+        var range = timeFilter.currentRange();
 
         $.each(cfg.Network, function (srcAddr, n) {
             if (srcAddr === targetAddr) return;
@@ -83,8 +113,9 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
             var apiurl = (srcAddr === cfg.Addr)
                 ? '/api/ping.json?ip=' + targetAddr
                 : '/api/proxy.json?g=http://' + srcAddr + ':' + cfg.Port + '/api/ping.json?ip=' + targetAddr;
+            var dataUrl = SP.pingUrlWithRange(apiurl, range.start, range.end);
             card.click(function () {
-                SP.openPingChart(n.Name + ' → ' + SP.nodeName(cfg, targetAddr) + ' (' + targetAddr + ')', apiurl);
+                SP.openPingChart(n.Name + ' → ' + SP.nodeName(cfg, targetAddr) + ' (' + targetAddr + ')', apiurl, range.start, range.end);
             });
             SP.asn(srcAddr, function (info) {
                 if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
@@ -98,8 +129,8 @@ SP.init('reverse', '反向 Ping').done(function (ctx) {
             } catch (err) {
                 console.error('mini chart init', err);
             }
-            $.getJSON(apiurl, function (d) {
-                var labels = $.map(d.lastcheck || [], function (v) { return String(v).substring(11, 16); });
+            $.getJSON(dataUrl, function (d) {
+                var labels = SP.chartAxisLabels(d.lastcheck || []);
                 var avg = SP.sanitizeSeries ? SP.sanitizeSeries(d.avgdelay) : d.avgdelay;
                 var loss = SP.sanitizeSeries ? SP.sanitizeSeries(d.losspk) : d.losspk;
                 try {

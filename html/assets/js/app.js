@@ -326,6 +326,95 @@ var SP = (function () {
         }
         return out;
     }
+    function rangeQueryString(range) {
+        return '?start=' + encodeURIComponent(range.start) + '&end=' + encodeURIComponent(range.end);
+    }
+    function proxyTopologyUrl(addr, port, range) {
+        var qs = rangeQueryString(range);
+        return '/api/proxy.json?g=http://' + addr + ':' + port + '/api/topology.json' + qs.replace(/&/g, '%26');
+    }
+    function initPageTimeFilter(opts) {
+        opts = opts || {};
+        var storageKey = opts.storageKey || 'page-time';
+        var defaultMins = opts.defaultMins || 120;
+        var onChange = opts.onChange || function () {};
+        var $root = opts.$root && opts.$root.length ? opts.$root : $('#time-toolbar');
+        var timeMins = defaultMins, timeCustom = null;
+
+        try {
+            var saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            if (saved) {
+                if (saved.custom && saved.custom.start && saved.custom.end) timeCustom = saved.custom;
+                else if (saved.mins) { timeMins = saved.mins; timeCustom = null; }
+            }
+        } catch (e) {}
+
+        function save() {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({ mins: timeMins, custom: timeCustom }));
+            } catch (e2) {}
+        }
+        function currentRange() {
+            if (timeCustom) return timeCustom;
+            return rangeFromPreset(timeMins);
+        }
+        function syncUI() {
+            if (timeCustom) {
+                $root.find('#win-seg button').removeClass('active');
+                $root.find('#win-seg button[data-v="custom"]').addClass('active');
+                $root.find('#custom-range').css('display', 'inline-flex');
+                $root.find('#cr-start').val(timeCustom.start.replace(' ', 'T'));
+                $root.find('#cr-end').val(timeCustom.end.replace(' ', 'T'));
+                $root.find('#range-hint').hide();
+            } else {
+                $root.find('#custom-range').hide();
+                $root.find('#win-seg button').removeClass('active');
+                $root.find('#win-seg button[data-v="' + timeMins + '"]').addClass('active');
+                var r = currentRange();
+                $root.find('#range-hint').text(r.start + ' ~ ' + r.end).show();
+            }
+        }
+        function apply() {
+            save();
+            syncUI();
+            onChange();
+        }
+
+        $root.find('#win-seg button').click(function () {
+            var v = $(this).attr('data-v');
+            if (v === 'custom') {
+                $root.find('#win-seg button').removeClass('active');
+                $(this).addClass('active');
+                $root.find('#custom-range').css('display', 'inline-flex');
+                $root.find('#range-hint').hide();
+                if (!$root.find('#cr-start').val()) {
+                    var r = rangeFromPreset(360);
+                    $root.find('#cr-start').val(r.start.replace(' ', 'T'));
+                    $root.find('#cr-end').val(r.end.replace(' ', 'T'));
+                }
+                return;
+            }
+            timeCustom = null;
+            timeMins = parseInt(v, 10);
+            apply();
+        });
+        $root.find('#cr-apply').click(function () {
+            var s = $root.find('#cr-start').val(), e = $root.find('#cr-end').val();
+            if (!s || !e) { toast('请选择起止时间', 'err'); return; }
+            if (s >= e) { toast('结束时间需晚于开始时间', 'err'); return; }
+            timeCustom = { start: s.replace('T', ' '), end: e.replace('T', ' ') };
+            apply();
+        });
+
+        syncUI();
+        return {
+            currentRange: currentRange,
+            getMins: function () { return timeMins; },
+            getCustom: function () { return timeCustom; },
+            apply: apply,
+            syncUI: syncUI
+        };
+    }
 
     function loadChart(apiurl, start, end) {
         var url = pingUrlWithRange(apiurl, start, end);
@@ -815,6 +904,9 @@ var SP = (function () {
         proxyMeshUrl: proxyMeshUrl,
         timeWindowLabel: timeWindowLabel,
         chartAxisLabels: chartAxisLabels,
+        rangeQueryString: rangeQueryString,
+        proxyTopologyUrl: proxyTopologyUrl,
+        initPageTimeFilter: initPageTimeFilter,
         miniChartOption: miniChartOption,
         bindChartResize: bindChartResize,
         sanitizeSeries: sanitizeSeries,

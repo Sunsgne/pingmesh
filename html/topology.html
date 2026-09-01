@@ -5,7 +5,7 @@
 <title>网络拓扑 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260827c" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260901c" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -14,11 +14,32 @@
     <div class="card">
       <div class="card-head">
         <h3>拓扑</h3>
-        <span class="sub">实线 = 正常，红色虚线 = 告警；点击连线查看诊断</span>
+        <span class="sub">实线 = 正常，红色虚线 = 告警；点击连线查看诊断 · 链路颜色按所选时间窗口内的告警判定</span>
         <span class="spacer"></span>
       </div>
       <div class="card-body">
         <div class="page-toolbar">
+          <div class="tb-group">
+            <span class="tb-label">时间</span>
+            <div class="time-toolbar-main" id="time-toolbar">
+              <div class="seg" id="win-seg">
+                <button type="button" data-v="15">15分钟</button>
+                <button type="button" data-v="60">1小时</button>
+                <button type="button" data-v="120" class="active">2小时</button>
+                <button type="button" data-v="360">6小时</button>
+                <button type="button" data-v="1440">24小时</button>
+                <button type="button" data-v="custom">自定义</button>
+              </div>
+              <span id="custom-range" class="time-custom" style="display:none">
+                <input type="datetime-local" class="input" id="cr-start">
+                <span class="muted">~</span>
+                <input type="datetime-local" class="input" id="cr-end">
+                <button type="button" class="btn primary sm" id="cr-apply">应用</button>
+              </span>
+            </div>
+            <span class="muted" id="range-hint" style="font-size:11.5px"></span>
+            <span class="muted time-tz" style="font-size:11.5px">北京时间 (UTC+8)</span>
+          </div>
           <div class="tb-group">
             <span class="tb-label">视图</span>
             <select class="input" id="topo-view" style="width:auto;min-width:120px;padding:5px 8px" title="节点很多时建议用「按分组聚合」">
@@ -76,7 +97,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260827c"></script>
+<script src="assets/js/app.js?v=20260901c"></script>
 <script>
 $(function () {
 SP.init('topology', '网络拓扑').done(function (ctx) {
@@ -85,6 +106,11 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     var chart = echarts.init(document.getElementById('topo-chart'));
     var nodes = {}, links = {};
     var hasAlert = false;
+    var timeFilter = SP.initPageTimeFilter({
+        storageKey: 'topo-time',
+        defaultMins: 120,
+        onChange: function () { refreshProbeStatus(); }
+    });
 
     function groupOf(n) { return n.group || '未分组'; }
 
@@ -443,30 +469,49 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
     });
     $('#probe-count').text(probeTotal + ' 个探测节点');
 
-    $.each(nodes, function (addr, n) {
-        if (!n.source) return;
-        $.ajax({
-            dataType: 'json',
-            url: '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/topology.json',
-            timeout: ((cfg.Base || {})['Timeout'] || 5) * 1000
-        }).done(function (topodata) {
-            n.bad = false;
-            $('#st-' + addr.replace(/[^a-zA-Z0-9]/g, '-')).html('<span class="badge green"><span class="dot"></span>在线</span>');
-            $.each(topodata, function (toAddr, flag) {
-                var l = links[addr + '|' + toAddr];
-                if (!l) return;
-                l.pendingStatus = false;
-                if (flag === 'true') { l.bad = false; }
-                else { l.bad = true; hasAlert = true; }
-            });
-        }).fail(function () {
-            n.bad = true;
-            hasAlert = true;
-            $('#st-' + addr.replace(/[^a-zA-Z0-9]/g, '-')).html('<span class="badge red"><span class="dot"></span>不可达</span>');
-        }).always(function () {
-            draw();
+    function topoStatusUrl(addr) {
+        var range = timeFilter.currentRange();
+        var qs = SP.rangeQueryString(range);
+        if (addr === cfg.Addr) return '/api/topology.json' + qs;
+        return SP.proxyTopologyUrl(addr, cfg.Port, range);
+    }
+
+    function refreshProbeStatus() {
+        hasAlert = false;
+        $.each(links, function (_, l) {
+            l.bad = false;
+            l.pendingStatus = true;
         });
-    });
+        $.each(nodes, function (_, n) { if (n.source) n.bad = false; });
+        $.each(nodes, function (addr, n) {
+            if (!n.source) return;
+            var sid = 'st-' + addr.replace(/[^a-zA-Z0-9]/g, '-');
+            $('#' + sid).html('<span class="spinner"></span>');
+            $.ajax({
+                dataType: 'json',
+                url: topoStatusUrl(addr),
+                timeout: ((cfg.Base || {})['Timeout'] || 5) * 1000
+            }).done(function (topodata) {
+                n.bad = false;
+                $('#' + sid).html('<span class="badge green"><span class="dot"></span>在线</span>');
+                $.each(topodata, function (toAddr, flag) {
+                    var l = links[addr + '|' + toAddr];
+                    if (!l) return;
+                    l.pendingStatus = false;
+                    if (flag === 'true') { l.bad = false; }
+                    else { l.bad = true; hasAlert = true; }
+                });
+            }).fail(function () {
+                n.bad = true;
+                hasAlert = true;
+                $('#' + sid).html('<span class="badge red"><span class="dot"></span>不可达</span>');
+            }).always(function () {
+                draw();
+            });
+        });
+    }
+
+    refreshProbeStatus();
 
     /* 点击: 连线 → 告警判定诊断; 聚合视图的分组 → 下钻 */
     chart.on('click', function (p) {
