@@ -56,6 +56,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
+Environment=TZ=Asia/Shanghai
 WorkingDirectory=${DIR}
 ExecStart=${DIR}/pingmesh -p 8899 -join http://${MASTER}:8899 -token ${TOKEN} -name ${NAME} -addr ${ADDR} -masters ${MASTER}:8899,${BACKUP}:8899
 Restart=always

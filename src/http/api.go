@@ -73,25 +73,25 @@ func configApiRoutes() {
 		if len(r.Form["starttime"]) > 0 && len(r.Form["endtime"]) > 0 {
 			timeStartStr = r.Form["starttime"][0]
 			if timeStartStr != "" {
-				tms, _ := time.Parse("2006-01-02 15:04", timeStartStr)
-				timeStart = tms.Unix() - 8*60*60
+				tms, _ := time.ParseInLocation("2006-01-02 15:04", timeStartStr, time.Local)
+				timeStart = tms.Unix()
 			} else {
 				timeStart = time.Now().Unix() - 2*60*60
-				timeStartStr = time.Unix(timeStart, 0).Format("2006-01-02 15:04")
+				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
 			}
 			timeEndStr = r.Form["endtime"][0]
 			if timeEndStr != "" {
-				tmn, _ := time.Parse("2006-01-02 15:04", timeEndStr)
-				timeEnd = tmn.Unix() - 8*60*60
+				tmn, _ := time.ParseInLocation("2006-01-02 15:04", timeEndStr, time.Local)
+				timeEnd = tmn.Unix()
 			} else {
 				timeEnd = time.Now().Unix()
-				timeEndStr = time.Unix(timeEnd, 0).Format("2006-01-02 15:04")
+				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04")
 			}
 		} else {
 			timeStart = time.Now().Unix() - 2*60*60
-			timeStartStr = time.Unix(timeStart, 0).Format("2006-01-02 15:04")
+			timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
 			timeEnd = time.Now().Unix()
-			timeEndStr = time.Unix(timeEnd, 0).Format("2006-01-02 15:04")
+			timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04")
 		}
 		cnt := int((timeEnd - timeStart) / 60)
 		var lastcheck []string
@@ -102,7 +102,7 @@ func configApiRoutes() {
 		var jitter []string
 		timwwnum := map[string]int{}
 		for i := 0; i < cnt+1; i++ {
-			ntime := time.Unix(timeStart, 0).Format("2006-01-02 15:04")
+			ntime := time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
 			timwwnum[ntime] = i
 			lastcheck = append(lastcheck, ntime)
 			// 无数据的分钟使用 "-" (ECharts 空值), 图表呈现真实空洞而非画成 0

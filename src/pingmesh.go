@@ -42,6 +42,7 @@ func main() {
 	g.FlagListen = *listen
 	g.FlagWebUI = *webui
 	g.ParseConfig(Version)
+	g.InitTimezone()
 	// 首次安装的主节点: 用 -name/-addr 初始化节点身份(仅首次, 不覆盖后续在页面改名)
 	if g.FreshInstall && *join == "" {
 		if *name != "" {

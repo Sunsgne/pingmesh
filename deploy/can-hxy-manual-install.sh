@@ -120,6 +120,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=TZ=Asia/Shanghai
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${INSTALL_DIR}/pingmesh \\
   -p ${LISTEN_PORT} \\

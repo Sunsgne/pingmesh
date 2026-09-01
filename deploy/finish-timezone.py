@@ -43,6 +43,11 @@ if [ -d /opt/pingmesh-docker ] && command -v docker >/dev/null 2>&1; then
   cd /opt/pingmesh-docker && docker compose up -d 2>/dev/null || true
 fi
 if systemctl is-active pingmesh >/dev/null 2>&1; then systemctl restart pingmesh; fi
+if [ -f /etc/systemd/system/pingmesh.service ] && ! grep -q "TZ=Asia/Shanghai" /etc/systemd/system/pingmesh.service; then
+  sed -i '/^\[Service\]/a Environment=TZ=Asia/Shanghai' /etc/systemd/system/pingmesh.service
+  systemctl daemon-reload
+  systemctl is-active pingmesh >/dev/null 2>&1 && systemctl restart pingmesh
+fi
 timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone
 date '+%F %T %Z'
 '''
@@ -67,10 +72,22 @@ NODES = [
     ('61.172.165.219', 20001, 'tyo-7'),
 ]
 INTERNAL = [
+    ('10.100.1.1', 'PVG-XTL'),
     ('10.100.1.2', 'TYO-EQTY8'),
+    ('10.100.1.4', 'CAN-XXG'),
+    ('10.100.1.5', 'PVG-SJHL'),
+    ('10.100.1.7', 'FRA-EQFRA5'),
     ('10.100.1.9', 'TYO-EQTY7'),
+    ('10.100.1.10', 'LAX-CORESITE'),
+    ('10.100.1.11', 'SIN-GS'),
+    ('10.100.1.12', 'HKG-EQHK2'),
+    ('10.100.1.13', 'HKG-EQHK3'),
+    ('10.100.1.15', 'PEK-BJHK'),
+    ('10.100.1.17', 'SZX-SZX'),
+    ('10.100.1.18', 'TPE-EQTPE'),
+    ('10.100.1.19', 'CAN-HXY'),
     ('10.100.1.20', 'PVG-GDS'),
-    ('10.100.1.19', 'can-hxy'),
+    ('10.100.1.21', 'SEL-LG'),
 ]
 
 

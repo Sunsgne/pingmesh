@@ -338,6 +338,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=TZ=Asia/Shanghai
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=-${ENV_FILE}
 ExecStart=${INSTALL_DIR}/pingmesh \$PINGMESH_OPTS
