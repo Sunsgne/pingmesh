@@ -5,7 +5,7 @@
 <title>概览 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260901a" rel="stylesheet">
+<link href="assets/css/modern.css?v=20260901b" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -38,8 +38,8 @@
     </div>
     <div class="card-body">
       <div class="page-toolbar" id="time-toolbar">
-        <div class="tb-group">
-          <span class="tb-label">时间</span>
+        <span class="tb-label">时间</span>
+        <div class="time-toolbar-main">
           <div class="seg" id="win-seg">
             <button type="button" data-v="15">15分钟</button>
             <button type="button" data-v="60">1小时</button>
@@ -48,16 +48,16 @@
             <button type="button" data-v="1440">24小时</button>
             <button type="button" data-v="custom">自定义</button>
           </div>
-          <span id="custom-range" style="display:none" class="flex">
-            <input type="datetime-local" class="input chart-time" id="cr-start">
+          <span id="custom-range" class="time-custom" style="display:none">
+            <input type="datetime-local" class="input" id="cr-start">
             <span class="muted">~</span>
-            <input type="datetime-local" class="input chart-time" id="cr-end">
+            <input type="datetime-local" class="input" id="cr-end">
             <button type="button" class="btn primary sm" id="cr-apply">应用</button>
           </span>
         </div>
         <span class="spacer"></span>
         <span class="muted" id="range-hint" style="font-size:11.5px"></span>
-        <span class="muted" style="font-size:11.5px">北京时间 (UTC+8)</span>
+        <span class="muted time-tz" style="font-size:11.5px">北京时间 (UTC+8)</span>
       </div>
       <div class="chips mb-4" id="agent-chips"></div>
       <div class="grid cols-3" id="charts"></div>
@@ -106,22 +106,23 @@ SP.init('index', '概览').done(function (ctx) {
     }
 
     function syncTimeUI() {
+        var label = SP.timeWindowLabel(timeCustom ? null : timeMins, timeCustom);
+        $('#st-delay-lbl').text('平均延迟 (' + label + ')');
+        $('#st-bad-lbl').text('异常目标 (' + label + ')');
         if (timeCustom) {
             $('#win-seg button').removeClass('active');
             $('#win-seg button[data-v="custom"]').addClass('active');
-            $('#custom-range').show();
+            $('#custom-range').css('display', 'inline-flex');
             $('#cr-start').val(timeCustom.start.replace(' ', 'T'));
             $('#cr-end').val(timeCustom.end.replace(' ', 'T'));
+            $('#range-hint').hide();
         } else {
             $('#custom-range').hide();
             $('#win-seg button').removeClass('active');
             $('#win-seg button[data-v="' + timeMins + '"]').addClass('active');
+            var r = currentRange();
+            $('#range-hint').text(r.start + ' ~ ' + r.end).show();
         }
-        var label = SP.timeWindowLabel(timeCustom ? null : timeMins, timeCustom);
-        $('#st-delay-lbl').text('平均延迟 (' + label + ')');
-        $('#st-bad-lbl').text('异常目标 (' + label + ')');
-        var r = currentRange();
-        $('#range-hint').text(r.start + ' ~ ' + r.end);
     }
 
     function applyTimeRange() {
@@ -138,7 +139,8 @@ SP.init('index', '概览').done(function (ctx) {
         if (v === 'custom') {
             $('#win-seg button').removeClass('active');
             $(this).addClass('active');
-            $('#custom-range').show();
+            $('#custom-range').css('display', 'inline-flex');
+            $('#range-hint').hide();
             if (!$('#cr-start').val()) {
                 var r = SP.rangeFromPreset(360);
                 $('#cr-start').val(r.start.replace(' ', 'T'));

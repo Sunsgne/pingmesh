@@ -452,21 +452,37 @@ button.chip { appearance: none; }
 
 /* 通用页面工具栏(与 mesh-toolbar 同风格) */
 .page-toolbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 10px 12px;
   padding: 12px 14px; margin-bottom: 14px;
   background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
   border: 1px solid var(--sp-border); border-radius: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .page-toolbar .tb-group {
   display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0;
 }
+.page-toolbar .time-toolbar-main {
+  display: inline-flex; align-items: center; gap: 8px;
+  flex-wrap: nowrap; flex: 1 1 auto; min-width: 0;
+}
+.page-toolbar .time-custom {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex-wrap: nowrap; flex-shrink: 0;
+}
+.page-toolbar .time-custom .input {
+  width: 168px; min-width: 148px; padding: 6px 8px; font-size: 12.5px; flex-shrink: 0;
+}
+.page-toolbar .time-custom .muted { flex-shrink: 0; line-height: 1; }
+.page-toolbar .time-tz { flex-shrink: 0; white-space: nowrap; }
 .page-toolbar .tb-label {
   font-size: 11px; font-weight: 700; color: var(--sp-text-3);
   letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  flex-shrink: 0;
 }
-.page-toolbar .spacer { flex: 1 1 12px; }
-.page-toolbar #custom-range { gap: 8px; align-items: center; flex-wrap: wrap; }
-.page-toolbar #range-hint { white-space: nowrap; }
+.page-toolbar .spacer { flex: 1 1 12px; min-width: 8px; }
+.page-toolbar #range-hint { white-space: nowrap; flex-shrink: 0; }
+.page-toolbar .seg { flex-shrink: 0; }
 
 .info-banner {
   background: var(--sp-primary-soft); border: 1px solid #c7d2fe; color: #3730a3;
@@ -693,9 +709,10 @@ body.login-page {
   .chip { padding: 5px 11px; font-size: 12px; }
   .mesh-stats .ms { min-width: 96px; padding: 8px 12px; }
   .mesh-stats .ms b { font-size: 16px; }
-  .page-toolbar { padding: 10px 12px; gap: 10px; }
+  .page-toolbar { padding: 10px 12px; gap: 8px; }
   .page-toolbar .tb-label { display: none; }
   .page-toolbar #range-hint { display: none; }
+  .page-toolbar .time-custom .input { width: 148px; min-width: 132px; }
   .mesh-toolbar { padding: 10px 12px; gap: 10px; }
   .mesh-toolbar .tb-label { display: none; }
   .ping-card .mini-chart { height: 118px; }
