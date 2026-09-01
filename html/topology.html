@@ -563,7 +563,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             });
             html += '</table>';
             if (d.hint) html += '<div class="hint mt-2" style="color:var(--sp-red)">&#9888; ' + SP.esc(d.hint) + '</div>';
-            html += '<div class="hint mt-2">说明: 每分钟产生一个数据点; 窗口内"异常分钟数"达到"触发次数"即判定告警(状态翻转时通知一次)。</div>';
+            html += '<div class="hint mt-2">说明: 每 10 秒产生一个数据点; 窗口内异常采样点数达到「触发次数」即判定告警。</div>';
             $('#diag-body').html(html);
         }).fail(function () {
             $('#diag-body').html('<div class="empty-state">源节点不可达</div>');

@@ -172,14 +172,14 @@ func configOpsRoutes() {
 		if muteUntil != "" {
 			muted = true
 		}
-		capacity := sec / 60
+		capacity := sec / g.ProbeCycleSec
 		verdict := "normal"
 		if bad >= occ && occ > 0 {
 			verdict = "alerting"
 		}
 		hint := ""
 		if capacity < occ {
-			hint = "窗口太小: " + strconv.Itoa(sec) + "秒最多累计" + strconv.Itoa(capacity) + "个异常分钟, 永远达不到触发次数" + strconv.Itoa(occ) + ", 请加大窗口或减小次数"
+			hint = "窗口太小: " + strconv.Itoa(sec) + "秒最多累计" + strconv.Itoa(capacity) + "个采样点, 永远达不到触发次数" + strconv.Itoa(occ) + ", 请加大窗口或减小次数"
 		} else if total == 0 {
 			hint = "窗口内没有任何探测数据(节点刚启动或探测未运行)"
 		}

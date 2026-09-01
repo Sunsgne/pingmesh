@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// 防止探测周期重叠(超时较多时一轮可能超过60s)
+// 防止探测周期重叠(一轮可能超过10s)
 var pingCycleRunning int32
 
 // 单轮探测的最大并发目标数
@@ -63,16 +63,15 @@ func lossPercent(lost, sent int) float64 {
 }
 
 // nodePhaseOffset 在周期余量内错开本节点启动时刻。
-// 平滑轮转耗时 ≈ count×interval(发包) + timeout(收尾)。
 func nodePhaseOffset() time.Duration {
 	interval, count, timeout, _ := probeParams()
 	cycleMs := count*interval + timeout + 200
-	spare := 55000 - cycleMs // 严格留余量, 避免跳轮
+	spare := g.ProbeCycleMaxMs() - cycleMs
 	if spare <= 0 {
 		return 0
 	}
-	if spare > 1500 {
-		spare = 1500
+	if spare > 800 {
+		spare = 800
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(g.Cfg.Addr))
@@ -121,8 +120,7 @@ func pingCyclePaced(targets []string) []targetResult {
 	}
 	to := time.Duration(timeout) * time.Millisecond
 
-	// 绝对时间轴节拍: 避免 time.Sleep 累计误差把整轮拖过 60s 跳轮。
-	// 单次落后只补到下一拍(微赶上), 不会在 worker 堵塞后打成大突发。
+	// 绝对时间轴节拍: 避免 time.Sleep 累计误差把整轮拖过周期上限。
 	var pwg sync.WaitGroup
 	start := time.Now()
 	k := 0
@@ -181,18 +179,19 @@ func pingCycleParallel(targets []string) []targetResult {
 	return batch
 }
 
-// probeParams 探测引擎参数(毫秒级, 适配 IPLC/IEPL 专线监控)
+// probeParams 探测引擎参数(毫秒级); count 为当前10秒周期的发包数
 func probeParams() (interval, count, timeout, size int) {
 	interval = g.Cfg.Base["Pinginterval"]
-	count = g.Cfg.Base["Pingcount"]
+	perMin := g.Cfg.Base["Pingcount"]
 	timeout = g.Cfg.Base["Pingtimeout"]
 	size = g.Cfg.Base["Pingsize"]
 	if interval < 10 {
 		interval = 3000
 	}
-	if count < 1 {
-		count = 20
+	if perMin < 1 {
+		perMin = 20
 	}
+	count = g.CyclePacketCount(interval, perMin)
 	if timeout < 50 {
 		timeout = 3000
 	}
@@ -215,6 +214,7 @@ func linkRule(addr string) map[string]string {
 // probeParamsFor 链路级探测参数: 在全局默认基础上应用该链路的覆盖值
 func probeParamsFor(addr string) (interval, count, timeout, size int, srcip string) {
 	interval, count, timeout, size = probeParams()
+	perMin := g.Cfg.Base["Pingcount"]
 	t := linkRule(addr)
 	if t == nil {
 		return
@@ -226,9 +226,12 @@ func probeParamsFor(addr string) (interval, count, timeout, size int, srcip stri
 		}
 	}
 	ovr("Pinterval", 10, 60000, &interval)
-	ovr("Pcount", 1, 1000, &count)
+	if v, err := strconv.Atoi(t["Pcount"]); err == nil && v >= 1 && v <= 1000 {
+		perMin = v
+	}
 	ovr("Ptimeout", 50, 10000, &timeout)
 	ovr("Psize", 24, 1472, &size)
+	count = g.CyclePacketCount(interval, perMin)
 	return
 }
 
@@ -322,7 +325,7 @@ func PingStorageBatch(batch []targetResult) {
 	if len(batch) == 0 {
 		return
 	}
-	logtime := time.Now().Format("2006-01-02 15:04")
+	logtime := g.ProbeLogTime(time.Now())
 	g.DLock.Lock()
 	defer g.DLock.Unlock()
 	tx, err := g.Db.Begin()

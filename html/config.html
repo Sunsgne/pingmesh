@@ -94,7 +94,7 @@
         </div>
         <div class="field" style="grid-column:1 / -1;margin-bottom:0">
           <label style="font-size:14px">探测参数 — 全局默认（毫秒级，可在「节点管理」按链路单独覆盖）</label>
-          <div class="hint">专线建议: 间隔 200~500ms、超时 500~1000ms、包数 50~100；普通互联网链路保持默认即可。间隔×包数 ≤ 55 秒（每分钟一轮聚合入库）</div>
+          <div class="hint">包间隔不变；系统每 10 秒汇总入库一次。Pingcount 为每分钟总包数（当前 67ms 间隔约每 10 秒 136 包）。每分钟总时长 = 间隔 × 包数 ≤ 60 秒</div>
         </div>
         <div class="field">
           <label>探测间隔 (毫秒)</label>
@@ -104,7 +104,7 @@
         <div class="field">
           <label>每轮包数</label>
           <input type="number" class="input" id="f-pingcount" min="1" max="1000">
-          <div class="hint">每分钟向每个目标发送的探测包数量</div>
+          <div class="hint">每分钟向每个目标发送的总探测包数（每 10 秒汇总一次）</div>
         </div>
         <div class="field">
           <label>单包超时 (毫秒)</label>

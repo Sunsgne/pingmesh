@@ -302,8 +302,8 @@ func ParseConfig(ver string) {
 		"Refresh":      1,
 		"Timeout":      5,
 		"Chinamap":     1,
-		"Pinginterval": 2500, // 包间隔(ms); 间隔×包数 ≤ 55秒(每分钟一轮)
-		"Pingcount":    20,   // 每轮包数
+		"Pinginterval": 2500, // 包间隔(ms)
+		"Pingcount":    20,   // 每分钟总包数(每10秒汇总一次)
 		"Pingtimeout":  3000, // 单包超时(ms)
 		"Pingsize":     56,   // 探测包大小(字节)
 		"Apisign":      0,    // 老集群默认关闭, 全部升级并统一令牌后可开启
@@ -324,14 +324,13 @@ func ParseConfig(ver string) {
 		Cfg.Base["Pinginterval"] = 2500
 		healedKeys = append(healedKeys, "Base.Pinginterval(fix)")
 	}
-	if Cfg.Base["Pinginterval"]*Cfg.Base["Pingcount"] > 55000 {
-		// 保留用户的包数意图, 压缩间隔使一轮能在55秒内发完
-		Cfg.Base["Pinginterval"] = 55000 / Cfg.Base["Pingcount"]
+	if Cfg.Base["Pinginterval"]*Cfg.Base["Pingcount"] > 60000 {
+		Cfg.Base["Pinginterval"] = 60000 / Cfg.Base["Pingcount"]
 		if Cfg.Base["Pinginterval"] < 10 {
 			Cfg.Base["Pinginterval"] = 2500
 			Cfg.Base["Pingcount"] = 20
 		}
-		healedKeys = append(healedKeys, "Base.Pinginterval(fix: 间隔×包数>55s)")
+		healedKeys = append(healedKeys, "Base.Pinginterval(fix: 间隔×包数>60s/分钟)")
 	}
 	// 集群容灾默认值: 纪元从 0 起, 默认开启自动容灾(主挂时备选自动接管)
 	if Cfg.Mode == nil {

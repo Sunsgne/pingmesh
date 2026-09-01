@@ -257,7 +257,7 @@ func checkAlertStatusSince(v map[string]string, timeStartStr, timeEndStr string)
 
 func CheckAlertStatus(v map[string]string) bool {
 	Thdchecksec, _ := strconv.Atoi(v["Thdchecksec"])
-	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04")
+	timeStartStr := time.Unix((time.Now().Unix() - int64(Thdchecksec)), 0).Format("2006-01-02 15:04:05")
 	return checkAlertStatusSince(v, timeStartStr, "")
 }
 

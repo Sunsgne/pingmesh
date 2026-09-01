@@ -73,27 +73,32 @@ func configApiRoutes() {
 		if len(r.Form["starttime"]) > 0 && len(r.Form["endtime"]) > 0 {
 			timeStartStr = r.Form["starttime"][0]
 			if timeStartStr != "" {
-				tms, _ := time.ParseInLocation("2006-01-02 15:04", timeStartStr, time.Local)
-				timeStart = tms.Unix()
+				tms, _ := g.ParseProbeTime(timeStartStr)
+				timeStart = g.AlignUnixProbe(tms.Unix())
+				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			} else {
 				timeStart = time.Now().Unix() - 2*60*60
-				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
+				timeStart = g.AlignUnixProbe(timeStart)
+				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			}
 			timeEndStr = r.Form["endtime"][0]
 			if timeEndStr != "" {
-				tmn, _ := time.ParseInLocation("2006-01-02 15:04", timeEndStr, time.Local)
-				timeEnd = tmn.Unix()
+				tmn, _ := g.ParseProbeTime(timeEndStr)
+				timeEnd = g.AlignUnixProbe(tmn.Unix())
+				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			} else {
-				timeEnd = time.Now().Unix()
-				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04")
+				timeEnd = g.AlignUnixProbe(time.Now().Unix())
+				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			}
 		} else {
 			timeStart = time.Now().Unix() - 2*60*60
-			timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
-			timeEnd = time.Now().Unix()
-			timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04")
+			timeStart = g.AlignUnixProbe(timeStart)
+			timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
+			timeEnd = g.AlignUnixProbe(time.Now().Unix())
+			timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
 		}
-		cnt := int((timeEnd - timeStart) / 60)
+		step := int64(g.ProbeCycleSec)
+		cnt := int((timeEnd - timeStart) / step)
 		var lastcheck []string
 		var maxdelay []string
 		var mindelay []string
@@ -102,16 +107,16 @@ func configApiRoutes() {
 		var jitter []string
 		timwwnum := map[string]int{}
 		for i := 0; i < cnt+1; i++ {
-			ntime := time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04")
+			ntime := time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			timwwnum[ntime] = i
 			lastcheck = append(lastcheck, ntime)
-			// 无数据的分钟使用 "-" (ECharts 空值), 图表呈现真实空洞而非画成 0
+			// 无数据的采样点使用 "-" (ECharts 空值)
 			maxdelay = append(maxdelay, "-")
 			mindelay = append(mindelay, "-")
 			avgdelay = append(avgdelay, "-")
 			losspk = append(losspk, "-")
 			jitter = append(jitter, "-")
-			timeStart = timeStart + 60
+			timeStart = timeStart + step
 		}
 		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"
 		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
@@ -409,15 +414,22 @@ func configApiRoutes() {
 			return
 		}
 		if v := nconfig.Base["Pingcount"]; v < 1 || v > 1000 {
-			preout["info"] = "非法每轮包数!(1~1000)"
+			preout["info"] = "非法每分钟包数!(1~1000)"
 			RenderJson(w, preout)
 			return
 		}
-		if nconfig.Base["Pinginterval"]*nconfig.Base["Pingcount"] > 55000 {
+		if nconfig.Base["Pinginterval"]*nconfig.Base["Pingcount"] > 60000 {
 			total := nconfig.Base["Pinginterval"] * nconfig.Base["Pingcount"] / 1000
-			preout["info"] = "探测参数组合无效: 系统每分钟向每个目标探测一轮, 一轮要发完全部探测包。当前 间隔" +
-				strconv.Itoa(nconfig.Base["Pinginterval"]) + "ms × " + strconv.Itoa(nconfig.Base["Pingcount"]) + "包 = " +
-				strconv.Itoa(total) + "秒 > 55秒上限, 一轮发不完。请调小间隔或包数, 例如 1000ms×30包=30秒、500ms×60包=30秒"
+			preout["info"] = "探测参数无效: 每分钟总发包时长超限。当前 间隔" +
+				strconv.Itoa(nconfig.Base["Pinginterval"]) + "ms × " + strconv.Itoa(nconfig.Base["Pingcount"]) + "包/分钟 = " +
+				strconv.Itoa(total) + "秒 > 60秒。请调小间隔或每分钟包数"
+			RenderJson(w, preout)
+			return
+		}
+		perCycle := g.CyclePacketCount(nconfig.Base["Pinginterval"], nconfig.Base["Pingcount"])
+		if nconfig.Base["Pinginterval"]*perCycle > g.ProbeCycleMaxMs() {
+			preout["info"] = "探测参数无效: 每" + strconv.Itoa(g.ProbeCycleSec) + "秒周期内发不完折算包数(间隔" +
+				strconv.Itoa(nconfig.Base["Pinginterval"]) + "ms × " + strconv.Itoa(perCycle) + "包)。请调小每分钟包数或增大间隔"
 			RenderJson(w, preout)
 			return
 		}
@@ -511,8 +523,14 @@ func configApiRoutes() {
 					if v, err := strconv.Atoi(topology["Pcount"]); err == nil && v > 0 {
 						effC = v
 					}
-					if effI*effC > 55000 {
-						preout["info"] = k + "->" + topology["Addr"] + " 链路探测参数无效: 每分钟探测一轮, 该链路 间隔" + strconv.Itoa(effI) + "ms × " + strconv.Itoa(effC) + "包 = " + strconv.Itoa(effI*effC/1000) + "秒 > 55秒上限, 请调小该链路的间隔或包数"
+					if effI*effC > 60000 {
+						preout["info"] = k + "->" + topology["Addr"] + " 链路探测参数无效: 每分钟总时长 间隔" + strconv.Itoa(effI) + "ms × " + strconv.Itoa(effC) + "包 = " + strconv.Itoa(effI*effC/1000) + "秒 > 60秒"
+						RenderJson(w, preout)
+						return
+					}
+					if effI*g.CyclePacketCount(effI, effC) > g.ProbeCycleMaxMs() {
+						pc := g.CyclePacketCount(effI, effC)
+						preout["info"] = k + "->" + topology["Addr"] + " 链路探测参数无效: 每" + strconv.Itoa(g.ProbeCycleSec) + "秒周期内 间隔" + strconv.Itoa(effI) + "ms × " + strconv.Itoa(pc) + "包 超时"
 						RenderJson(w, preout)
 						return
 					}
@@ -532,8 +550,9 @@ func configApiRoutes() {
 				{
 					sec, _ := strconv.Atoi(topology["Thdchecksec"])
 					num, _ := strconv.Atoi(topology["Thdoccnum"])
-					if num > 0 && sec/60 < num {
-						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 检测窗口太小: 窗口" + topology["Thdchecksec"] + "秒最多累计" + strconv.Itoa(sec/60) + "个异常分钟, 无法达到触发次数" + topology["Thdoccnum"] + "; 需满足 窗口秒数 ≥ 次数×60 ) "
+					if num > 0 && sec/g.ProbeCycleSec < num {
+						cap := sec / g.ProbeCycleSec
+						preout["info"] = "Ping节点测试网络信息错误!( " + k + "->" + topology["Addr"] + " 检测窗口太小: 窗口" + topology["Thdchecksec"] + "秒最多累计" + strconv.Itoa(cap) + "个采样点, 无法达到触发次数" + topology["Thdoccnum"] + "; 需满足 窗口秒数 ≥ 次数×" + strconv.Itoa(g.ProbeCycleSec) + " ) "
 						RenderJson(w, preout)
 						return
 					}

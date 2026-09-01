@@ -66,19 +66,19 @@ func main() {
 	}
 	go funcs.ClearArchive()
 	c := cron.New()
-	c.AddFunc("*/60 * * * * *", func() {
+	c.AddFunc("*/10 * * * * *", func() {
 		go funcs.Ping()
-		go funcs.Mapping()
-		// 集群容灾同步: cloud 模式或已组建集群时启用(主挂自动接管 + 配置全网收敛)
-		if g.Cfg.Mode["Type"] == "cloud" || g.ClusterActive() {
-			go funcs.ClusterSync()
-		}
-		// 代理主节点汇总全网链路健康并统一发送告警; 延迟数秒等待各节点本轮探测入库
 		go func() {
-			time.Sleep(8 * time.Second)
+			time.Sleep(3 * time.Second)
 			funcs.MasterAlertSweep()
 		}()
 	}, "ping")
+	c.AddFunc("*/60 * * * * *", func() {
+		go funcs.Mapping()
+		if g.Cfg.Mode["Type"] == "cloud" || g.ClusterActive() {
+			go funcs.ClusterSync()
+		}
+	}, "mapping")
 	c.AddFunc("0 0 * * * *", func() {
 		go funcs.ClearArchive()
 	}, "mtc")
