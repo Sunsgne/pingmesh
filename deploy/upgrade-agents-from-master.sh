@@ -62,9 +62,9 @@ REMOTE
 
 AGENTS=()
 while read -r _host port name addr _; do
-  [[ -z "${name:-}" || "$name" =~ ^# ]] && continue
-  # 从主节点走内网: SSH 目标用 addr(10.100.1.x), 不用公网 host
-  AGENTS+=("$addr $port $name")
+  [[ -z "${name:-}" || "${_host:-}" =~ ^# ]] && continue
+  # 从主节点走内网: SSH 目标用 addr(10.100.1.x), 端口固定 22
+  AGENTS+=("$addr 22 $name")
 done < "${LIST}"
 
 if ((${#AGENTS[@]} == 0)); then
