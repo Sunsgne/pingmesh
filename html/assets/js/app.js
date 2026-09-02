@@ -100,6 +100,16 @@ var SP = (function () {
         if (isNaN(v)) return '-';
         return v.toFixed(2);
     }
+    function fmtLossPct(v) {
+        if (v == null || v === '-' || v === '') return '-';
+        var n = typeof v === 'number' ? v : parseFloat(v);
+        if (isNaN(n)) return '-';
+        if (n >= 100) return '100%';
+        if (n === 0) return '0%';
+        if (n < 10 && Math.abs(n - Math.round(n)) > 0.05) return n.toFixed(1) + '%';
+        if (Math.abs(n - Math.round(n)) < 0.05) return Math.round(n) + '%';
+        return n.toFixed(2) + '%';
+    }
     function delayLevel(delay, loss, baseline) {
         // 延迟: 相对基线涨幅 ≥10%黄 / ≥20%橙 / ≥30%红
         // 丢包: ≥5%黄 / ≥20%橙 / ≥50%红 (与延迟取较高档)
@@ -146,8 +156,8 @@ var SP = (function () {
     }
 
     function lastMetric(avgdelay, losspk) {
-        var lastDelay = '-', lastLoss = '-';
-        if (!avgdelay || !avgdelay.length) return { delay: lastDelay, loss: lastLoss };
+        var lastDelay = '-', lastLoss = '-', lastLossRaw = null;
+        if (!avgdelay || !avgdelay.length) return { delay: lastDelay, loss: lastLoss, lossRaw: lastLossRaw };
         for (var k = avgdelay.length - 1; k >= 0; k--) {
             var d = avgdelay[k], l = losspk ? losspk[k] : null;
             if (d === '-' || d === '' || d === null || typeof d === 'undefined') continue;
@@ -156,11 +166,14 @@ var SP = (function () {
             lastDelay = fmtMs(dn);
             if (l !== '-' && l !== '' && l !== null && typeof l !== 'undefined') {
                 var ln = parseFloat(l);
-                if (!isNaN(ln)) lastLoss = ln;
+                if (!isNaN(ln)) {
+                    lastLossRaw = ln;
+                    lastLoss = fmtLossPct(ln);
+                }
             }
             break;
         }
-        return { delay: lastDelay, loss: lastLoss };
+        return { delay: lastDelay, loss: lastLoss, lossRaw: lastLossRaw };
     }
 
     /* ---------- shared echarts helpers ---------- */
@@ -186,10 +199,16 @@ var SP = (function () {
                 padding: [8, 12],
                 textStyle: { color: '#e2e8f0', fontSize: 11 },
                 confine: true,
-                valueFormatter: function (v) {
-                    if (v == null || v === '-') return '-';
-                    var n = typeof v === 'number' ? v : parseFloat(v);
-                    return isNaN(n) ? '-' : n.toFixed(2);
+                formatter: function (params) {
+                    if (!params || !params.length) return '';
+                    var lines = [params[0].axisValueLabel || params[0].name || ''];
+                    for (var i = 0; i < params.length; i++) {
+                        var p = params[i];
+                        var val = p.seriesName === '丢包率' ? fmtLossPct(p.value) : fmtChartVal(p.value);
+                        if (p.seriesName === '延迟') val += ' ms';
+                        lines.push(p.marker + ' ' + p.seriesName + '  ' + val);
+                    }
+                    return lines.join('\n');
                 }
             },
             xAxis: {
@@ -225,7 +244,7 @@ var SP = (function () {
                     data: []
                 },
                 {
-                    name: '丢包', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
+                    name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
                     clip: true, sampling: 'lttb', itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: []
                 }
             ]
@@ -495,7 +514,19 @@ var SP = (function () {
                         },
                         crossStyle: { color: '#94a3b8', type: 'dashed' }
                     },
-                    valueFormatter: fmtChartVal
+                    formatter: function (params) {
+                        if (!params || !params.length) return '';
+                        var lines = [params[0].axisValueLabel || params[0].name || ''];
+                        for (var i = 0; i < params.length; i++) {
+                            var p = params[i];
+                            var val;
+                            if (p.seriesName === '丢包率') val = fmtLossPct(p.value);
+                            else if (p.seriesName === '抖动') val = fmtChartVal(p.value) + ' ms';
+                            else val = fmtChartVal(p.value) + ' ms';
+                            lines.push(p.marker + ' ' + p.seriesName + '  ' + val);
+                        }
+                        return lines.join('\n');
+                    }
                 },
                 legend: {
                     data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
@@ -527,8 +558,8 @@ var SP = (function () {
                     { type: 'value', name: '延迟(ms)', min: 0, scale: false, position: 'left', nameTextStyle: { color: '#94a3b8' },
                       axisLabel: { color: '#94a3b8', fontSize: 11, hideOverlap: true, formatter: fmtChartVal },
                       splitLine: { lineStyle: { color: '#f1f5f9' } } },
-                    { type: 'value', name: '丢包(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
-                      axisLabel: { formatter: '{value}%', color: '#94a3b8', fontSize: 11, hideOverlap: true },
+                    { type: 'value', name: '丢包率(%)', min: 0, max: 100, position: 'right', nameTextStyle: { color: '#94a3b8' },
+                      axisLabel: { formatter: function (v) { return fmtLossPct(v); }, color: '#94a3b8', fontSize: 11, hideOverlap: true },
                       splitLine: { show: false } }
                 ],
                 series: [
@@ -830,7 +861,7 @@ var SP = (function () {
             if (h.Host !== '???' && avg > maxAvg) maxAvg = avg;
         });
         var html = '<table class="mtr-table"><thead><tr>' +
-            '<th style="width:46px">#</th><th>节点</th><th style="width:90px">丢包</th>' +
+            '<th style="width:46px">#</th><th>节点</th><th style="width:90px">丢包率</th>' +
             '<th>平均延迟</th><th style="width:150px">最近 / 最优 / 最差</th><th style="width:80px">抖动</th>' +
             '</tr></thead><tbody>';
         $.each(shown, function (i, h) {
@@ -894,6 +925,7 @@ var SP = (function () {
         confirm: confirmBox,
         proxy: proxy,
         fmtMs: fmtMs,
+        fmtLossPct: fmtLossPct,
         delayLevel: delayLevel,
         delayRisePct: delayRisePct,
         openPingChart: openPingChart,

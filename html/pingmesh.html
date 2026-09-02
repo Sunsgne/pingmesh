@@ -27,7 +27,7 @@
   <div class="card">
     <div class="card-head">
       <h3>Pingmesh</h3>
-      <span class="sub">行 = 探测源，列 = 目标 · 色块内为延迟 / 丢包 · 点击查看历史</span>
+      <span class="sub">行 = 探测源，列 = 目标 · 色块内为延迟 / 丢包率 · 点击查看历史</span>
       <span class="spacer"></span>
       <span class="flex" style="gap:7px;font-size:12.5px;color:var(--sp-text-2)">
         <label class="switch"><input type="checkbox" id="auto-refresh" checked><span class="track"></span></label>
@@ -60,7 +60,7 @@
           <div class="seg" id="zoom-seg">
             <button data-v="std" class="active" title="较大格子，显示节点 IP">标准</button>
             <button data-v="compact" title="较小格子，隐藏 IP">紧凑</button>
-            <button data-v="heat" title="最密色块，仍显示延迟/丢包">色块</button>
+            <button data-v="heat" title="最密色块，仍显示延迟/丢包率">色块</button>
           </div>
         </div>
         <div class="tb-group">
@@ -79,9 +79,9 @@
 
       <div class="mesh-legend">
         <span class="lg"><span class="sq" style="background:#10b981"></span>正常</span>
-        <span class="lg"><span class="sq" style="background:#fbbf24"></span>延迟升高≥10% / 丢包≥5%</span>
-        <span class="lg"><span class="sq" style="background:#fb923c"></span>延迟升高≥20% / 丢包≥20%</span>
-        <span class="lg"><span class="sq" style="background:#f43f5e"></span>延迟升高≥30% / 丢包≥50%</span>
+        <span class="lg"><span class="sq" style="background:#fbbf24"></span>延迟升高≥10% / 丢包率≥5%</span>
+        <span class="lg"><span class="sq" style="background:#fb923c"></span>延迟升高≥20% / 丢包率≥20%</span>
+        <span class="lg"><span class="sq" style="background:#f43f5e"></span>延迟升高≥30% / 丢包率≥50%</span>
         <span class="lg"><span class="sq" style="background:#eef2f7"></span>无数据</span>
         <span class="lg"><span class="sq" style="background:repeating-linear-gradient(-45deg,#f8fafc,#f8fafc 2px,#e2e8f0 2px,#e2e8f0 4px);border:1px solid var(--sp-border)"></span>自身</span>
       </div>
@@ -327,7 +327,7 @@ SP.init('pingmesh', 'Pingmesh').done(function (ctx) {
                 var rise = SP.delayRisePct(c.avgdelay, c.baseline);
                 var riseTxt = rise == null ? '' : ('\n相对基线 ' + (rise >= 0 ? '+' : '') + rise.toFixed(0) + '% (基线 ' + SP.fmtMs(c.baseline) + 'ms)');
                 var tip = SP.esc(s.Name) + ' → ' + SP.esc(SP.nodeName(cfg, t)) +
-                    '\n延迟 ' + SP.fmtMs(c.avgdelay) + 'ms · 丢包 ' + c.loss.toFixed(1) + '%' +
+                    '\n延迟 ' + SP.fmtMs(c.avgdelay) + 'ms · 丢包率 ' + c.loss.toFixed(1) + '%' +
                     '\n最大 ' + SP.fmtMs(c.maxdelay) + 'ms · 抖动 ' + SP.fmtMs(c.jitter || 0) + 'ms · 采样 ' + c.points + ' 次' +
                     riseTxt + '\n' + c.lastcheck;
                 html += '<td><div class="mesh-cell mesh-l' + lvl + '" title="' + tip + '" data-src="' + SP.esc(s.Addr) + '" data-dst="' + SP.esc(t) + '">' +

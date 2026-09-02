@@ -552,11 +552,11 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
                 ? '<span class="badge red"><span class="dot"></span>判定: 告警中</span>'
                 : '<span class="badge green"><span class="dot"></span>判定: 正常</span>';
             var rows = [
-                ['规则阈值', '延迟 ≥ ' + r['Thdavgdelay'] + 'ms 或 丢包 ≥ ' + r['Thdloss'] + '%' + (r['Thdjitter'] ? ' 或 抖动 ≥ ' + r['Thdjitter'] + 'ms' : '')],
+                ['规则阈值', '延迟 ≥ ' + r['Thdavgdelay'] + 'ms 或 丢包率 ≥ ' + r['Thdloss'] + '%' + (r['Thdjitter'] ? ' 或 抖动 ≥ ' + r['Thdjitter'] + 'ms' : '')],
                 ['检测窗口', d.window_sec + ' 秒(最多容纳 ' + d.capacity + ' 个数据点) · 触发次数 ' + d.occ],
                 ['窗口内数据点', d.total + ' 个'],
                 ['异常采样点数', '<b style="color:' + (d.bad >= d.occ ? 'var(--sp-red)' : 'var(--sp-green)') + '">' + d.bad + '</b> / 触发线 ' + d.occ +
-                 '　<span class="muted">(延迟超标 ' + d.bad_delay + ' · 丢包超标 ' + d.bad_loss + (r['Thdjitter'] ? ' · 抖动超标 ' + d.bad_jitter : '') + ')</span>']
+                 '　<span class="muted">(延迟超标 ' + d.bad_delay + ' · 丢包率超标 ' + d.bad_loss + (r['Thdjitter'] ? ' · 抖动超标 ' + d.bad_jitter : '') + ')</span>']
             ];
             if (d.muted) rows.push(['屏蔽状态', '<span class="badge yellow">屏蔽中</span> 至 ' + SP.esc(d.mute_until) + (d.mute_reason ? ' · ' + SP.esc(d.mute_reason) : '') + '(不发通知)']);
             var html = '<div class="mb-4">' + verdictBadge + '</div><table class="sp-table">';

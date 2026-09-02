@@ -66,7 +66,7 @@ SP.init('tools', '检测工具').done(function (ctx) {
         icmp: {
             hint: 'ICMP PING：5 个探测包，统计延迟与丢包。目标填 IP 或域名',
             ph: '如 8.8.8.8 或 www.example.com',
-            cols: ['解析 IP', '发送', '接收', '丢包', '最大延迟', '最小延迟', '平均延迟', '状态']
+            cols: ['解析 IP', '发送', '接收', '丢包率', '最大延迟', '最小延迟', '平均延迟', '状态']
         },
         tcp: {
             hint: 'TCP Ping：5 次 TCP 连接建立耗时，可探测被禁 PING 的主机与具体端口。目标填 host:端口（缺省 80）',
@@ -126,7 +126,7 @@ SP.init('tools', '检测工具').done(function (ctx) {
     function fmtMs(v) { return (v == null || isNaN(v)) ? '-' : Number(v).toFixed(1) + ' ms'; }
     function lossBadge(v) {
         var cls = v >= 20 ? 'red' : (v >= 5 ? 'yellow' : 'green');
-        return '<span class="badge ' + cls + '">' + v + '%</span>';
+        return '<span class="badge ' + cls + '">' + (SP.fmtLossPct ? SP.fmtLossPct(v) : (v + '%')) + '</span>';
     }
 
     function run() {

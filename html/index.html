@@ -232,7 +232,7 @@ SP.init('index', '概览').done(function (ctx) {
                 '<div class="ping-foot">' +
                 '<span class="badge gray mono">' + SP.esc(t) + '</span>' +
                 '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
-                '<span class="badge green" id="' + id + '-loss">- %</span>' +
+                '<span class="badge green" id="' + id + '-loss">丢包率 -</span>' +
                 '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
                 '</div></div>');
             box.append(card);
@@ -262,17 +262,18 @@ SP.init('index', '概览').done(function (ctx) {
                 try {
                     chart.setOption({
                         xAxis: { data: labels },
-                        series: [{ name: '延迟', data: avg }, { name: '丢包', data: loss }]
+                        series: [{ name: '延迟', data: avg }, { name: '丢包率', data: loss }]
                     });
                     chart.resize();
                 } catch (err2) {
                     console.error('mini chart data', err2);
                 }
-                var m = SP.lastMetric ? SP.lastMetric(d.avgdelay, d.losspk) : { delay: '-', loss: '-' };
+                var m = SP.lastMetric ? SP.lastMetric(d.avgdelay, d.losspk) : { delay: '-', loss: '-', lossRaw: null };
                 $('#' + id + '-delay').text(m.delay + ' ms');
-                var lossBadge = $('#' + id + '-loss').text(m.loss + ' %');
-                if (parseFloat(m.loss) >= 20) lossBadge.removeClass('green yellow').addClass('red');
-                else if (parseFloat(m.loss) >= 5) lossBadge.removeClass('green red').addClass('yellow');
+                var lossBadge = $('#' + id + '-loss').text('丢包率 ' + m.loss);
+                var lossVal = m.lossRaw != null ? m.lossRaw : parseFloat(m.loss);
+                if (lossVal >= 20) lossBadge.removeClass('green yellow').addClass('red');
+                else if (lossVal >= 5) lossBadge.removeClass('green red').addClass('yellow');
                 else lossBadge.removeClass('red yellow').addClass('green');
             }).fail(function () {
                 $('#' + id + '-delay').text('失败');

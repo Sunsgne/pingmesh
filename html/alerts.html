@@ -233,7 +233,7 @@ SP.init('alerts', '报警记录').done(function (ctx) {
             var typeHtml = renderAlertTypes(r.AlertType);
             var reason = r.Reason || '';
             if (!reason && (r.AvgDelay || r.Loss || r.Jitter)) {
-                reason = '延迟 ' + Number(r.AvgDelay || 0).toFixed(1) + 'ms / 丢包 ' + Number(r.Loss || 0).toFixed(0) + '% / 抖动 ' + Number(r.Jitter || 0).toFixed(1) + 'ms';
+                reason = '延迟 ' + Number(r.AvgDelay || 0).toFixed(1) + 'ms / 丢包率 ' + Number(r.Loss || 0).toFixed(1) + '% / 抖动 ' + Number(r.Jitter || 0).toFixed(1) + 'ms';
             }
             var tag = r.Tag || '';
             var occur = parseInt(r.Occur, 10) || 0;
@@ -272,7 +272,7 @@ SP.init('alerts', '报警记录').done(function (ctx) {
         if (!t) return '未知';
         return String(t).split('+').map(function (p) {
             if (p === 'delay') return '延迟';
-            if (p === 'loss') return '丢包';
+            if (p === 'loss') return '丢包率';
             if (p === 'jitter') return '抖动';
             if (p === 'quality') return '质量异常';
             return p;
@@ -283,7 +283,7 @@ SP.init('alerts', '报警记录').done(function (ctx) {
         return String(t).split('+').map(function (p) {
             var cls = 'gray', label = p;
             if (p === 'delay') { cls = 'yellow'; label = '延迟'; }
-            else if (p === 'loss') { cls = 'red'; label = '丢包'; }
+            else if (p === 'loss') { cls = 'red'; label = '丢包率'; }
             else if (p === 'jitter') { cls = 'indigo'; label = '抖动'; }
             else if (p === 'quality') { cls = 'gray'; label = '质量异常'; }
             return '<span class="badge ' + cls + '" style="margin:0 4px 2px 0">' + SP.esc(label) + '</span>';
