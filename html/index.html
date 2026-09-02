@@ -72,7 +72,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260901c"></script>
+<script src="assets/js/app.js?v=20260902a"></script>
 <script>
 $(function () {
 SP.init('index', '概览').done(function (ctx) {
@@ -260,18 +260,18 @@ SP.init('index', '概览').done(function (ctx) {
                 var avg = SP.sanitizeSeries ? SP.sanitizeSeries(d.avgdelay) : d.avgdelay;
                 var loss = SP.sanitizeSeries ? SP.sanitizeSeries(d.losspk) : d.losspk;
                 try {
-                    chart.setOption({
-                        xAxis: { data: labels },
-                        series: [{ name: '延迟', data: avg }, { name: '丢包率', data: loss }]
-                    });
+                    chart.setOption(SP.miniChartDataOption
+                        ? SP.miniChartDataOption(labels, avg, loss)
+                        : { xAxis: { data: labels }, series: [{ name: '延迟', data: avg }, { name: '丢包率', data: loss }] });
                     chart.resize();
                 } catch (err2) {
                     console.error('mini chart data', err2);
                 }
                 var m = SP.lastMetric ? SP.lastMetric(d.avgdelay, d.losspk) : { delay: '-', loss: '-', lossRaw: null };
                 $('#' + id + '-delay').text(m.delay + ' ms');
-                var lossBadge = $('#' + id + '-loss').text('丢包率 ' + m.loss);
-                var lossVal = m.lossRaw != null ? m.lossRaw : parseFloat(m.loss);
+                var lossTxt = m.lossRaw != null ? SP.fmtLossPct(m.lossRaw) : m.loss;
+                var lossBadge = $('#' + id + '-loss').text('丢包率 ' + lossTxt);
+                var lossVal = m.lossRaw != null ? m.lossRaw : 0;
                 if (lossVal >= 20) lossBadge.removeClass('green yellow').addClass('red');
                 else if (lossVal >= 5) lossBadge.removeClass('green red').addClass('yellow');
                 else lossBadge.removeClass('red yellow').addClass('green');

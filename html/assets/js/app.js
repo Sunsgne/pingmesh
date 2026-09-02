@@ -177,6 +177,18 @@ var SP = (function () {
     }
 
     /* ---------- shared echarts helpers ---------- */
+    function miniChartTooltipFormatter(params) {
+        params = Array.isArray(params) ? params : (params ? [params] : []);
+        if (!params.length) return '';
+        var lines = [params[0].axisValueLabel || params[0].name || ''];
+        for (var i = 0; i < params.length; i++) {
+            var p = params[i];
+            var isLoss = p.seriesName === '丢包率' || p.seriesIndex === 1;
+            var val = isLoss ? fmtLossPct(p.value) : (fmtChartVal(p.value) + ' ms');
+            lines.push(p.marker + ' ' + (p.seriesName || '') + '  ' + val);
+        }
+        return lines.join('\n');
+    }
     function miniChartOption() {
         var area = null;
         try {
@@ -199,17 +211,7 @@ var SP = (function () {
                 padding: [8, 12],
                 textStyle: { color: '#e2e8f0', fontSize: 11 },
                 confine: true,
-                formatter: function (params) {
-                    if (!params || !params.length) return '';
-                    var lines = [params[0].axisValueLabel || params[0].name || ''];
-                    for (var i = 0; i < params.length; i++) {
-                        var p = params[i];
-                        var val = p.seriesName === '丢包率' ? fmtLossPct(p.value) : fmtChartVal(p.value);
-                        if (p.seriesName === '延迟') val += ' ms';
-                        lines.push(p.marker + ' ' + p.seriesName + '  ' + val);
-                    }
-                    return lines.join('\n');
-                }
+                formatter: miniChartTooltipFormatter
             },
             xAxis: {
                 data: [],
@@ -247,6 +249,24 @@ var SP = (function () {
                     name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true,
                     clip: true, sampling: 'lttb', itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' }, data: []
                 }
+            ]
+        };
+    }
+    function miniChartDataOption(labels, avg, loss) {
+        return {
+            xAxis: { data: labels || [] },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(15,23,42,.92)',
+                borderWidth: 0,
+                padding: [8, 12],
+                textStyle: { color: '#e2e8f0', fontSize: 11 },
+                confine: true,
+                formatter: miniChartTooltipFormatter
+            },
+            series: [
+                { name: '延迟', data: avg || [] },
+                { name: '丢包率', data: loss || [] }
             ]
         };
     }
@@ -940,6 +960,7 @@ var SP = (function () {
         proxyTopologyUrl: proxyTopologyUrl,
         initPageTimeFilter: initPageTimeFilter,
         miniChartOption: miniChartOption,
+        miniChartDataOption: miniChartDataOption,
         bindChartResize: bindChartResize,
         sanitizeSeries: sanitizeSeries,
         lastMetric: lastMetric,
