@@ -16,6 +16,15 @@ import (
 
 func configApiRoutes() {
 
+	firstForm := func(r *http.Request, keys ...string) string {
+		for _, k := range keys {
+			if v := strings.TrimSpace(r.FormValue(k)); v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+
 	//配置文件API
 	http.HandleFunc("/api/config.json", func(w http.ResponseWriter, r *http.Request) {
 		if !AuthData(r) {
@@ -64,93 +73,133 @@ func configApiRoutes() {
 			http.Error(w, o, 406)
 			return
 		}
-		var tableip string
-		var timeStart int64
-		var timeEnd int64
-		var timeStartStr string
-		var timeEndStr string
-		tableip = r.Form["ip"][0]
-		if len(r.Form["starttime"]) > 0 && len(r.Form["endtime"]) > 0 {
-			timeStartStr = r.Form["starttime"][0]
-			if timeStartStr != "" {
-				tms, _ := g.ParseProbeTime(timeStartStr)
+		tableip := r.Form["ip"][0]
+		// 兼容 starttime/endtime 与 start/end
+		timeStartStr := firstForm(r, "starttime", "start")
+		timeEndStr := firstForm(r, "endtime", "end")
+
+		var timeStart, timeEnd int64
+		if timeStartStr != "" {
+			if tms, err := g.ParseProbeTime(timeStartStr); err == nil {
 				timeStart = g.AlignUnixProbe(tms.Unix())
-				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
-			} else {
-				timeStart = time.Now().Unix() - 2*60*60
-				timeStart = g.AlignUnixProbe(timeStart)
-				timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			}
-			timeEndStr = r.Form["endtime"][0]
-			if timeEndStr != "" {
-				tmn, _ := g.ParseProbeTime(timeEndStr)
+		}
+		if timeEndStr != "" {
+			if tmn, err := g.ParseProbeTime(timeEndStr); err == nil {
 				timeEnd = g.AlignUnixProbe(tmn.Unix())
-				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
-			} else {
-				timeEnd = g.AlignUnixProbe(time.Now().Unix())
-				timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
 			}
-		} else {
-			timeStart = time.Now().Unix() - 2*60*60
-			timeStart = g.AlignUnixProbe(timeStart)
-			timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
+		}
+		if timeStart <= 0 || timeEnd <= 0 || timeEnd <= timeStart {
 			timeEnd = g.AlignUnixProbe(time.Now().Unix())
-			timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
+			timeStart = timeEnd - 2*60*60
+			timeStart = g.AlignUnixProbe(timeStart)
 		}
-		step := int64(g.ProbeCycleSec)
-		cnt := int((timeEnd - timeStart) / step)
-		var lastcheck []string
-		var maxdelay []string
-		var mindelay []string
-		var avgdelay []string
-		var losspk []string
-		var jitter []string
-		timwwnum := map[string]int{}
-		for i := 0; i < cnt+1; i++ {
-			ntime := time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
-			timwwnum[ntime] = i
-			lastcheck = append(lastcheck, ntime)
-			// 无数据的采样点使用 "-" (ECharts 空值)
-			maxdelay = append(maxdelay, "-")
-			mindelay = append(mindelay, "-")
-			avgdelay = append(avgdelay, "-")
-			losspk = append(losspk, "-")
-			jitter = append(jitter, "-")
-			timeStart = timeStart + step
+		// 长跨度自适应加大分桶, 控制点数; 同时 O(1) 填桶, 避免三天以上超时空白
+		step := g.ChartStepSec(timeEnd - timeStart)
+		timeStart = g.AlignUnixStep(timeStart, step)
+		timeEnd = g.AlignUnixStep(timeEnd, step)
+		if timeEnd < timeStart {
+			timeEnd = timeStart
 		}
+		timeStartStr = time.Unix(timeStart, 0).In(time.Local).Format("2006-01-02 15:04:05")
+		timeEndStr = time.Unix(timeEnd, 0).In(time.Local).Format("2006-01-02 15:04:05")
+
+		cnt := int((timeEnd-timeStart)/step) + 1
+		if cnt < 1 {
+			cnt = 1
+		}
+		lastcheck := make([]string, cnt)
+		maxdelay := make([]string, cnt)
+		mindelay := make([]string, cnt)
+		avgdelay := make([]string, cnt)
+		losspk := make([]string, cnt)
+		jitter := make([]string, cnt)
+		type agg struct {
+			maxV, minV, sumAvg, sumLoss, sumJit float64
+			nMax, nMin, nAvg, nLoss, nJit       int
+		}
+		aggs := make([]agg, cnt)
+		for i := 0; i < cnt; i++ {
+			ts := timeStart + int64(i)*step
+			lastcheck[i] = time.Unix(ts, 0).In(time.Local).Format("2006-01-02 15:04:05")
+			maxdelay[i], mindelay[i], avgdelay[i], losspk[i], jitter[i] = "-", "-", "-", "-", "-"
+		}
+
 		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"
 		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
-		seelog.Debug("[func:/api/ping.json] Query ", querySql)
+		seelog.Debug("[func:/api/ping.json] Query ", querySql, " step=", step, " points=", cnt)
 		if err != nil {
 			seelog.Error("[func:/api/ping.json] Query ", err)
 		} else {
 			for rows.Next() {
 				l := new(g.PingLog)
-				err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk, &l.Jitter)
-				if err != nil {
+				if err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk, &l.Jitter); err != nil {
 					seelog.Error("[/api/ping.json] Rows", err)
 					continue
 				}
-				for n, v := range lastcheck {
-					if v == l.Logtime {
-						maxdelay[n] = l.Maxdelay
-						mindelay[n] = l.Mindelay
-						avgdelay[n] = l.Avgdelay
-						losspk[n] = l.Losspk
-						jitter[n] = l.Jitter
-						break
+				tm, err := g.ParseProbeTime(l.Logtime)
+				if err != nil {
+					continue
+				}
+				idx := int((g.AlignUnixStep(tm.Unix(), step) - timeStart) / step)
+				if idx < 0 || idx >= cnt {
+					continue
+				}
+				a := &aggs[idx]
+				if v, e := strconv.ParseFloat(l.Maxdelay, 64); e == nil {
+					if a.nMax == 0 || v > a.maxV {
+						a.maxV = v
 					}
+					a.nMax++
+				}
+				if v, e := strconv.ParseFloat(l.Mindelay, 64); e == nil {
+					if a.nMin == 0 || v < a.minV {
+						a.minV = v
+					}
+					a.nMin++
+				}
+				if v, e := strconv.ParseFloat(l.Avgdelay, 64); e == nil {
+					a.sumAvg += v
+					a.nAvg++
+				}
+				if v, e := strconv.ParseFloat(l.Losspk, 64); e == nil {
+					a.sumLoss += v
+					a.nLoss++
+				}
+				if v, e := strconv.ParseFloat(l.Jitter, 64); e == nil {
+					a.sumJit += v
+					a.nJit++
 				}
 			}
 			rows.Close()
 		}
-		preout := map[string][]string{
+		for i := range aggs {
+			a := aggs[i]
+			if a.nMax > 0 {
+				maxdelay[i] = strconv.FormatFloat(a.maxV, 'f', -1, 64)
+			}
+			if a.nMin > 0 {
+				mindelay[i] = strconv.FormatFloat(a.minV, 'f', -1, 64)
+			}
+			if a.nAvg > 0 {
+				avgdelay[i] = strconv.FormatFloat(a.sumAvg/float64(a.nAvg), 'f', -1, 64)
+			}
+			if a.nLoss > 0 {
+				losspk[i] = strconv.FormatFloat(a.sumLoss/float64(a.nLoss), 'f', -1, 64)
+			}
+			if a.nJit > 0 {
+				jitter[i] = strconv.FormatFloat(a.sumJit/float64(a.nJit), 'f', -1, 64)
+			}
+		}
+		preout := map[string]interface{}{
 			"lastcheck": lastcheck,
 			"maxdelay":  maxdelay,
 			"mindelay":  mindelay,
 			"avgdelay":  avgdelay,
 			"losspk":    losspk,
 			"jitter":    jitter,
+			"step":      step,
+			"points":    cnt,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		RenderJson(w, preout)

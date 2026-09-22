@@ -299,6 +299,7 @@ var SP = (function () {
             '<input type="datetime-local" class="input chart-time" id="sp-chart-end">' +
             '<button class="btn primary sm" id="sp-chart-query">查询</button>' +
             '<span class="spacer"></span>' +
+            '<span class="muted" id="sp-chart-hint" style="font-size:12px"></span>' +
             '<span class="muted" id="sp-chart-loading"></span>' +
             '</div>' +
             '<div id="sp-chart-box" class="chart-box-lg"></div>' +
@@ -458,13 +459,22 @@ var SP = (function () {
     function loadChart(apiurl, start, end) {
         var url = pingUrlWithRange(apiurl, start, end);
         $('#sp-chart-loading').html('<span class="spinner"></span>');
-        $.getJSON(url).done(function (data) {
+        $('#sp-chart-hint').text('');
+        $.ajax({ dataType: 'json', url: url, timeout: 60000 }).done(function (data) {
             $('#sp-chart-loading').html('');
             _chartRaw = data;
             applyChartData(data);
+            var step = parseInt(data.step, 10) || 0;
+            if (step > 10) {
+                var label = step >= 3600 ? (step / 3600) + ' 小时' : (step >= 60 ? (step / 60) + ' 分钟' : step + ' 秒');
+                $('#sp-chart-hint').text('长跨度已按 ' + label + ' 聚合显示');
+            } else {
+                $('#sp-chart-hint').text('');
+            }
         }).fail(function () {
             $('#sp-chart-loading').html('');
-            toast('获取数据失败', 'err');
+            $('#sp-chart-hint').text('');
+            toast('获取数据失败（时间跨度过大或节点超时）', 'err');
         });
     }
     function applyChartData(data) {
