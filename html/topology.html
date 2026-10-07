@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" href="favicon.ico">
 <link href="assets/css/modern.css?v=20260901c" rel="stylesheet">
+<link href="assets/css/mui.css?v=20261007a" rel="stylesheet">
 </head>
 <body>
 <div id="app">
@@ -97,7 +98,7 @@
 
 <script src="assets/js/jquery-1.7.2.min.js"></script>
 <script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260902a"></script>
+<script src="assets/js/app.js?v=20261007a"></script>
 <script>
 $(function () {
 SP.init('topology', '网络拓扑').done(function (ctx) {
@@ -240,7 +241,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
             circular: { rotateLabel: false },
             scaleLimit: { min: .4, max: 5 },
             categories: [
-                { name: '探测节点', itemStyle: { color: '#6366f1' } },
+                { name: '探测节点', itemStyle: { color: SP.chartColor() } },
                 { name: '被测目标', itemStyle: { color: '#10b981' } },
                 { name: '异常', itemStyle: { color: '#f43f5e' } },
                 { name: '分组', itemStyle: { color: '#0ea5e9' } }
@@ -297,7 +298,7 @@ SP.init('topology', '网络拓扑').done(function (ctx) {
         $('#topo-hint').toggle(!showLabel).text('节点较多(' + cnt + ' 个)已隐藏名称，悬浮可查看；建议用「按分组聚合」或分组筛选缩小范围');
 
         var idx = {};
-        var colors = ['#6366f1', '#10b981', '#f43f5e'];
+        var colors = [SP.chartColor(), '#10b981', '#f43f5e'];
         $.each(nodes, function (addr, n) {
             if (!vis[addr]) return;
             var ctx = vis[addr] === 2; // 上下文节点(链路对端), 半透明展示
