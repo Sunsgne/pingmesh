@@ -26,7 +26,8 @@ func main() {
 	listen := flag.String("l", "", "listen address, e.g. 127.0.0.1:8899 (override config)")
 	workdir := flag.String("w", "", "work directory (default: binary directory)")
 	join := flag.String("join", "", "join a master node, e.g. http://10.0.0.1:8899")
-	token := flag.String("token", "", "join token (master's config password)")
+	// 令牌优先从环境变量读(systemd EnvironmentFile, 0600), 避免出现在进程命令行和全员可读的 unit 文件里
+	token := flag.String("token", os.Getenv("PINGMESH_JOIN_TOKEN"), "join token (master's config password); defaults to $PINGMESH_JOIN_TOKEN")
 	name := flag.String("name", "", "node name used when joining")
 	addr := flag.String("addr", "", "node ip used when joining (auto-detect if empty)")
 	group := flag.String("group", "", "node group used when joining (optional)")

@@ -31,7 +31,7 @@ deploy_agent() {
   # 一并下发磁盘防护脚本(扩容 LVM / journal 上限 / 小时巡检)
   if [[ -f "${SCRIPT_DIR}/disk-harden.sh" ]]; then
     sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" \
-      "${SCRIPT_DIR}/disk-harden.sh" "${SCRIPT_DIR}/expand-root-disk.sh" \
+      "${SCRIPT_DIR}/disk-harden.sh" "${SCRIPT_DIR}/expand-root-disk.sh" "${SCRIPT_DIR}/node-harden.sh" \
       "root@${host}:/tmp/" 2>/dev/null || true
   fi
   sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -p "$port" "root@${host}" \
@@ -84,6 +84,8 @@ elif [[ -f /tmp/expand-root-disk.sh ]]; then
 fi
 sleep 25
 curl -s --max-time 5 http://127.0.0.1:8899/healthz 2>/dev/null | grep -q ok
+# 节点加固: 8899 仅内网可达, 接入令牌移到 0600 的 EnvironmentFile
+if [[ -f /tmp/node-harden.sh ]]; then bash /tmp/node-harden.sh; fi
 REMOTE
   if [[ $? -eq 0 ]]; then
     info "  ${name} 成功"
