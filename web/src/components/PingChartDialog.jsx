@@ -8,6 +8,9 @@ import { aggregationHint, bigChartOption } from '../charts';
 import { fromInputTime, getJSON, pingUrlWithRange, rangeFromPreset, toInputTime } from '../api';
 import { palette } from '../theme';
 
+const timeGroup = { display: 'flex', alignItems: 'center', gap: 1.25, '@media (max-width:600px)': { width: '100%' } };
+const timeInput = { width: 200, '@media (max-width:600px)': { flex: 1, width: 'auto' } };
+
 /**
  * 历史曲线弹窗, 对应旧版 SP.openPingChart(title, apiurl, start, end)。
  * chart = { title, apiurl, start, end } 打开, null 关闭; apiurl 与旧版相同(已含 ?ip=, 可为 proxy URL)。
@@ -46,12 +49,16 @@ export default function PingChartDialog({ chart, onClose }) {
       </DialogTitle>
       <DialogContent sx={{ p: '20px !important', '@media (max-width:900px)': { p: '14px !important' } }}>
         <Stack direction="row" alignItems="center" gap={1.25} flexWrap="wrap" sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: 12.5, color: palette.text3 }}>开始</Typography>
-          <TextField size="small" type="datetime-local" value={toInputTime(range.start)} sx={{ width: 200 }}
-            onChange={(e) => setRange((r) => ({ ...r, start: fromInputTime(e.target.value) }))} />
-          <Typography sx={{ fontSize: 12.5, color: palette.text3 }}>结束</Typography>
-          <TextField size="small" type="datetime-local" value={toInputTime(range.end)} sx={{ width: 200 }}
-            onChange={(e) => setRange((r) => ({ ...r, end: fromInputTime(e.target.value) }))} />
+          <Box sx={timeGroup}>
+            <Typography sx={{ fontSize: 12.5, color: palette.text3, flex: 'none' }}>开始</Typography>
+            <TextField size="small" type="datetime-local" value={toInputTime(range.start)} sx={timeInput}
+              onChange={(e) => setRange((r) => ({ ...r, start: fromInputTime(e.target.value) }))} />
+          </Box>
+          <Box sx={timeGroup}>
+            <Typography sx={{ fontSize: 12.5, color: palette.text3, flex: 'none' }}>结束</Typography>
+            <TextField size="small" type="datetime-local" value={toInputTime(range.end)} sx={timeInput}
+              onChange={(e) => setRange((r) => ({ ...r, end: fromInputTime(e.target.value) }))} />
+          </Box>
           <Button size="small" variant="contained" onClick={() => chart && load(chart.apiurl, range.start, range.end)}>查询</Button>
           <Box sx={{ flex: 1 }} />
           {hint && <Typography sx={{ fontSize: 12, color: palette.text3 }}>{hint}</Typography>}

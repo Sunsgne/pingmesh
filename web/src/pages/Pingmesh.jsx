@@ -67,7 +67,9 @@ function buildTopo(cfg, meshOnly) {
 }
 
 function computeFit(wrap, n, zoom) {
-  const rowW = zoom === 'std' ? 132 : (zoom === 'compact' ? 108 : 104);
+  // 手机屏幕收窄行头, 把宽度留给矩阵格子
+  const phone = wrap.clientWidth < 600;
+  const rowW = phone ? (zoom === 'std' ? 88 : 72) : (zoom === 'std' ? 132 : (zoom === 'compact' ? 108 : 104));
   const gap = zoom === 'heat' ? 2 : (zoom === 'compact' ? 3 : 4);
   const avail = Math.max(200, wrap.clientWidth - rowW - 8);
   const raw = Math.floor((avail - gap * (n + 1)) / n);
@@ -147,6 +149,8 @@ const meshSx = {
   '& .mesh-table th.col-h .col-name': { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5, fontWeight: 700, color: palette.text },
   '& .mesh-table th.col-h .col-ip': { display: 'block', fontWeight: 400, fontSize: 10, color: palette.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .mesh-table th.row-h': { textAlign: 'right', pr: '12px', width: 'var(--mesh-row)', minWidth: 'var(--mesh-row)', maxWidth: 'var(--mesh-row)' },
+  // 横向滚动时源节点列固定在左侧
+  '& .mesh-table th.row-h, & .mesh-table th.corner': { position: 'sticky', left: 0, zIndex: 3, background: '#fff' },
   '& .mesh-table th.row-h .src-name': { fontWeight: 700, fontSize: 12, display: 'block', color: palette.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .mesh-table th.row-h .src-ip': { display: 'block', fontWeight: 400, fontSize: 10, color: palette.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .mesh-table th.corner': { textAlign: 'right', pr: '12px', color: palette.text3, fontSize: 11, fontWeight: 600, letterSpacing: '.02em' },
@@ -191,6 +195,12 @@ const meshSx = {
   '&.mesh-zoom-heat .mesh-cell:hover': { transform: 'scale(1.28)' },
   '&.mesh-zoom-heat .mesh-cell.na:hover, &.mesh-zoom-heat .mesh-cell.self:hover': noHover,
   '&.mesh-zoom-heat .mesh-cell.self': { fontSize: 0 },
+  // 手机: 行头只留节点名(放在最后, 覆盖前面各档位的规则)
+  '@media (max-width:600px)': {
+    '& .mesh-table th.row-h': { pr: '6px' },
+    '& .mesh-table th.row-h .src-name': { fontSize: 11 },
+    '& .mesh-table th.row-h .src-ip': { display: 'none' },
+  },
 };
 
 const switchSx = {

@@ -58,6 +58,6 @@ export function PingCard({ title, target, apiurl, range, onOpen }) {
 export const gridCols = (n) => ({
   display: 'grid', gap: 2, gridTemplateColumns: `repeat(${n}, 1fr)`,
   '@media (max-width:1100px)': { gridTemplateColumns: n >= 3 ? 'repeat(2, 1fr)' : `repeat(${n}, 1fr)` },
-  '@media (max-width:720px)': { gridTemplateColumns: '1fr' },
+  '@media (max-width:720px)': { gridTemplateColumns: n >= 4 ? 'repeat(2, 1fr)' : '1fr', gap: n >= 4 ? 1.25 : 1.5 },
 });
 

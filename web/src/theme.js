@@ -69,7 +69,8 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           border: 'none', borderRadius: '7px !important', padding: '5px 14px', lineHeight: 1.5,
-          fontWeight: 600, fontSize: 12.5, color: palette.text2, textTransform: 'none',
+          fontWeight: 600, fontSize: 12.5, color: palette.text2, textTransform: 'none', whiteSpace: 'nowrap',
+          '@media (max-width:600px)': { padding: '5px 10px', fontSize: 12 },
           '&.Mui-selected': { background: '#fff', color: palette.text, boxShadow: shadow },
           '&.Mui-selected:hover': { background: '#fff' },
         },
@@ -81,7 +82,10 @@ export const theme = createTheme({
     MuiDialog: {
       styleOverrides: {
         container: { alignItems: 'flex-start' },
-        paper: { borderRadius: 14, marginTop: '6vh' },
+        paper: {
+          borderRadius: 14, marginTop: '6vh',
+          '@media (max-width:600px)': { margin: '3vh 10px 10px', width: 'calc(100% - 20px)', maxWidth: 'calc(100% - 20px) !important', borderRadius: 12 },
+        },
       },
     },
     MuiBackdrop: {
@@ -89,7 +93,9 @@ export const theme = createTheme({
         root: { '&:not(.MuiBackdrop-invisible)': { backgroundColor: 'rgba(15, 23, 42, .45)', backdropFilter: 'blur(8px)' } },
       },
     },
-    MuiDialogTitle: { styleOverrides: { root: { fontSize: 15, fontWeight: 700 } } },
+    MuiDialogTitle: { styleOverrides: { root: { fontSize: 15, fontWeight: 700, '@media (max-width:600px)': { padding: '12px 14px' } } } },
+    MuiDialogContent: { styleOverrides: { root: { '@media (max-width:600px)': { padding: '14px' } } } },
+    MuiDialogActions: { styleOverrides: { root: { '@media (max-width:600px)': { padding: '10px 14px' } } } },
     MuiOutlinedInput: {
       styleOverrides: {
         root: { background: '#fff', fontSize: 13.5, '& fieldset': { borderColor: palette.border } },

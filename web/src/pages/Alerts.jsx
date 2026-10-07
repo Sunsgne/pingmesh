@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableRow, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { Badge, EmptyState, Panel, Spinner, ToolbarBox, ToolbarLabel } from '../components/ui';
+import { Badge, EmptyState, Panel, Spinner, ToolbarBox, ToolbarLabel, ResponsiveTable } from '../components/ui';
 import MtrTable from '../components/MtrTable';
 import { useToast } from '../components/Feedback';
 import { dlocal, getJSON, nestedQs, nodeBase } from '../api';
@@ -222,7 +222,7 @@ export default function Alerts({ user, config: cfg }) {
       {mutes.length > 0 && (
         <Panel flat sx={{ mb: 2 }} title={<>屏蔽中的目标 <Badge tone="yellow">{mutes.length} 个</Badge></>}
           sub="屏蔽期间仍记录告警，但不发送任何通知；到期自动恢复">
-          <Box sx={{ overflowX: 'auto' }}>
+          <ResponsiveTable sx={{ px: { xs: '10px', sm: 0 } }}>
             <Table sx={tableSx}>
               <TableHead>
                 <TableRow>
@@ -246,7 +246,7 @@ export default function Alerts({ user, config: cfg }) {
                 ))}
               </TableBody>
             </Table>
-          </Box>
+          </ResponsiveTable>
         </Panel>
       )}
 
@@ -256,7 +256,7 @@ export default function Alerts({ user, config: cfg }) {
         actions={loading ? <Spinner /> : null}
         bodySx={{ pt: '14px', pb: { xs: '14px', md: 2.25 }, px: { xs: '14px', md: 2.25 } }}
       >
-        <ToolbarBox sx={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
+        <ToolbarBox sx={{ flexWrap: 'nowrap', overflowX: 'auto', '@media (max-width:600px)': { flexWrap: 'wrap', overflowX: 'visible', '& > *': { width: '100%' } } }}>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
             <Box sx={{ display: { xs: 'none', md: 'inline' } }}><ToolbarLabel>范围</ToolbarLabel></Box>
             <ToggleButtonGroup exclusive size="small" value={range} sx={{ flexShrink: 0, flexWrap: 'nowrap' }}>
@@ -276,11 +276,11 @@ export default function Alerts({ user, config: cfg }) {
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             <Box sx={{ display: { xs: 'none', md: 'inline' } }}><ToolbarLabel>筛选</ToolbarLabel></Box>
             <TextField size="small" value={query} placeholder="节点 / IP / 类型 / Tag..." onChange={(e) => setQuery(e.target.value)}
-              sx={{ width: 'min(230px,100%)' }} />
+              sx={{ width: 'min(230px,100%)', '@media (max-width:600px)': { width: '100%' } }} />
           </Box>
         </ToolbarBox>
 
-        <Box sx={{ overflowX: 'auto', mx: { xs: '-14px', md: '-18px' } }}>
+        <ResponsiveTable sx={{ mx: { xs: '-14px', md: '-18px' } }}>
           <Table sx={tableSx}>
             <TableHead>
               <TableRow>
@@ -341,7 +341,7 @@ export default function Alerts({ user, config: cfg }) {
               该时间范围内没有报警记录
             </EmptyState>
           )}
-        </Box>
+        </ResponsiveTable>
       </Panel>
 
       <SpDialog open={!!mtr} onClose={() => setMtr(null)} title="MTR 路由追踪快照" wide

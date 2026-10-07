@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Box, Table, TableBody, TableCell, TableHead, TableRow } from '@mui/material';
-import { Badge, EmptyState, Mono } from './ui';
+import { Badge, EmptyState, Mono, ResponsiveTable } from './ui';
 import { asnLookup, asnShort } from '../api';
 import { palette } from '../theme';
 
@@ -29,6 +29,7 @@ export default function MtrTable({ hops, targetIp }) {
   shown.forEach((h) => { const a = h.Avg / 1e6; if (h.Host !== '???' && a > maxAvg) maxAvg = a; });
 
   return (
+    <ResponsiveTable labelWidth={84}>
     <Table size="small" sx={{ '& td, & th': { px: 1.75, py: 1.1, fontSize: 13 } }}>
       <TableHead>
         <TableRow>
@@ -87,5 +88,6 @@ export default function MtrTable({ hops, targetIp }) {
         )}
       </TableBody>
     </Table>
+    </ResponsiveTable>
   );
 }

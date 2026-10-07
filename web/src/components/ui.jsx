@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { Box, Card, CardContent, CircularProgress, Stack, Typography } from '@mui/material';
 import { keyframes } from '@mui/system';
 import { mono, palette, shadow, shadowLg } from '../theme';
@@ -72,11 +73,11 @@ export function StatCard({ icon, tone = 'indigo', value, label }) {
   const [bg, fg] = TONE_ICON[tone];
   return (
     <Card sx={{ transition: 'box-shadow .18s, transform .18s', '&:hover': { boxShadow: shadowLg, transform: 'translateY(-2px)' } }}>
-      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75, p: '18px !important', '@media (max-width:900px)': { p: '14px !important' } }}>
-        <Box sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: bg, color: fg, display: 'grid', placeItems: 'center', flex: 'none', '& svg': { width: 22, height: 22 } }}>{icon}</Box>
+      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75, p: '18px !important', '@media (max-width:900px)': { p: '14px !important' }, '@media (max-width:600px)': { p: '12px !important', gap: 1.25 } }}>
+        <Box sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: bg, color: fg, display: 'grid', placeItems: 'center', flex: 'none', '& svg': { width: 22, height: 22 }, '@media (max-width:600px)': { width: 34, height: 34, borderRadius: '10px', '& svg': { width: 18, height: 18 } } }}>{icon}</Box>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, '@media (max-width:900px)': { fontSize: 20 } }}>{value}</Typography>
-          <Typography noWrap sx={{ fontSize: 12.5, color: palette.text3, mt: 0.25 }}>{label}</Typography>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, '@media (max-width:900px)': { fontSize: 20 }, '@media (max-width:600px)': { fontSize: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}>{value}</Typography>
+          <Typography noWrap sx={{ fontSize: 12.5, color: palette.text3, mt: 0.25, '@media (max-width:600px)': { fontSize: 11.5 } }}>{label}</Typography>
         </Box>
       </CardContent>
     </Card>
@@ -106,3 +107,83 @@ export function Hint({ children, sx }) {
 
 export const cardHover = { transition: 'box-shadow .18s, transform .18s', '&:hover': { boxShadow: shadowLg, transform: 'translateY(-2px)' } };
 export { shadow };
+
+const card = { border: `1px solid ${palette.border}`, borderRadius: '12px', my: '10px', bgcolor: '#fff', boxShadow: shadow, '&:hover': { bgcolor: '#fff' } };
+function stackedSx(labelWidth, dense) {
+  const label = { content: 'attr(data-label)', color: palette.text3, fontWeight: 600 };
+  return {
+    overflowX: 'visible', mx: '0 !important',
+    '& table, & tbody, & tr': { display: 'block', width: '100%' },
+    '& thead': { display: 'block' },
+    '& thead tr': { display: 'flex', alignItems: 'center' },
+    '& thead th': { display: 'none' },
+    '& thead th:has(input)': { display: 'flex', alignItems: 'center', border: 'none', p: '4px 6px', width: 'auto !important' },
+    '& tbody tr': dense
+      ? { ...card, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '8px', position: 'relative', py: '8px', px: '4px' }
+      : { ...card, py: '6px' },
+    '& tbody td': {
+      display: 'flex', alignItems: 'flex-start', border: 'none !important', textAlign: 'left !important',
+      minWidth: '0 !important', maxWidth: 'none !important', width: 'auto !important',
+      whiteSpace: 'normal !important', wordBreak: 'break-word', fontSize: 13,
+      ...(dense
+        ? { flexDirection: 'column', gap: '2px', py: '4px !important', px: '10px !important' }
+        : { gap: '10px', py: '5px !important', px: '14px !important' }),
+    },
+    '& tbody td > *': { minWidth: 0 },
+    '& tbody td[data-label]:not([data-label=""])::before': dense
+      ? { ...label, fontSize: 11, lineHeight: '16px' }
+      : { ...label, flex: `0 0 ${labelWidth}px`, fontSize: 12, lineHeight: '20px' },
+    '& tbody td[colspan]': dense ? { gridColumn: '1 / -1', justifyContent: 'center' } : { justifyContent: 'center' },
+    ...(dense ? {
+      // 无列名的单元格(复选框)放到卡片右上角; 第一个有列名的单元格作为卡片标题
+      '& tbody td[data-label=""]:not([colspan])': { position: 'absolute', top: '4px', right: '4px', p: '0 !important' },
+      '& tbody td.rt-title': { gridColumn: '1 / -1', pr: '44px !important', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: '8px', pb: '6px !important' },
+      '& tbody td.rt-title > *': { display: 'inline' },
+      '& tbody td.rt-title::before': { display: 'none' },
+    } : {}),
+  };
+}
+
+/**
+ * 手机端(≤600px)把表格每行变成一张卡片, 每个单元格前显示列名。
+ * 列名取自 thead, 由 MutationObserver 自动同步到 td[data-label], 页面无需逐格标注。
+ * 含复选框的表头单元格(全选)在卡片模式下保留显示。
+ */
+export function ResponsiveTable({ children, sx, labelWidth = 76, dense = false }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return undefined;
+    const label = () => {
+      root.querySelectorAll('table').forEach((t) => {
+        const heads = Array.from(t.querySelectorAll('thead th')).map((th) => th.textContent.trim());
+        t.querySelectorAll('tbody tr').forEach((tr) => {
+          let col = 0;
+          let titled = false;
+          Array.from(tr.children).forEach((td) => {
+            const span = +td.getAttribute('colspan') || 1;
+            const l = span > 1 ? '' : heads[col] || '';
+            if (td.getAttribute('data-label') !== l) td.setAttribute('data-label', l);
+            const isTitle = dense && !titled && l !== '';
+            if (isTitle) titled = true;
+            td.classList.toggle('rt-title', isTitle);
+            col += span;
+          });
+        });
+      });
+    };
+    label();
+    const mo = new MutationObserver(label);
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
+  }, [dense]);
+  const PHONE = '@media (max-width:600px)';
+  const { [PHONE]: phoneSx, ...restSx } = sx || {};
+  return (
+    <Box ref={ref} sx={{
+      overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+      ...restSx,
+      [PHONE]: { ...stackedSx(labelWidth, dense), ...phoneSx },
+    }}>{children}</Box>
+  );
+}

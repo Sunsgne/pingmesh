@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Button, Switch, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import { Badge, EmptyState, Hint, Panel, Spinner, StatCard } from '../components/ui';
+import { Badge, EmptyState, Hint, Panel, Spinner, StatCard, ResponsiveTable } from '../components/ui';
 import { gridCols } from '../components/PingCard';
 import { useToast } from '../components/Feedback';
 import { getJSON, postForm } from '../api';
@@ -137,6 +137,7 @@ function ClusterAdmin({ config }) {
           <Button variant="outlined" size="small" onClick={load}
             sx={{ px: '10px', py: '5px', lineHeight: 'normal', fontSize: 12.5, borderRadius: '7px', minWidth: 0 }}>刷新</Button>
         </>}>
+        <ResponsiveTable sx={{ '@media (max-width:600px)': { px: '10px' } }}>
         <Table sx={{ '& tbody tr:last-child td': { borderBottom: 'none' }, '& td': { lineHeight: 'normal' }, '& th': { textTransform: 'uppercase' } }}>
           <TableHead>
             <TableRow>
@@ -168,6 +169,7 @@ function ClusterAdmin({ config }) {
             })}
           </TableBody>
         </Table>
+        </ResponsiveTable>
         {res && single && (
           <EmptyState icon="🔌">当前为单机模式，尚未组建集群。在其他机器上以 Agent 身份加入即可启用容灾。</EmptyState>
         )}

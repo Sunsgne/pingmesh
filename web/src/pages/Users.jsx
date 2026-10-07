@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, TextField, Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { Badge, EmptyState, Hint, Panel } from '../components/ui';
+import { Badge, EmptyState, Hint, Panel, ResponsiveTable } from '../components/ui';
 import { useConfirm, useToast } from '../components/Feedback';
 import { getJSON, postForm } from '../api';
 import { palette } from '../theme';
@@ -113,7 +113,7 @@ export default function Users({ user, isAdmin }) {
     <>
       <Panel title="用户管理" sub="管理员可以创建用户、重置密码、调整角色" flat
         actions={<Button size="small" variant="contained" sx={smBtn} onClick={() => setDialog({ open: true, editing: null })}>+ 新建用户</Button>}>
-        <Box sx={{ overflowX: 'auto' }}>
+        <ResponsiveTable sx={{ '@media (max-width:600px)': { px: '10px' } }}>
           <Table sx={{ '& tbody tr:last-child td': { borderBottom: 'none' } }}>
             <TableHead>
               <TableRow>
@@ -150,7 +150,7 @@ export default function Users({ user, isAdmin }) {
               })}
             </TableBody>
           </Table>
-        </Box>
+        </ResponsiveTable>
       </Panel>
 
       <Panel title="角色说明" sx={{ mt: 2 }} bodySx={{ fontSize: 13, color: palette.text2, lineHeight: 2 }}>

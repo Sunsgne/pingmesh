@@ -4,7 +4,7 @@ import {
   TableHead, TableRow, TextField, Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import { Badge, Panel, Spinner, ToolbarBox, ToolbarLabel } from '../components/ui';
+import { Badge, Panel, Spinner, ToolbarBox, ToolbarLabel, ResponsiveTable } from '../components/ui';
 import MtrTable from '../components/MtrTable';
 import { useToast } from '../components/Feedback';
 import { fmtLossPct, getText, HttpError } from '../api';
@@ -162,10 +162,10 @@ export default function Tools({ config: cfg }) {
   return (
     <>
       <Panel title="多节点网络检测" sub="从所有探测节点同时发起检测，对比各地连通性与质量">
-        <ToolbarBox sx={{ flexWrap: 'nowrap', overflowX: 'auto', '@media (max-width:900px)': { p: '10px 12px', gap: 1, '& .tb-label': { display: 'none' } } }}>
+        <ToolbarBox sx={{ flexWrap: 'nowrap', overflowX: 'auto', '@media (max-width:900px)': { p: '10px 12px', gap: 1, '& .tb-label': { display: 'none' } }, '@media (max-width:600px)': { flexWrap: 'wrap', overflowX: 'visible', '& .tb-group': { width: '100%', minWidth: 0 } } }}>
           <Box className="tb-group" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
             <Box className="tb-label" component="span"><ToolbarLabel>类型</ToolbarLabel></Box>
-            <TextField select size="small" value={type} onChange={(e) => changeType(e.target.value)} sx={{ width: 150 }}
+            <TextField select size="small" value={type} onChange={(e) => changeType(e.target.value)} sx={{ width: 150, '@media (max-width:600px)': { width: '100%' } }}
               SelectProps={{ MenuProps: { disableScrollLock: true } }} inputProps={{ id: 'probe-type' }}>
               {Object.entries(TYPE_META).map(([v, m]) => <MenuItem key={v} value={v} sx={{ fontSize: 13.5 }}>{m.label}</MenuItem>)}
             </TextField>
@@ -174,13 +174,13 @@ export default function Tools({ config: cfg }) {
             <Box className="tb-label" component="span"><ToolbarLabel>目标</ToolbarLabel></Box>
             <TextField size="small" value={target} placeholder={meta.ph} onChange={(e) => setTarget(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) run(); }}
-              inputProps={{ id: 'target' }} sx={{ minWidth: 180, flex: 1 }} />
+              inputProps={{ id: 'target' }} sx={{ minWidth: 180, flex: 1, '@media (max-width:600px)': { minWidth: 0 } }} />
             <Button variant="contained" onClick={run} id="check-btn">开始检测</Button>
           </Box>
         </ToolbarBox>
         <Typography sx={{ mb: 2, fontSize: 14 }}>{meta.hint}</Typography>
 
-        <Box sx={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <ResponsiveTable dense>
           <Table sx={{ '& td, & th': { lineHeight: 'normal' }, '& td': { verticalAlign: 'middle' }, '& tbody tr:last-child td': { borderBottom: 'none' } }}>
             <TableHead>
               <TableRow>
@@ -216,7 +216,7 @@ export default function Tools({ config: cfg }) {
               })}
             </TableBody>
           </Table>
-        </Box>
+        </ResponsiveTable>
       </Panel>
 
       <Dialog open={!!mtr} onClose={() => setMtr(null)} fullWidth maxWidth={false} PaperProps={{ sx: { maxWidth: 1240 } }}>
