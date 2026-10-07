@@ -2,170 +2,20 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>反向 Ping - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260901d" rel="stylesheet">
+<title>反向 Ping - ZENLENET PingMesh</title>
+<link rel="icon" href="/favicon.ico">
+<script src="/assets/js/echarts.min.js"></script>
+  <script type="module" crossorigin src="/assets/app/reverse-DpZNrJqo.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app/vendor-BAdqsb70.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/boot-D29qlH1b.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/EChart-WaHBhzpM.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/charts-CCqUx-jl.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/PingCard-0e9XZISw.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/TimeFilter-BCb1_mew.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/PingChartDialog-8YVDRk3B.js">
 </head>
 <body>
-<div id="app">
-
-  <div class="card">
-    <div class="card-head">
-      <h3>反向 Ping 监控</h3>
-      <span class="sub">选择一个探测节点，查看它到其他节点的网络质量（源节点 → 目标节点）</span>
-      <span class="spacer"></span>
-      <span class="muted" id="loading"></span>
-    </div>
-    <div class="card-body">
-      <div class="page-toolbar" id="time-toolbar">
-        <span class="tb-label">时间</span>
-        <div class="time-toolbar-main">
-          <div class="seg" id="win-seg">
-            <button type="button" data-v="15">15分钟</button>
-            <button type="button" data-v="60">1小时</button>
-            <button type="button" data-v="120" class="active">2小时</button>
-            <button type="button" data-v="360">6小时</button>
-            <button type="button" data-v="1440">24小时</button>
-            <button type="button" data-v="custom">自定义</button>
-          </div>
-          <span id="custom-range" class="time-custom" style="display:none">
-            <input type="datetime-local" class="input" id="cr-start">
-            <span class="muted">~</span>
-            <input type="datetime-local" class="input" id="cr-end">
-            <button type="button" class="btn primary sm" id="cr-apply">应用</button>
-          </span>
-        </div>
-        <span class="spacer"></span>
-        <span class="muted" id="range-hint" style="font-size:11.5px"></span>
-        <span class="muted time-tz" style="font-size:11.5px">北京时间 (UTC+8)</span>
-      </div>
-      <div class="chips mb-4" id="agent-chips"></div>
-      <div class="grid cols-3" id="charts"></div>
-      <div class="empty-state" id="empty" style="display:none">
-        <div class="big">&#128229;</div>
-        没有其他探测节点可对比
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<script src="assets/js/jquery-1.7.2.min.js"></script>
-<script src="assets/js/echarts.min.js"></script>
-<script src="assets/js/app.js?v=20260922a"></script>
-<script>
-$(function () {
-SP.init('reverse', '反向 Ping').done(function (ctx) {
-    var cfg = ctx.config;
-    var miniCharts = [];
-    var srcAddr = cfg.Addr;
-    var timeFilter = SP.initPageTimeFilter({
-        storageKey: 'reverse-time',
-        defaultMins: 120,
-        onChange: function () { load(srcAddr); }
-    });
-
-    var nodes = SP.sourceNodes(cfg);
-    var box = $('#agent-chips');
-    $.each(nodes, function (_, n) {
-        var chip = $('<span class="chip' + (n.Addr === cfg.Addr ? ' active' : '') + '">' + SP.esc(n.Name) + '</span>');
-        chip.click(function () {
-            $('#agent-chips .chip').removeClass('active');
-            chip.addClass('active');
-            load(n.Addr);
-        });
-        box.append(chip);
-    });
-    load(cfg.Addr);
-
-    function load(addr) {
-        srcAddr = addr;
-        var isSelf = (addr === cfg.Addr);
-        var base = isSelf ? '' : '/api/proxy.json?g=http://' + addr + ':' + cfg.Port;
-        $('#loading').html('<span class="spinner"></span>');
-        $.getJSON(base + '/api/config.json').done(function (agentCfg) {
-            drawCharts(addr, agentCfg, isSelf);
-        }).fail(function () {
-            $('#loading').html('');
-            SP.toast('无法连接节点 ' + addr, 'err');
-        });
-    }
-
-    function drawCharts(addr, agentCfg, isSelf) {
-        $.each(miniCharts, function (_, c) { c.dispose(); });
-        miniCharts = [];
-        var chartsBox = $('#charts').empty();
-        var range = timeFilter.currentRange();
-        var srcName = agentCfg.Name || SP.nodeName(cfg, addr);
-        var targets = [];
-        $.each(SP.sourceNodes(cfg), function (_, n) {
-            if (n.Addr !== addr) targets.push(n);
-        });
-        $('#empty').toggle(targets.length === 0);
-        $('#loading').html('');
-
-        $.each(targets, function (i, t) {
-            var id = 'rmini-' + i;
-            var title = SP.esc(srcName) + ' &rarr; ' + SP.esc(t.Name);
-            var card = $(
-                '<div class="card ping-card">' +
-                '<div class="ping-head"><span class="t">' + title + '</span></div>' +
-                '<div class="mini-chart" id="' + id + '"></div>' +
-                '<div class="ping-foot">' +
-                '<span class="badge gray mono">' + SP.esc(t.Addr) + '</span>' +
-                '<span class="badge indigo" id="' + id + '-delay">- ms</span>' +
-                '<span class="badge green" id="' + id + '-loss">丢包率 -</span>' +
-                '<span class="badge gray" id="' + id + '-asn" style="display:none"></span>' +
-                '</div></div>');
-            chartsBox.append(card);
-
-            var apiurl = isSelf
-                ? '/api/ping.json?ip=' + t.Addr
-                : '/api/proxy.json?g=http://' + addr + ':' + cfg.Port + '/api/ping.json?ip=' + t.Addr;
-            var dataUrl = SP.pingUrlWithRange(apiurl, range.start, range.end);
-            card.click(function () {
-                SP.openPingChart(srcName + ' → ' + t.Name + ' (' + t.Addr + ')', apiurl, range.start, range.end);
-            });
-            SP.asn(t.Addr, function (info) {
-                if (info) $('#' + id + '-asn').text(SP.asnShort(info)).attr('title', 'AS' + info.asn + ' ' + info.holder + ' ' + (info.prefix || '')).show();
-            });
-
-            var chart = echarts.init(document.getElementById(id));
-            miniCharts.push(chart);
-            if (SP.bindChartResize) SP.bindChartResize(miniCharts);
-            try {
-                chart.setOption(SP.miniChartOption ? SP.miniChartOption() : {});
-            } catch (err) {
-                console.error('mini chart init', err);
-            }
-            $.getJSON(dataUrl, function (d) {
-                var labels = SP.chartAxisLabels(d.lastcheck || []);
-                var avg = SP.sanitizeSeries ? SP.sanitizeSeries(d.avgdelay) : d.avgdelay;
-                var loss = SP.sanitizeSeries ? SP.sanitizeSeries(d.losspk) : d.losspk;
-                try {
-                    chart.setOption(SP.miniChartDataOption
-                        ? SP.miniChartDataOption(labels, avg, loss)
-                        : { xAxis: { data: labels }, series: [{ name: '延迟', data: avg }, { name: '丢包率', data: loss }] });
-                    chart.resize();
-                } catch (err2) {
-                    console.error('mini chart data', err2);
-                }
-                var m = SP.lastMetric ? SP.lastMetric(d.avgdelay, d.losspk) : { delay: '-', loss: '-', lossRaw: null };
-                $('#' + id + '-delay').text(m.delay + ' ms');
-                var lossTxt = m.lossRaw != null ? SP.fmtLossPct(m.lossRaw) : m.loss;
-                var lossBadge = $('#' + id + '-loss').text('丢包率 ' + lossTxt);
-                var lossVal = m.lossRaw != null ? m.lossRaw : 0;
-                if (lossVal >= 20) lossBadge.removeClass('green yellow').addClass('red');
-                else if (lossVal >= 5) lossBadge.removeClass('green red').addClass('yellow');
-                else lossBadge.removeClass('red yellow').addClass('green');
-            }).fail(function () {
-                $('#' + id + '-delay').text('失败');
-            });
-        });
-    }
-});
-});
-</script>
+<div id="root"></div>
 </body>
 </html>
