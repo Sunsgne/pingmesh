@@ -160,6 +160,8 @@ func ensureAssets() {
 	if old, err := os.ReadFile(stampFile); err == nil && string(old) == stamp && IsExist(filepath.Join(Root, "html", "index.html")) {
 		return
 	}
+	// 构建产物文件名带哈希, 每次升级都会变; 先清掉旧版 bundle, 避免磁盘上无限累积
+	os.RemoveAll(filepath.Join(Root, "html", "assets", "app"))
 	cnt := 0
 	fs.WalkDir(pingmesh.Assets, "html", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
