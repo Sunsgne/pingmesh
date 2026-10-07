@@ -189,17 +189,29 @@ var SP = (function () {
         }
         return lines.join('\n');
     }
+    function chartColor() {
+        var v = '';
+        try { v = getComputedStyle(document.documentElement).getPropertyValue('--sp-chart-primary').trim(); } catch (e) {}
+        return v || '#6366f1';
+    }
+    function chartRgba(alpha) {
+        var hex = chartColor().replace('#', '');
+        if (hex.length === 3) hex = hex.replace(/(.)/g, '$1$1');
+        var n = parseInt(hex, 16);
+        if (isNaN(n)) return 'rgba(99,102,241,' + alpha + ')';
+        return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+    }
     function miniChartOption() {
         var area = null;
         try {
             area = {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                    { offset: 0, color: 'rgba(99,102,241,.28)' },
-                    { offset: 1, color: 'rgba(99,102,241,.02)' }
+                    { offset: 0, color: chartRgba(.28) },
+                    { offset: 1, color: chartRgba(.02) }
                 ])
             };
         } catch (e) {
-            area = { color: 'rgba(99,102,241,.15)' };
+            area = { color: chartRgba(.15) };
         }
         return {
             animation: false,
@@ -241,7 +253,7 @@ var SP = (function () {
             series: [
                 {
                     name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true,
-                    clip: true, sampling: 'lttb', itemStyle: { color: '#6366f1' }, lineStyle: { width: 2 },
+                    clip: true, sampling: 'lttb', itemStyle: { color: chartColor() }, lineStyle: { width: 2 },
                     areaStyle: area,
                     data: []
                 },
@@ -491,12 +503,12 @@ var SP = (function () {
         try {
             return {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                    { offset: 0, color: 'rgba(99,102,241,.30)' },
-                    { offset: 1, color: 'rgba(99,102,241,.02)' }
+                    { offset: 0, color: chartRgba(.30) },
+                    { offset: 1, color: chartRgba(.02) }
                 ])
             };
         } catch (e) {
-            return { color: 'rgba(99,102,241,.15)' };
+            return { color: chartRgba(.15) };
         }
     }
     function openPingChart(title, apiurl, start, end) {
@@ -525,7 +537,7 @@ var SP = (function () {
                         snap: true,
                         label: {
                             show: true,
-                            backgroundColor: '#4f46e5',
+                            backgroundColor: chartColor(),
                             precision: 2,
                             formatter: function (params) {
                                 if (params.axisDimension === 'y') return fmtChartVal(params.value);
@@ -559,8 +571,8 @@ var SP = (function () {
                 dataZoom: [{
                     type: 'slider',
                     height: 20, bottom: 8, borderColor: 'transparent',
-                    backgroundColor: '#f1f5f9', fillerColor: 'rgba(99,102,241,.15)',
-                    handleStyle: { color: '#6366f1' },
+                    backgroundColor: '#f1f5f9', fillerColor: chartRgba(.15),
+                    handleStyle: { color: chartColor() },
                     realtime: false,
                     throttle: 100,
                     filterMode: 'none'
@@ -590,7 +602,7 @@ var SP = (function () {
                       hoverAnimation: false, sampling: 'lttb', itemStyle: { color: '#c4b5fd' }, areaStyle: { opacity: .12 },
                       lineStyle: { width: 1.2 }, data: [] },
                     { name: '平均延迟', type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
-                      hoverAnimation: false, sampling: 'lttb', itemStyle: { color: '#6366f1' }, lineStyle: { width: 2.2 },
+                      hoverAnimation: false, sampling: 'lttb', itemStyle: { color: chartColor() }, lineStyle: { width: 2.2 },
                       areaStyle: chartAreaGradient(), data: [] },
                     { name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
                       hoverAnimation: false, sampling: 'lttb', itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.8, type: 'dashed' }, data: [] },
@@ -946,6 +958,7 @@ var SP = (function () {
         proxy: proxy,
         fmtMs: fmtMs,
         fmtLossPct: fmtLossPct,
+        chartColor: chartColor,
         delayLevel: delayLevel,
         delayRisePct: delayRisePct,
         openPingChart: openPingChart,
