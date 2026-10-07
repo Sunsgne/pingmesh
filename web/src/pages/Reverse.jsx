@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Chip, Stack } from '@mui/material';
 import { EmptyState, Panel, Spinner } from '../components/ui';
-import { gridCols, PingCard } from '../components/PingCard';
+import { cardGrid, gridCols, PingCard } from '../components/PingCard';
 import { TimeToolbar, useTimeWindow } from '../components/TimeFilter';
 import PingChartDialog from '../components/PingChartDialog';
 import { useToast } from '../components/Feedback';
@@ -53,7 +53,7 @@ export default function Reverse({ config: rootCfg }) {
             );
           })}
         </Stack>
-        <Box sx={gridCols(3)}>
+        <Box sx={cardGrid}>
           {loaded && targets.map((t) => {
             const apiurl = loaded.base ? `${loaded.base}/api/ping.json?ip=${t.Addr}` : `/api/ping.json?ip=${t.Addr}`;
             const { range } = loaded;

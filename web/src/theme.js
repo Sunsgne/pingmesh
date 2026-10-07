@@ -46,7 +46,13 @@ export const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
-        body: { WebkitFontSmoothing: 'antialiased', fontSize: 14 },
+        body: { WebkitFontSmoothing: 'antialiased', MozOsxFontSmoothing: 'grayscale', fontSize: 14, textRendering: 'optimizeLegibility' },
+        '*': { scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' },
+        '*::-webkit-scrollbar': { width: 8, height: 8 },
+        '*::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: 999, border: '2px solid transparent', backgroundClip: 'padding-box' },
+        '*::-webkit-scrollbar-thumb:hover': { background: '#94a3b8', backgroundClip: 'padding-box' },
+        ':focus-visible': { outline: `2px solid ${palette.primary2}`, outlineOffset: 2 },
+        '::selection': { background: 'rgba(99,102,241,.22)' },
         a: { color: palette.primary, textDecoration: 'none' },
       },
     },

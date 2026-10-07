@@ -14,6 +14,29 @@ const gradient = (alpha) => {
   }
 };
 
+const SERIES_KEYS = ['maxdelay', 'mindelay', 'avgdelay', 'losspk', 'jitter'];
+const isNum = (v) => v !== '-' && v !== '' && v != null && !Number.isNaN(parseFloat(v));
+const toTime = (s) => new Date(String(s).replace(' ', 'T')).getTime();
+
+/**
+ * 去掉末尾尚未入库的空桶(当前采样周期 + 节点上报延迟), 避免曲线右侧留一截空白。
+ * 空白超过 3 分钟视为真实中断, 保留以便看出节点断了。
+ */
+export function trimTrailingGap(d, maxGapSec = 180) {
+  if (!d || !d.lastcheck || !d.lastcheck.length) return d;
+  const n = d.lastcheck.length;
+  let last = -1;
+  for (let i = n - 1; i >= 0; i--) {
+    if (isNum((d.avgdelay || [])[i]) || isNum((d.losspk || [])[i])) { last = i; break; }
+  }
+  if (last < 0 || last === n - 1) return d;
+  const gap = (toTime(d.lastcheck[n - 1]) - toTime(d.lastcheck[last])) / 1000;
+  if (!(gap > 0 && gap <= maxGapSec)) return d;
+  const out = { ...d, lastcheck: d.lastcheck.slice(0, last + 1) };
+  SERIES_KEYS.forEach((k) => { if (Array.isArray(d[k])) out[k] = d[k].slice(0, last + 1); });
+  return out;
+}
+
 function miniTooltip(params) {
   params = Array.isArray(params) ? params : params ? [params] : [];
   if (!params.length) return '';
@@ -26,17 +49,27 @@ function miniTooltip(params) {
 }
 
 // 卡片迷你图(延迟 + 丢包率), 对应旧版 miniChartOption + miniChartDataOption
-export function miniChartOption(d) {
+// 迷你图横轴固定 5 个等距刻度(含首尾), 首尾标签贴边对齐, 不会互相挤压或被裁
+function evenTicks(n, count = 5) {
+  if (n <= count) return () => true;
+  const keep = new Set();
+  for (let k = 0; k < count; k++) keep.add(Math.round((k * (n - 1)) / (count - 1)));
+  return (i) => keep.has(i);
+}
+
+export function miniChartOption(raw) {
+  const d = trimTrailingGap(raw);
+  const n = ((d && d.lastcheck) || []).length;
   return {
     animation: false,
-    grid: { left: 8, right: 12, top: 14, bottom: 8, containLabel: true },
+    grid: { left: 6, right: 10, top: 14, bottom: 6, containLabel: true },
     tooltip: {
       trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12],
       textStyle: { color: '#e2e8f0', fontSize: 11 }, confine: true, formatter: miniTooltip,
     },
     xAxis: {
       data: chartAxisLabels((d && d.lastcheck) || []), boundaryGap: false,
-      axisLabel: { fontSize: 10, color: palette.text3, hideOverlap: true, margin: 6, showMinLabel: true, showMaxLabel: true },
+      axisLabel: { fontSize: 10, color: palette.text3, margin: 6, interval: evenTicks(n), showMinLabel: true, showMaxLabel: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
       axisLine: { show: false }, axisTick: { show: false },
     },
     yAxis: [
@@ -64,7 +97,8 @@ const line = (name, color, extra) => ({
 });
 
 // 历史曲线大图, 对应旧版 openPingChart
-export function bigChartOption(d) {
+export function bigChartOption(raw) {
+  const d = trimTrailingGap(raw);
   return {
     animation: false,
     tooltip: {
@@ -97,7 +131,7 @@ export function bigChartOption(d) {
     }],
     xAxis: {
       data: (d && d.lastcheck) || [], boundaryGap: false, axisLine: { lineStyle: { color: palette.border } },
-      axisLabel: { color: palette.text3, fontSize: 11, hideOverlap: true, margin: 8, showMinLabel: true, showMaxLabel: true },
+      axisLabel: { color: palette.text3, fontSize: 11, hideOverlap: true, margin: 8, showMinLabel: true, showMaxLabel: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
       axisTick: { show: false },
     },
     yAxis: [

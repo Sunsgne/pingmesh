@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Card, CardActionArea, Stack, Typography } from '@mui/material';
+import { Box, Card, CardActionArea, Skeleton, Stack, Typography } from '@mui/material';
 import EChart from './EChart';
 import { Badge, cardHover } from './ui';
 import { miniChartOption } from '../charts';
@@ -41,7 +41,12 @@ export function PingCard({ title, target, apiurl, range, onOpen }) {
       <CardActionArea onClick={onOpen} disableRipple sx={{ '& .MuiCardActionArea-focusHighlight': { display: 'none' } }}>
         <Typography noWrap sx={{ px: 2, pt: 1.75, pb: 0.5, fontSize: 13.5, fontWeight: 600 }}>{title}</Typography>
         <Box sx={{ px: 0.5, height: 140, '@media (max-width:900px)': { height: 118 }, '@media (max-width:480px)': { height: 108 } }}>
-          <EChart option={option} height="100%" />
+          {data || failed ? <EChart option={option} height="100%" /> : (
+            <Box sx={{ height: '100%', px: 1.5, py: 1.25, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: 1 }}>
+              <Skeleton variant="rounded" height="70%" sx={{ bgcolor: '#f1f5f9' }} animation="wave" />
+              <Skeleton variant="text" width="100%" sx={{ bgcolor: '#f1f5f9' }} />
+            </Box>
+          )}
         </Box>
         <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ px: 2, pb: 1.75, pt: 0.5 }}>
           <Badge tone="gray" mono>{target}</Badge>
@@ -54,10 +59,24 @@ export function PingCard({ title, target, apiurl, range, onOpen }) {
   );
 }
 
-// 旧版 .grid.cols-N: ≤720px 单列, ≤1100px 两列
-export const gridCols = (n) => ({
-  display: 'grid', gap: 2, gridTemplateColumns: `repeat(${n}, 1fr)`,
-  '@media (max-width:1100px)': { gridTemplateColumns: n >= 3 ? 'repeat(2, 1fr)' : `repeat(${n}, 1fr)` },
-  '@media (max-width:720px)': { gridTemplateColumns: n >= 4 ? 'repeat(2, 1fr)' : '1fr', gap: n >= 4 ? 1.25 : 1.5 },
-});
+// 自适应网格: 卡片列表按最小宽度自动排列(宽屏更多列, 窄屏自动减列); 统计卡片手机上两列
+export const gridCols = (n) => {
+  if (n >= 4) {
+    return {
+      display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
+      '@media (max-width:720px)': { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.25 },
+    };
+  }
+  return {
+    display: 'grid', gap: 2, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
+    '@media (max-width:1100px)': { gridTemplateColumns: n >= 3 ? 'repeat(2, minmax(0, 1fr))' : `repeat(${n}, minmax(0, 1fr))` },
+    '@media (max-width:720px)': { gridTemplateColumns: '1fr', gap: 1.5 },
+  };
+};
+
+// 曲线卡片列表: 按最小卡宽自动排列, 宽屏更多列
+export const cardGrid = {
+  display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))',
+  '@media (max-width:720px)': { gap: 1.5 },
+};
 

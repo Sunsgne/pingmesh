@@ -19,7 +19,7 @@ export function Badge({ tone = 'gray', dot = false, mono: isMono = false, childr
   return (
     <Box component="span" sx={{
       display: 'inline-flex', alignItems: 'center', gap: '5px', px: '9px', py: '3px', fontSize: 12, fontWeight: 600,
-      borderRadius: 999, bgcolor: bg, color: fg, lineHeight: 1.4, whiteSpace: 'nowrap', verticalAlign: 'middle',
+      borderRadius: 999, bgcolor: bg, color: fg, lineHeight: 1.4, whiteSpace: 'nowrap', verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums',
       ...(isMono ? { fontFamily: mono, fontSize: 12.5 } : {}),
       '@media (max-width:480px)': { fontSize: 11, px: '7px', py: '2px' }, ...sx,
     }} {...rest}>
@@ -76,7 +76,7 @@ export function StatCard({ icon, tone = 'indigo', value, label }) {
       <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75, p: '18px !important', '@media (max-width:900px)': { p: '14px !important' }, '@media (max-width:600px)': { p: '12px !important', gap: 1.25 } }}>
         <Box sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: bg, color: fg, display: 'grid', placeItems: 'center', flex: 'none', '& svg': { width: 22, height: 22 }, '@media (max-width:600px)': { width: 34, height: 34, borderRadius: '10px', '& svg': { width: 18, height: 18 } } }}>{icon}</Box>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, '@media (max-width:900px)': { fontSize: 20 }, '@media (max-width:600px)': { fontSize: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}>{value}</Typography>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', letterSpacing: '-.01em', '@media (max-width:900px)': { fontSize: 20 }, '@media (max-width:600px)': { fontSize: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}>{value}</Typography>
           <Typography noWrap sx={{ fontSize: 12.5, color: palette.text3, mt: 0.25, '@media (max-width:600px)': { fontSize: 11.5 } }}>{label}</Typography>
         </Box>
       </CardContent>
@@ -130,6 +130,7 @@ function stackedSx(labelWidth, dense) {
         : { gap: '10px', py: '5px !important', px: '14px !important' }),
     },
     '& tbody td > *': { minWidth: 0 },
+    '& tbody td button, & tbody td a.MuiButton-root': { minHeight: 32 },
     '& tbody td[data-label]:not([data-label=""])::before': dense
       ? { ...label, fontSize: 11, lineHeight: '16px' }
       : { ...label, flex: `0 0 ${labelWidth}px`, fontSize: 12, lineHeight: '20px' },

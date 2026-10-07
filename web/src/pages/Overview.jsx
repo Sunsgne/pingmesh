@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, Chip, Stack } from '@mui/material';
 import { EmptyState, Panel, Spinner, StatCard } from '../components/ui';
 import { STAT_ICONS } from '../components/icons';
-import { gridCols, PingCard } from '../components/PingCard';
+import { cardGrid, gridCols, PingCard } from '../components/PingCard';
 import { TimeToolbar, useTimeWindow } from '../components/TimeFilter';
 import PingChartDialog from '../components/PingChartDialog';
 import { useToast } from '../components/Feedback';
@@ -83,7 +83,7 @@ export default function Overview({ config: rootCfg }) {
         {agentCfg && targets.length === 0 && (
           <EmptyState icon="📡">当前节点没有配置监测目标，请到「系统配置 - 节点管理」中添加</EmptyState>
         )}
-        <Box sx={gridCols(3)}>
+        <Box sx={cardGrid}>
           {agentCfg && targets.map((t) => {
             const tname = nodeName(agentCfg, t);
             const apiurl = base ? `${base}/api/ping.json?ip=${t}` : `/api/ping.json?ip=${t}`;
