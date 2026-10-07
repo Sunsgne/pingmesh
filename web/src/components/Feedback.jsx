@@ -34,7 +34,7 @@ export function FeedbackProvider({ children }) {
         {toasts.map((t) => (
           <Slide key={t.id} direction="left" in mountOnEnter>
             <Box role="status" sx={{
-              bgcolor: TOAST_BG[t.type] || TOAST_BG.info, color: '#fff', px: 2.25, py: 1.4, borderRadius: 2.5,
+              bgcolor: TOAST_BG[t.type] || TOAST_BG.info, color: '#fff', px: 2.25, py: 1.4, borderRadius: '10px',
               fontSize: 13.5, boxShadow: shadowLg, maxWidth: 380, pointerEvents: 'auto', wordBreak: 'break-word',
             }}>{t.msg}</Box>
           </Slide>

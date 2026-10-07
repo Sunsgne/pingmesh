@@ -93,7 +93,7 @@ function Sidebar({ page, isAdmin, cfg, onNavigate }) {
           ) : (
             <ListItemButton key={n.id} component="a" href={n.href} selected={n.id === page} onClick={onNavigate}
               sx={{
-                borderRadius: 2, my: '2px', px: 1.25, py: '9px', gap: 1.25, color: palette.sidebarText, fontSize: 13.5,
+                borderRadius: '8px', my: '2px', px: 1.25, py: '9px', gap: 1.25, color: palette.sidebarText, fontSize: 13.5,
                 transition: 'background .15s, color .15s',
                 '&:hover': { bgcolor: 'rgba(255,255,255,.06)', color: '#e2e8f0' },
                 '&.Mui-selected, &.Mui-selected:hover': { bgcolor: palette.primary, color: '#fff', boxShadow: '0 4px 12px rgba(79,70,229,.35)' },
@@ -146,7 +146,7 @@ export default function Shell({ page, title, user, config, children }) {
               ●&nbsp;{config.Name} <Box component="span" sx={{ fontFamily: mono, fontWeight: 400 }}>{config.Addr}</Box>
             </Box>
             <ButtonBase onClick={(e) => setMenu(e.currentTarget)} sx={{
-              gap: 1, px: compact ? 0.5 : 1.25, py: 0.75, borderRadius: 2, border: compact ? 'none' : `1px solid ${palette.border}`, bgcolor: compact ? 'transparent' : '#fff',
+              gap: 1, px: compact ? 0.5 : 1.25, py: 0.75, borderRadius: '8px', border: compact ? 'none' : `1px solid ${palette.border}`, bgcolor: compact ? 'transparent' : '#fff',
               '&:hover': { bgcolor: palette.bg },
             }}>
               <Avatar sx={{ width: 26, height: 26, fontSize: 12, fontWeight: 700, background: 'linear-gradient(135deg, #6366f1, #ec4899)' }}>
@@ -161,7 +161,7 @@ export default function Shell({ page, title, user, config, children }) {
             </ButtonBase>
             <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)}
               anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-              slotProps={{ paper: { sx: { mt: 0.75, minWidth: 170, borderRadius: 2.5, border: `1px solid ${palette.border}` } } }}>
+              slotProps={{ paper: { sx: { mt: 0.75, minWidth: 170, borderRadius: '10px', border: `1px solid ${palette.border}` } } }}>
               <MenuItem sx={{ fontSize: 13, color: palette.text2 }} onClick={() => { setMenu(null); setPwOpen(true); }}>修改密码</MenuItem>
               <MenuItem sx={{ fontSize: 13, color: palette.red }} onClick={logout}>退出登录</MenuItem>
             </Menu>
