@@ -40,7 +40,7 @@ export function Panel({ title, sub, actions, children, bodySx, flat = false, sx 
       {(title || actions) && (
         <Box sx={{ px: 2.25, py: 1.75, borderBottom: `1px solid ${palette.border}`, display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap', rowGap: 1, '@media (max-width:900px)': { px: 1.75, py: 1.5 } }}>
           {title && <Typography component="h3" sx={{ fontSize: 14.5, fontWeight: 600 }}>{title}</Typography>}
-          {sub && <Typography component="span" sx={{ color: palette.text3, fontSize: 12, minWidth: 0, '@media (max-width:900px)': { display: 'block', width: '100%', flexBasis: '100%', order: 1 } }}>{sub}</Typography>}
+          {sub && <Typography component="span" sx={{ color: palette.text3, fontSize: 12, minWidth: 0, '@media (max-width:900px)': { display: 'block', width: '100%', flexBasis: '100%' } }}>{sub}</Typography>}
           <Box sx={{ flex: 1 }} />
           {actions}
         </Box>
