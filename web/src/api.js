@@ -30,14 +30,21 @@ export async function getText(url, { timeout = 0 } = {}) {
   return request(url, {}, timeout);
 }
 
-// 与 jQuery $.post 相同: application/x-www-form-urlencoded, 数组按 key 重复提交
+// 与 jQuery 1.7 $.post 逐字节一致: encodeURIComponent 后 %20 → '+'
+// (URLSearchParams 还会转义 ! ' ( ) ~, 解码结果相同但字节不同, 这里保持与旧版一致)
+export function jqParam(data) {
+  return Object.keys(data)
+    .map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(data[k] == null ? '' : data[k]))
+    .join('&')
+    .replace(/%20/g, '+');
+}
+
 export async function postForm(url, data = {}, { timeout = 0 } = {}) {
-  const body = new URLSearchParams();
-  Object.entries(data).forEach(([k, v]) => {
-    if (Array.isArray(v)) v.forEach((x) => body.append(k, x));
-    else if (v !== undefined && v !== null) body.append(k, v);
-  });
-  const text = await request(url, { method: 'POST', body }, timeout);
+  const text = await request(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+    body: jqParam(data),
+  }, timeout);
   return JSON.parse(text);
 }
 
