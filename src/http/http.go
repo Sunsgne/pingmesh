@@ -84,8 +84,11 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "+
-				"script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; font-src 'self' data:; "+
+				"script-src 'self'; connect-src 'self'; font-src 'self' data:; "+
 				"media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
+		if requestScheme(r) == "https" {
+			h.Set("Strict-Transport-Security", "max-age=31536000")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -135,7 +138,7 @@ func StartHttp() {
 
 	srv := &http.Server{
 		Addr:    s,
-		Handler: securityHeaders(http.DefaultServeMux),
+		Handler: securityHeaders(csrfGuard(http.DefaultServeMux)),
 		// 防慢速攻击: 限制请求头读取时间; 节点间探测/MTR 可能较慢, 故不设过紧的总写超时
 		ReadHeaderTimeout: 15 * time.Second,
 		ReadTimeout:       60 * time.Second,

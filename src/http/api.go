@@ -807,6 +807,11 @@ func configApiRoutes() {
 			http.Error(w, "Proxy Denied: "+err.Error(), 403)
 			return
 		}
+		// proxy 以节点身份签名转发, 远端会当成可信节点; 写操作(确认/屏蔽)只允许管理员经此转发
+		if proxyWritesTo(url) && (!AuthAdmin(r) || !sameOrigin(r)) {
+			http.Error(w, "Proxy Denied: 需要管理员权限", 403)
+			return
+		}
 		to := strconv.Itoa(g.Cfg.Base["Timeout"])
 		if len(r.Form["t"]) > 0 {
 			to = r.Form["t"][0]
@@ -820,7 +825,11 @@ func configApiRoutes() {
 			defaultto = 30
 		}
 		url = g.SignURL(url, g.Cfg.Password)
-		client := http.Client{Timeout: time.Duration(defaultto) * time.Second}
+		// 不跟随跳转: 白名单只校验了首个地址, 跳转目标可能是任意内网/元数据地址
+		client := http.Client{
+			Timeout:       time.Duration(defaultto) * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		}
 		resp, err := client.Get(url)
 		if err != nil {
 			http.Error(w, "Request Remote Data Error:"+err.Error(), 503)

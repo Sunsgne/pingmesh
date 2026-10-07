@@ -18,11 +18,21 @@ import (
 // 屏蔽与确认数据存储在产生告警的源节点上, 页面通过 proxy 路由到对应节点,
 // 因此鉴权采用集群互信(AuthData)。
 
+// actorName 操作人: 本机登录会话以会话用户为准(不信任参数), 节点转发时沿用管理端填写的 by
+func actorName(r *http.Request) string {
+	if s := GetSession(r); s != nil {
+		return s.Username
+	}
+	return r.FormValue("by")
+}
+
 func configOpsRoutes() {
 
 	// 屏蔽管理: action=list|add|del
 	http.HandleFunc("/api/mute.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthData(r) {
+		// 节点签名只能校验一次(nonce 防重放会消耗), 结果复用
+		isAgent := AuthAgent(r)
+		if !isAgent && !AuthUser(r) {
 			deny(w)
 			return
 		}
@@ -30,7 +40,7 @@ func configOpsRoutes() {
 		action := r.FormValue("action")
 		if action == "add" || action == "del" {
 			// 变更屏蔽需管理员, 或经节点 HMAC(管理端 proxy 签名转发)
-			if !AuthAdmin(r) && !AuthAgent(r) {
+			if !isAgent && !AuthAdmin(r) {
 				deny(w)
 				return
 			}
@@ -40,7 +50,7 @@ func configOpsRoutes() {
 		case "add":
 			target := r.FormValue("target")
 			reason := r.FormValue("reason")
-			by := r.FormValue("by")
+			by := actorName(r)
 			minutes, _ := strconv.Atoi(r.FormValue("minutes"))
 			if target == "" || minutes <= 0 {
 				renderErr(w, "参数错误: 需要 target 与 minutes(>0)")
@@ -96,14 +106,16 @@ func configOpsRoutes() {
 
 	// 告警确认(已知晓+原因)
 	http.HandleFunc("/api/alertack.json", func(w http.ResponseWriter, r *http.Request) {
-		if !AuthData(r) {
+		// 确认会抑制本次故障的后续提醒, 需管理员(或管理端经 proxy 的节点签名转发)
+		isAgent := AuthAgent(r)
+		if !isAgent && !AuthAdmin(r) {
 			deny(w)
 			return
 		}
 		r.ParseForm()
 		id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
 		reason := r.FormValue("reason")
-		by := r.FormValue("by")
+		by := actorName(r)
 		if id <= 0 {
 			renderErr(w, "参数错误: 需要告警 id")
 			return

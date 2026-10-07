@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/zenlenet/pingmesh/src/g"
@@ -47,6 +48,10 @@ func proxyAllowed(raw string) error {
 	}
 	if !isMeshHost(host) {
 		return fmt.Errorf("目标不在本集群节点列表")
+	}
+	// 只允许访问节点服务端口, 防止借道探测节点上的其他本地服务
+	if p := u.Port(); p != "" && p != strconv.Itoa(g.Cfg.Port) {
+		return fmt.Errorf("不允许代理该端口: %s", p)
 	}
 	path := u.EscapedPath()
 	if path == "" {
@@ -147,4 +152,20 @@ func maskConfigSecrets(nconf *g.Config) {
 			}
 		}
 	}
+}
+
+// proxyWritesTo 被代理的请求是否为状态变更(确认告警 / 增删屏蔽)
+func proxyWritesTo(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return true
+	}
+	switch u.Path {
+	case "/api/alertack.json":
+		return true
+	case "/api/mute.json":
+		a := u.Query().Get("action")
+		return a == "add" || a == "del"
+	}
+	return false
 }

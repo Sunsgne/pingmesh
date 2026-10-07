@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,8 @@ func renderUIDisabled(w http.ResponseWriter) {
 	master := g.MasterEndpoint()
 	link := ""
 	if master != "" {
-		link = `<p><a href="http://` + master + `/">前往主节点管理页面 http://` + master + ` &rarr;</a></p>`
+		m := html.EscapeString(master)
+		link = `<p><a href="http://` + m + `/">前往主节点管理页面 http://` + m + ` &rarr;</a></p>`
 	}
 	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
 	w.WriteHeader(http.StatusForbidden)

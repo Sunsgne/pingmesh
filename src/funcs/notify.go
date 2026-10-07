@@ -35,9 +35,9 @@ var ChannelTypes = map[string]bool{
 type alertMsg struct {
 	Recovered bool
 	Title     string
-	Link      string       // A → B
-	Fields    [][2]string  // {标签, 值}
-	Plain     string       // 纯文本回退
+	Link      string      // A → B
+	Fields    [][2]string // {标签, 值}
+	Plain     string      // 纯文本回退
 }
 
 // recentStat 查询目标最近N分钟的实测均值(用于告警附带实际指标)
@@ -374,6 +374,10 @@ func postJson(u string, payload interface{}) (string, error) {
 	client := http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Post(u, "application/json", bytes.NewReader(data))
 	if err != nil {
+		// url.Error 会带上完整 URL(含 Telegram bot token / 钉钉 access_token 等), 写日志前去掉
+		if ue, ok := err.(*url.Error); ok {
+			ue.URL = "[redacted]"
+		}
 		return "", err
 	}
 	defer resp.Body.Close()

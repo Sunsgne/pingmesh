@@ -29,7 +29,8 @@ var (
 )
 
 func requestScheme(r *http.Request) string {
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+	// 转发头只在请求来自本机反向代理时采信, 直连 8899 时由客户端伪造无效
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" && viaLocalProxy(r) {
 		return strings.ToLower(strings.TrimSpace(proto))
 	}
 	if r.TLS != nil {
@@ -39,7 +40,7 @@ func requestScheme(r *http.Request) string {
 }
 
 func requestHost(r *http.Request) string {
-	if host := r.Header.Get("X-Forwarded-Host"); host != "" {
+	if host := r.Header.Get("X-Forwarded-Host"); host != "" && viaLocalProxy(r) {
 		return strings.TrimSpace(strings.Split(host, ",")[0])
 	}
 	return r.Host
@@ -98,8 +99,10 @@ func microsoftOAuthConfig(r *http.Request) (*oauth2.Config, error) {
 		return nil, fmt.Errorf("Microsoft OAuth 未配置 ClientId/ClientSecret")
 	}
 	tenant := strings.TrimSpace(o["TenantId"])
-	if tenant == "" {
-		tenant = "organizations"
+	// 多租户端点下, 任何外部租户都能把自己用户的 mail 设成本公司邮箱冒充登录; 必须锁定本组织租户
+	switch strings.ToLower(tenant) {
+	case "", "organizations", "common", "consumers":
+		return nil, fmt.Errorf("Microsoft OAuth 需在「系统配置 - 登录认证」填写本组织的租户 ID(TenantId), 不支持多租户")
 	}
 	redirectURL := oauthRedirectBase(r) + "/api/oauth/microsoft/callback"
 	return &oauth2.Config{

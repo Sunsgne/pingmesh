@@ -56,13 +56,18 @@ func configToolsRoutes() {
 		// 频率限制
 		nowtime := int(time.Now().Unix())
 		g.ToolLimitLock.Lock()
-		if last, ok := g.ToolLimit[r.RemoteAddr]; ok && (nowtime-last) <= g.Cfg.Toollimit {
+		// 按登录用户或真实来源 IP 限频(RemoteAddr 含端口, 每个连接都不同, 原先等于不限)
+		limitKey := clientIP(r)
+		if s := GetSession(r); s != nil {
+			limitKey = "u:" + s.Username
+		}
+		if last, ok := g.ToolLimit[limitKey]; ok && (nowtime-last) <= g.Cfg.Toollimit {
 			g.ToolLimitLock.Unlock()
 			out["error"] = "Time Limit Exceeded!"
 			RenderJson(w, out)
 			return
 		}
-		g.ToolLimit[r.RemoteAddr] = nowtime
+		g.ToolLimit[limitKey] = nowtime
 		g.ToolLimitLock.Unlock()
 
 		switch ttype {
@@ -253,7 +258,7 @@ func toolTcp(target string, out map[string]interface{}) {
 	loss := 0
 	for i := 0; i < 5; i++ {
 		t0 := time.Now()
-		conn, err := net.DialTimeout("tcp", hostport, 3*time.Second)
+		conn, err := tcpProbeDial(hostport, 3*time.Second)
 		delay := float64(time.Since(t0).Nanoseconds()) / 1e6
 		if err == nil {
 			conn.Close()
@@ -308,7 +313,7 @@ func toolHttp(target string, out map[string]interface{}) {
 	}
 	req.Header.Set("User-Agent", "ZENLENET-PingMesh/1.0 (probe)")
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-	client := http.Client{Timeout: 15 * time.Second}
+	client := probeHTTPClient(15 * time.Second)
 	start = time.Now()
 	resp, err := client.Do(req)
 	if err != nil {

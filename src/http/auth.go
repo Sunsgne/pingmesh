@@ -44,12 +44,9 @@ var (
 	loginFails   = map[string]*loginGate{}
 )
 
+// loginClientIP 登录/接入限流用的来源: 经本机 nginx 转发时取 X-Real-IP, 否则所有人共用 127.0.0.1 会被一起锁定
 func loginClientIP(r *http.Request) string {
-	ip := r.RemoteAddr
-	if i := lastColon(ip); i >= 0 {
-		ip = ip[:i]
-	}
-	return ip
+	return clientIP(r)
 }
 
 // loginBlocked 该来源当前是否处于锁定期
@@ -125,7 +122,7 @@ func AuthUser(r *http.Request) bool {
 	if GetSession(r) != nil {
 		return true
 	}
-	if len(g.AuthUserIpMap) > 0 && AuthUserIp(r.RemoteAddr) {
+	if len(g.AuthUserIpMap) > 0 && ipTrustable(r) && AuthUserIp(r.RemoteAddr) {
 		return true
 	}
 	return false
@@ -141,11 +138,11 @@ func AuthAgent(r *http.Request) bool {
 	if g.SignRequired() {
 		return false
 	}
-	ip := r.RemoteAddr
-	if i := lastColon(ip); i >= 0 {
-		ip = ip[:i]
+	// 经本机反向代理转入(来源恒为 127.0.0.1)或带转发头的请求不按 IP 授信
+	if !ipTrustable(r) {
+		return false
 	}
-	_, ok := g.AuthAgentIpMap[ip]
+	_, ok := g.AuthAgentIpMap[remoteIP(r)]
 	return ok
 }
 
@@ -204,7 +201,8 @@ func configAuthRoutes() {
 			msOAuth = strings.TrimSpace(g.Cfg.OAuth["ClientId"]) != "" && strings.TrimSpace(g.Cfg.OAuth["ClientSecret"]) != ""
 		}
 		RenderJson(w, map[string]interface{}{
-			"defaultcreds": g.DefaultCredsActive(),
+			// 不再公开默认口令是否仍有效: 等于告诉匿名访问者能否用 admin/admin123 登录
+			"defaultcreds": false,
 			"brand":        g.Cfg.Brand,
 			"microsoft_oauth": msOAuth,
 		})
@@ -257,8 +255,9 @@ func configAuthRoutes() {
 	http.HandleFunc("/api/whoami.json", func(w http.ResponseWriter, r *http.Request) {
 		s := GetSession(r)
 		if s == nil {
-			if len(g.AuthUserIpMap) > 0 && AuthUserIp(r.RemoteAddr) {
-				renderOk(w, map[string]interface{}{"user": g.User{Username: "ip-whitelist", Role: g.RoleAdmin}})
+			if len(g.AuthUserIpMap) > 0 && ipTrustable(r) && AuthUserIp(r.RemoteAddr) {
+				// IP 白名单用户没有管理权限(AuthAdmin 只认会话), 如实报只读, 免得界面显示用不了的管理入口
+				renderOk(w, map[string]interface{}{"user": g.User{Username: "ip-whitelist", Role: g.RoleViewer}})
 				return
 			}
 			deny(w)
