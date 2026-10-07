@@ -1,6 +1,9 @@
 import { palette } from './theme';
 import { chartAxisLabels, fmtChartVal, fmtLossPct, sanitizeSeries } from './api';
 
+// 不做前端降采样(LTTB 会按像素丢点, 坐标轴提示框在被丢掉的时刻就缺了某条曲线);
+// 服务端已把长跨度聚合到 ≤2160 点, 直接全量绘制即可。
+
 const gradient = (alpha) => {
   try {
     return {
@@ -79,12 +82,12 @@ export function miniChartOption(raw) {
     series: [
       {
         name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
-        sampling: 'lttb', itemStyle: { color: palette.primary2 }, lineStyle: { width: 2 }, areaStyle: gradient(0.28),
+        itemStyle: { color: palette.primary2 }, lineStyle: { width: 2 }, areaStyle: gradient(0.28),
         data: sanitizeSeries(d && d.avgdelay),
       },
       {
         name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
-        sampling: 'lttb', itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' },
+        itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' },
         data: sanitizeSeries(d && d.losspk),
       },
     ],
@@ -93,7 +96,7 @@ export function miniChartOption(raw) {
 
 const line = (name, color, extra) => ({
   name, type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
-  emphasis: { disabled: true }, sampling: 'lttb', itemStyle: { color }, ...extra,
+  emphasis: { disabled: true }, itemStyle: { color }, ...extra,
 });
 
 // 历史曲线大图, 对应旧版 openPingChart
