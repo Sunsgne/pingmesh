@@ -7,7 +7,30 @@ import Shell from './components/Shell';
 import { FeedbackProvider, useToast } from './components/Feedback';
 import { Spinner } from './components/ui';
 
+// 页面长时间开着时自动跟上新版本: 回到前台或每 5 分钟比对一次当前页面引用的入口脚本,
+// 变了就刷新(页面在后台时直接刷新; 前台时等用户下次切回来, 避免打断正在进行的操作)
+function useReleaseWatch() {
+  useEffect(() => {
+    const mine = Array.from(document.scripts).map((s) => s.getAttribute('src') || '').find((s) => s.startsWith('/assets/app/'));
+    if (!mine) return undefined;
+    let stale = false;
+    const check = () => fetch(window.location.pathname, { cache: 'no-store', credentials: 'same-origin' })
+      .then((r) => (r.ok && !r.redirected ? r.text() : ''))
+      .then((html) => { if (html && html.indexOf('src="' + mine + '"') < 0 && html.indexOf('/assets/app/') >= 0) stale = true; })
+      .catch(() => {});
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') { check(); return; }
+      if (stale) { window.location.reload(); return; }
+      check().then(() => { if (stale) window.location.reload(); });
+    };
+    const timer = setInterval(check, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis); };
+  }, []);
+}
+
 function Page({ id, title, Component }) {
+  useReleaseWatch();
   const toast = useToast();
   const [ctx, setCtx] = useState(null);
 

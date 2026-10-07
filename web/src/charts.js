@@ -99,6 +99,10 @@ const line = (name, color, extra) => ({
 // 历史曲线大图, 对应旧版 openPingChart
 export function bigChartOption(raw) {
   const d = trimTrailingGap(raw);
+  const lc = (d && d.lastcheck) || [];
+  const span = lc.length > 1 ? toTime(lc[lc.length - 1]) - toTime(lc[0]) : 0;
+  // 横轴只显示 时:分 (跨度超过 1 天带 月-日), 完整时间留在提示框里, 窄屏也不会被裁
+  const shortLabel = (v) => { const s = String(v); return s.length < 16 ? s : span > 24 * 3600e3 ? s.substring(5, 16) : s.substring(11, 16); };
   return {
     animation: false,
     tooltip: {
@@ -131,7 +135,7 @@ export function bigChartOption(raw) {
     }],
     xAxis: {
       data: (d && d.lastcheck) || [], boundaryGap: false, axisLine: { lineStyle: { color: palette.border } },
-      axisLabel: { color: palette.text3, fontSize: 11, hideOverlap: true, margin: 8, showMinLabel: true, showMaxLabel: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
+      axisLabel: { color: palette.text3, fontSize: 11, hideOverlap: true, margin: 8, showMinLabel: true, showMaxLabel: true, alignMinLabel: 'left', alignMaxLabel: 'right', formatter: shortLabel },
       axisTick: { show: false },
     },
     yAxis: [

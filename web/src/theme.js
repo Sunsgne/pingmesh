@@ -51,7 +51,10 @@ export const theme = createTheme({
         '*::-webkit-scrollbar': { width: 8, height: 8 },
         '*::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: 999, border: '2px solid transparent', backgroundClip: 'padding-box' },
         '*::-webkit-scrollbar-thumb:hover': { background: '#94a3b8', backgroundClip: 'padding-box' },
-        ':focus-visible': { outline: `2px solid ${palette.primary2}`, outlineOffset: 2 },
+        // 键盘焦点环只给非 MUI 按钮; MUI 按钮由 .Mui-focusVisible 判断(触屏/点击打开弹窗时不出现方框)
+        ':focus-visible:not(.MuiButtonBase-root)': { outline: `2px solid ${palette.primary2}`, outlineOffset: 2 },
+        '.MuiButtonBase-root:focus-visible': { outline: 'none' },
+        '.MuiButtonBase-root.Mui-focusVisible': { outline: `2px solid ${palette.primary2}`, outlineOffset: 2 },
         '::selection': { background: 'rgba(99,102,241,.22)' },
         a: { color: palette.primary, textDecoration: 'none' },
       },
@@ -118,6 +121,11 @@ export const theme = createTheme({
     },
     MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { background: '#f8fafc' } } } },
     MuiTab: { styleOverrides: { root: { textTransform: 'none', fontWeight: 600, fontSize: 13.5, minHeight: 46 } } },
+    MuiIconButton: {
+      styleOverrides: {
+        root: { WebkitTapHighlightColor: 'transparent', '&:hover': { background: '#f1f5f9' } },
+      },
+    },
     MuiTooltip: { styleOverrides: { tooltip: { background: 'rgba(15,23,42,.92)', fontSize: 12 } } },
   },
 });
