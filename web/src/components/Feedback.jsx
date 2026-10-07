@@ -30,12 +30,12 @@ export function FeedbackProvider({ children }) {
   return (
     <Ctx.Provider value={{ toast, confirm: ask }}>
       {children}
-      <Box sx={{ position: 'fixed', top: 18, right: 18, zIndex: 2000, display: 'flex', flexDirection: 'column', gap: 1.25, pointerEvents: 'none' }}>
+      <Box sx={{ position: 'fixed', top: 18, right: 18, zIndex: 2000, display: 'flex', flexDirection: 'column', gap: 1.25, pointerEvents: 'none', '@media (max-width:900px)': { left: 12, right: 12, top: 12 } }}>
         {toasts.map((t) => (
           <Slide key={t.id} direction="left" in mountOnEnter>
             <Box role="status" sx={{
               bgcolor: TOAST_BG[t.type] || TOAST_BG.info, color: '#fff', px: 2.25, py: 1.4, borderRadius: '10px',
-              fontSize: 13.5, boxShadow: shadowLg, maxWidth: 380, pointerEvents: 'auto', wordBreak: 'break-word',
+              fontSize: 13.5, boxShadow: shadowLg, maxWidth: 380, '@media (max-width:900px)': { maxWidth: 'none' }, pointerEvents: 'auto', wordBreak: 'break-word',
             }}>{t.msg}</Box>
           </Slide>
         ))}

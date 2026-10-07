@@ -44,7 +44,7 @@ export default function PingChartDialog({ chart, onClose }) {
         <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chart ? chart.title : '历史曲线'}</Box>
         <IconButton size="small" onClick={onClose} aria-label="关闭"><CloseIcon fontSize="small" /></IconButton>
       </DialogTitle>
-      <DialogContent sx={{ p: '20px !important' }}>
+      <DialogContent sx={{ p: '20px !important', '@media (max-width:900px)': { p: '14px !important' } }}>
         <Stack direction="row" alignItems="center" gap={1.25} flexWrap="wrap" sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 12.5, color: palette.text3 }}>开始</Typography>
           <TextField size="small" type="datetime-local" value={toInputTime(range.start)} sx={{ width: 200 }}
@@ -57,7 +57,9 @@ export default function PingChartDialog({ chart, onClose }) {
           {hint && <Typography sx={{ fontSize: 12, color: palette.text3 }}>{hint}</Typography>}
           {loading && <Spinner />}
         </Stack>
-        <EChart option={option} height={420} initOpts={{ renderer: 'canvas', useDirtyRect: true }} />
+        <Box sx={{ height: 420, minHeight: 260, '@media (max-width:900px)': { height: 300 }, '@media (max-width:480px)': { height: 260 } }}>
+          <EChart option={option} height="100%" initOpts={{ renderer: 'canvas', useDirtyRect: true }} />
+        </Box>
       </DialogContent>
     </Dialog>
   );

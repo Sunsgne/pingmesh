@@ -135,7 +135,12 @@ export default function Shell({ page, title, user, config, children }) {
           '&::after': { content: '""', position: 'absolute', left: 0, right: 0, bottom: -1, height: 2, opacity: 0.9, background: `linear-gradient(90deg, ${palette.primary}, #8b5cf6, #ec4899)` },
         }}>
           <Toolbar disableGutters sx={{ minHeight: `${compact ? 56 : 60}px !important`, gap: compact ? 1 : 1.75, px: compact ? 1.5 : 3 }}>
-            {compact && <IconButton size="small" onClick={() => setNavOpen(true)} aria-label="菜单"><MenuIcon /></IconButton>}
+            {compact && (
+              <IconButton size="small" onClick={() => setNavOpen(true)} aria-label="菜单"
+                sx={{ border: `1px solid ${palette.border}`, borderRadius: '8px', bgcolor: '#fff', p: '5px 7px', '& svg': { fontSize: 18 } }}>
+                <MenuIcon />
+              </IconButton>
+            )}
             <Typography component="div" sx={{ fontSize: compact ? 15 : 16, fontWeight: 600, whiteSpace: 'nowrap' }}>{title}</Typography>
             <Box sx={{ flex: 1 }} />
             {!compact && syncTime && <Typography sx={{ color: palette.text3, fontSize: 12 }}>{syncTime}</Typography>}

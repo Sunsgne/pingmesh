@@ -81,7 +81,7 @@ export function TimeToolbar({ tw, presets = DEFAULT_PRESETS, label = '时间', c
       )}
       {children}
       <Box sx={{ flex: '1 1 12px' }} />
-      {!editing && <Typography sx={{ fontSize: 11.5, color: palette.text3, whiteSpace: 'nowrap' }}>{tw.range.start} ~ {tw.range.end}</Typography>}
+      {!editing && <Typography sx={{ fontSize: 11.5, color: palette.text3, whiteSpace: 'nowrap', '@media (max-width:900px)': { display: 'none' } }}>{tw.range.start} ~ {tw.range.end}</Typography>}
       {tz && <Typography sx={{ fontSize: 11.5, color: palette.text3, whiteSpace: 'nowrap' }}>北京时间 (UTC+8)</Typography>}
     </>
   );

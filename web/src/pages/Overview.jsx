@@ -72,7 +72,7 @@ export default function Overview({ config: rootCfg }) {
             return (
               <Chip key={n.Addr} label={n.Name} clickable onClick={() => setAgent(n.Addr)}
                 sx={{
-                  height: 30, fontSize: 12.5, borderRadius: 999,
+                  height: 30, fontSize: 12.5, borderRadius: 999, '@media (max-width:900px)': { height: 28, fontSize: 12 },
                   ...(active
                     ? { bgcolor: palette.primary, color: '#fff', '&:hover': { bgcolor: palette.primary } }
                     : { bgcolor: '#fff', border: `1px solid ${palette.border}`, color: palette.text2, '&:hover': { bgcolor: '#fff', borderColor: palette.primary2, color: palette.primary } }),

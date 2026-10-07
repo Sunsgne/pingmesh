@@ -19,7 +19,8 @@ export function Badge({ tone = 'gray', dot = false, mono: isMono = false, childr
     <Box component="span" sx={{
       display: 'inline-flex', alignItems: 'center', gap: '5px', px: '9px', py: '3px', fontSize: 12, fontWeight: 600,
       borderRadius: 999, bgcolor: bg, color: fg, lineHeight: 1.4, whiteSpace: 'nowrap', verticalAlign: 'middle',
-      ...(isMono ? { fontFamily: mono, fontSize: 12.5 } : {}), ...sx,
+      ...(isMono ? { fontFamily: mono, fontSize: 12.5 } : {}),
+      '@media (max-width:480px)': { fontSize: 11, px: '7px', py: '2px' }, ...sx,
     }} {...rest}>
       {dot && (
         <Box component="span" sx={{
@@ -37,14 +38,14 @@ export function Panel({ title, sub, actions, children, bodySx, flat = false, sx 
   return (
     <Card sx={{ overflow: 'visible', ...sx }}>
       {(title || actions) && (
-        <Box sx={{ px: 2.25, py: 1.75, borderBottom: `1px solid ${palette.border}`, display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap', rowGap: 1 }}>
+        <Box sx={{ px: 2.25, py: 1.75, borderBottom: `1px solid ${palette.border}`, display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap', rowGap: 1, '@media (max-width:900px)': { px: 1.75, py: 1.5 } }}>
           {title && <Typography component="h3" sx={{ fontSize: 14.5, fontWeight: 600 }}>{title}</Typography>}
-          {sub && <Typography component="span" sx={{ color: palette.text3, fontSize: 12, minWidth: 0 }}>{sub}</Typography>}
+          {sub && <Typography component="span" sx={{ color: palette.text3, fontSize: 12, minWidth: 0, '@media (max-width:900px)': { display: 'block', width: '100%', flexBasis: '100%', order: 1 } }}>{sub}</Typography>}
           <Box sx={{ flex: 1 }} />
           {actions}
         </Box>
       )}
-      <Box sx={{ p: flat ? 0 : 2.25, ...bodySx }}>{children}</Box>
+      <Box sx={{ p: flat ? 0 : 2.25, ...(flat ? {} : { '@media (max-width:900px)': { p: 1.75 } }), ...bodySx }}>{children}</Box>
     </Card>
   );
 }
@@ -54,12 +55,13 @@ export function ToolbarBox({ children, sx }) {
   return (
     <Stack direction="row" alignItems="center" sx={{
       gap: '10px 12px', flexWrap: 'wrap', p: '12px 14px', mb: 1.75,
-      background: 'linear-gradient(180deg, #f8fafc 0%, #fff 100%)', border: `1px solid ${palette.border}`, borderRadius: '12px', ...sx,
+      background: 'linear-gradient(180deg, #f8fafc 0%, #fff 100%)', border: `1px solid ${palette.border}`, borderRadius: '12px',
+      '@media (max-width:900px)': { p: '10px 12px', gap: '8px' }, ...sx,
     }}>{children}</Stack>
   );
 }
 export function ToolbarLabel({ children }) {
-  return <Typography component="span" sx={{ fontSize: 11, fontWeight: 700, color: palette.text3, letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{children}</Typography>;
+  return <Typography component="span" sx={{ fontSize: 11, fontWeight: 700, color: palette.text3, letterSpacing: '.06em', whiteSpace: 'nowrap', '@media (max-width:900px)': { display: 'none' } }}>{children}</Typography>;
 }
 
 const TONE_ICON = {
@@ -70,10 +72,10 @@ export function StatCard({ icon, tone = 'indigo', value, label }) {
   const [bg, fg] = TONE_ICON[tone];
   return (
     <Card sx={{ transition: 'box-shadow .18s, transform .18s', '&:hover': { boxShadow: shadowLg, transform: 'translateY(-2px)' } }}>
-      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75, p: '18px !important' }}>
+      <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1.75, p: '18px !important', '@media (max-width:900px)': { p: '14px !important' } }}>
         <Box sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: bg, color: fg, display: 'grid', placeItems: 'center', flex: 'none', '& svg': { width: 22, height: 22 } }}>{icon}</Box>
         <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{value}</Typography>
+          <Typography sx={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, '@media (max-width:900px)': { fontSize: 20 } }}>{value}</Typography>
           <Typography noWrap sx={{ fontSize: 12.5, color: palette.text3, mt: 0.25 }}>{label}</Typography>
         </Box>
       </CardContent>

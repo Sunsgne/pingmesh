@@ -40,7 +40,9 @@ export function PingCard({ title, target, apiurl, range, onOpen }) {
     <Card sx={{ ...cardHover, cursor: 'pointer' }}>
       <CardActionArea onClick={onOpen} disableRipple sx={{ '& .MuiCardActionArea-focusHighlight': { display: 'none' } }}>
         <Typography noWrap sx={{ px: 2, pt: 1.75, pb: 0.5, fontSize: 13.5, fontWeight: 600 }}>{title}</Typography>
-        <Box sx={{ px: 0.5 }}><EChart option={option} height={130} /></Box>
+        <Box sx={{ px: 0.5, height: 140, '@media (max-width:900px)': { height: 118 }, '@media (max-width:480px)': { height: 108 } }}>
+          <EChart option={option} height="100%" />
+        </Box>
         <Stack direction="row" flexWrap="wrap" gap={0.75} sx={{ px: 2, pb: 1.75, pt: 0.5 }}>
           <Badge tone="gray" mono>{target}</Badge>
           <Badge tone="indigo">{failed ? '失败' : `${m.delay} ms`}</Badge>
