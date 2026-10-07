@@ -147,11 +147,19 @@ export function chartAxisLabels(lastcheck) {
 
 /* ---------- 时间 ---------- */
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
+// 服务端按北京时间存储和查询; 统一按 UTC+8 生成时间字符串, 与设备时区无关
+// (设备时区不是北京时间时, 用本地时间会请求到不存在的时段, 曲线右侧整段空白)。中国无夏令时, 固定偏移即可。
+const BJ_OFFSET_MS = 8 * 3600 * 1000;
+export function fmtBeijing(d, { sep = ' ', seconds = false } = {}) {
+  const t = new Date(d.getTime() + BJ_OFFSET_MS);
+  const s = `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}${sep}${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}`;
+  return seconds ? `${s}:${pad(t.getUTCSeconds())}` : s;
+}
 export function dlocal(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return fmtBeijing(d, { sep: 'T' });
 }
 export function fmtLocalMinute(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return fmtBeijing(d);
 }
 export function rangeFromPreset(mins) {
   const now = new Date();

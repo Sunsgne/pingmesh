@@ -7,7 +7,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { Badge, EmptyState, Panel, Spinner, ToolbarBox, ToolbarLabel, ResponsiveTable } from '../components/ui';
 import MtrTable from '../components/MtrTable';
 import { useToast } from '../components/Feedback';
-import { dlocal, getJSON, nestedQs, nodeBase } from '../api';
+import { dlocal, fmtBeijing, getJSON, nestedQs, nodeBase } from '../api';
 import { mono, palette } from '../theme';
 
 const RANGES = [
@@ -21,13 +21,10 @@ const TYPE_TAGS = {
   delay: ['yellow', '延迟'], loss: ['red', '丢包率'], jitter: ['indigo', '抖动'], quality: ['gray', '质量异常'],
 };
 
-const pad = (n) => (n < 10 ? '0' + n : '' + n);
-function fmt(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
+const fmt = (d) => fmtBeijing(d, { seconds: true });
 function rangeWindow(range, crStart, crEnd) {
   const now = new Date();
-  if (range === 'today') return [fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate())), fmt(now)];
+  if (range === 'today') return [fmt(now).substring(0, 10) + ' 00:00:00', fmt(now)];
   if (range === '24h') return [fmt(new Date(now.getTime() - 24 * 3600e3)), fmt(now)];
   if (range === '7d') return [fmt(new Date(now.getTime() - 7 * 24 * 3600e3)), fmt(now)];
   return [crStart.replace('T', ' ') + ':00', crEnd.replace('T', ' ') + ':59'];
