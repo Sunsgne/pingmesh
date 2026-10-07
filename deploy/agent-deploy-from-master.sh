@@ -28,6 +28,12 @@ deploy_agent() {
   sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-bin.gz" || {
     err "  scp 失败, 跳过 ${name}"; return 1
   }
+  # 一并下发磁盘防护脚本(扩容 LVM / journal 上限 / 小时巡检)
+  if [[ -f "${SCRIPT_DIR}/disk-harden.sh" ]]; then
+    sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" \
+      "${SCRIPT_DIR}/disk-harden.sh" "${SCRIPT_DIR}/expand-root-disk.sh" \
+      "root@${host}:/tmp/" 2>/dev/null || true
+  fi
   sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -p "$port" "root@${host}" \
     "NAME=${name} ADDR=${addr} MASTER=${MASTER_INTERNAL} BACKUP=${BACKUP_INTERNAL} TOKEN=${JOIN_TOKEN} DIR=${INSTALL_DIR} bash -s" <<'REMOTE'
 apt-get install -y -qq libcap2-bin psmisc curl tzdata >/dev/null 2>&1 || true
@@ -70,6 +76,12 @@ UNIT
 systemctl daemon-reload
 systemctl enable pingmesh 2>/dev/null || true
 systemctl restart pingmesh
+# 磁盘防护: 扩容 LVM + journal/logrotate + 小时巡检(防根分区写满)
+if [[ -f /tmp/disk-harden.sh ]]; then
+  bash /tmp/disk-harden.sh || true
+elif [[ -f /tmp/expand-root-disk.sh ]]; then
+  bash /tmp/expand-root-disk.sh || true
+fi
 sleep 25
 curl -s --max-time 5 http://127.0.0.1:8899/healthz 2>/dev/null | grep -q ok
 REMOTE
