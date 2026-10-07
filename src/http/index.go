@@ -60,6 +60,12 @@ func configIndexRoutes() {
 				return
 			}
 		}
+		// 页面每次回源校验, 升级后立即拿到引用新 bundle 的 HTML; bundle 文件名带内容哈希, 可长期缓存
+		if isPageRequest(r.URL.Path) {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else if strings.HasPrefix(r.URL.Path, "/assets/app/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
 		http.FileServer(http.Dir(filepath.Join(g.Root, "/html"))).ServeHTTP(w, r)
 	})
 

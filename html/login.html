@@ -2,95 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>登录 - ZENLENET PingMesh</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="favicon.ico">
-<link href="assets/css/modern.css?v=20260827c" rel="stylesheet">
+<title>登录 - ZENLENET PingMesh</title>
+<link rel="icon" href="/favicon.ico">
+  <script type="module" crossorigin src="/assets/app/login-B8_WmDLe.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app/vendor-BAdqsb70.js">
+  <link rel="modulepreload" crossorigin href="/assets/app/boot-D29qlH1b.js">
 </head>
-<body class="login-page">
-
-<div class="login-card" id="card">
-  <div class="logo-row">
-    <div class="logo-mark" style="overflow:hidden;padding:0"><img src="assets/img/logo.png" alt="logo" id="brand-logo" style="width:100%;height:100%;display:block"></div>
-    <h1 id="brand-title">ZENLENET <span style="font-weight:400;color:#64748b">PingMesh</span></h1>
-  </div>
-  <div class="sub" id="brand-sub">全网互 PING · 网络质量监控平台</div>
-
-  <div class="login-err" id="err"></div>
-
-  <form id="login-form" autocomplete="on" onsubmit="return false;">
-    <div class="field">
-      <label>用户名</label>
-      <input type="text" class="input" id="username" autocomplete="username" autofocus placeholder="请输入用户名">
-    </div>
-    <div class="field">
-      <label>密码</label>
-      <input type="password" class="input" id="password" autocomplete="current-password" placeholder="请输入密码">
-    </div>
-    <button class="btn primary" id="login-btn" type="submit" style="width:100%;padding:11px;font-size:14.5px;margin-top:6px;">登 录</button>
-  </form>
-
-  <div id="oauth-box" style="display:none;margin-top:18px">
-    <div style="display:flex;align-items:center;gap:12px;margin:14px 0;color:#94a3b8;font-size:12px">
-      <span style="flex:1;height:1px;background:#e2e8f0"></span>或<span style="flex:1;height:1px;background:#e2e8f0"></span>
-    </div>
-    <a class="btn" id="ms-login-btn" href="/api/oauth/microsoft/login" style="width:100%;padding:11px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;background:#fff;border:1px solid #d1d5db;color:#1f2937">
-      <svg width="18" height="18" viewBox="0 0 23 23" aria-hidden="true"><rect x="1" y="1" width="10" height="10" fill="#f25022"/><rect x="12" y="1" width="10" height="10" fill="#7fba00"/><rect x="1" y="12" width="10" height="10" fill="#00a4ef"/><rect x="12" y="12" width="10" height="10" fill="#ffb900"/></svg>
-      使用 Microsoft 365 登录
-    </a>
-  </div>
-
-  <div class="first-hint" id="first-hint" style="display:none">首次部署默认账号 <b>admin / admin123</b>，登录后请尽快修改密码</div>
-</div>
-
-<script src="assets/js/jquery-1.7.2.min.js"></script>
-<script>
-$(function () {
-    var params = new URLSearchParams(window.location.search);
-    var oauthErr = params.get('oauth_error');
-    if (oauthErr) showErr(decodeURIComponent(oauthErr.replace(/\+/g, ' ')));
-    // 默认密码仍有效时才显示提示, 同时应用品牌定制 / Microsoft 登录按钮
-    $.getJSON('/api/loginmeta.json', function (m) {
-        if (m && m.defaultcreds) $('#first-hint').show();
-        if (m && m.brand) applyBrand(m.brand);
-        if (m && m.microsoft_oauth) $('#oauth-box').show();
-    });
-    function applyBrand(b) {
-        var name = b.Name || 'ZENLENET';
-        var slogan = b.Slogan || '全网互 PING · 网络质量监控平台';
-        if (b.Logo) $('#brand-logo').attr('src', b.Logo);
-        $('#brand-title').html(esc(name) + ' <span style="font-weight:400;color:#64748b">PingMesh</span>');
-        $('#brand-sub').text(slogan);
-        document.title = '登录 - ' + name + ' PingMesh';
-    }
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-        });
-    }
-    $('#login-form').submit(function () {
-        var u = $('#username').val(), p = $('#password').val();
-        if (!u || !p) { showErr('请输入用户名和密码'); return false; }
-        $('#login-btn').attr('disabled', true).text('登录中...');
-        $.post('/api/login.json', { username: u, password: p }, function (res) {
-            if (res.status === 'true') {
-                window.location.href = '/index.html';
-            } else {
-                showErr(res.info || '登录失败');
-            }
-        }, 'json').fail(function () {
-            showErr('服务不可用，请稍后重试');
-        }).always(function () {
-            $('#login-btn').attr('disabled', false).text('登 录');
-        });
-        return false;
-    });
-    function showErr(msg) {
-        $('#err').text(msg).show();
-        $('#card').addClass('shake');
-        setTimeout(function () { $('#card').removeClass('shake'); }, 450);
-    }
-});
-</script>
+<body>
+<div id="root"></div>
 </body>
 </html>
