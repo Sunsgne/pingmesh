@@ -59,6 +59,9 @@ func probeClusterInfo(endpoint string, timeout time.Duration) (clusterPeerInfo, 
 //  1. 探测所有"其他"主候选节点的纪元与可达性
 //  2. 选出代理主节点(优先级最高且可达者), 仅用于展示与运维指引
 //  3. 采用 LWW: 从纪元最新的可达候选采纳配置, 实现全网收敛与主挂自动接管
+// takeoverStreak 备选节点连续判定应接管的轮数(仅 ClusterSync 单协程读写)
+var takeoverStreak int
+
 func ClusterSync() {
 	candidates := g.MasterList()
 	// 拆出"其他"候选(排除自己)
@@ -94,6 +97,16 @@ func ClusterSync() {
 		}
 	}
 	selfActing := acting == "" || g.IsSelfEndpoint(acting)
+	// 防抖: 备选节点要连续 2 轮都探测不到更高优先级的主节点才接管, 单次探测超时不切主
+	// (切主后新主节点没有告警状态, 会把进行中的故障全部重发一遍)。优先级最高的节点自身立即生效。
+	if selfActing && !g.IsActingMaster() && len(candidates) > 0 && !g.IsSelfEndpoint(candidates[0]) {
+		takeoverStreak++
+		if takeoverStreak < 2 {
+			selfActing = false
+		}
+	} else if !selfActing {
+		takeoverStreak = 0
+	}
 	g.SetActingMaster(selfActing)
 
 	// LWW: 在可达候选中挑选最新配置源(旧版本节点无纪元概念, 不作为同步源)

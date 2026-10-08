@@ -61,12 +61,12 @@ func getPingSocket(src string) (net.PacketConn, error) {
 	}
 	sockets[src] = conn
 	// 双读循环: 降低单读协程被调度饿死时整批 in-flight 同时超时的概率
-	go pingReadLoop(conn)
-	go pingReadLoop(conn)
+	go pingReadLoop(src, conn)
+	go pingReadLoop(src, conn)
 	return conn, nil
 }
 
-func pingReadLoop(conn net.PacketConn) {
+func pingReadLoop(src string, conn net.PacketConn) {
 	buf := make([]byte, 1600)
 	for {
 		n, _, err := conn.ReadFrom(buf)
@@ -74,6 +74,13 @@ func pingReadLoop(conn net.PacketConn) {
 			if ne, ok := err.(net.Error); ok && ne.Temporary() {
 				continue
 			}
+			// socket 已失效: 从缓存摘掉并关闭, 下一次探测会重建; 否则节点会一直报 100% 丢包直到重启
+			socketsMu.Lock()
+			if sockets[src] == conn {
+				delete(sockets, src)
+				conn.Close()
+			}
+			socketsMu.Unlock()
 			return
 		}
 		msg, err := icmp.ParseMessage(1, buf[:n])

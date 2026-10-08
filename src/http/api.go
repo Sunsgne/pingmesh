@@ -129,7 +129,10 @@ func configApiRoutes() {
 		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
 		seelog.Debug("[func:/api/ping.json] Query ", querySql, " step=", step, " points=", cnt)
 		if err != nil {
+			// 查询失败如实返回错误, 不要伪装成"没有数据"的 200
 			seelog.Error("[func:/api/ping.json] Query ", err)
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
 		} else {
 			for rows.Next() {
 				l := new(g.PingLog)
@@ -146,19 +149,22 @@ func configApiRoutes() {
 					continue
 				}
 				a := &aggs[idx]
-				if v, e := strconv.ParseFloat(l.Maxdelay, 64); e == nil {
+				// 全丢包样本的延迟记为 0, 不参与延迟统计(否则中断被画成延迟变低); 丢包率照常统计
+				lp, _ := strconv.ParseFloat(l.Losspk, 64)
+				fullLoss := lp >= 100
+				if v, e := strconv.ParseFloat(l.Maxdelay, 64); e == nil && !fullLoss {
 					if a.nMax == 0 || v > a.maxV {
 						a.maxV = v
 					}
 					a.nMax++
 				}
-				if v, e := strconv.ParseFloat(l.Mindelay, 64); e == nil {
+				if v, e := strconv.ParseFloat(l.Mindelay, 64); e == nil && !fullLoss {
 					if a.nMin == 0 || v < a.minV {
 						a.minV = v
 					}
 					a.nMin++
 				}
-				if v, e := strconv.ParseFloat(l.Avgdelay, 64); e == nil {
+				if v, e := strconv.ParseFloat(l.Avgdelay, 64); e == nil && !fullLoss {
 					a.sumAvg += v
 					a.nAvg++
 				}
@@ -176,19 +182,19 @@ func configApiRoutes() {
 		for i := range aggs {
 			a := aggs[i]
 			if a.nMax > 0 {
-				maxdelay[i] = strconv.FormatFloat(a.maxV, 'f', -1, 64)
+				maxdelay[i] = strconv.FormatFloat(a.maxV, 'f', 2, 64)
 			}
 			if a.nMin > 0 {
-				mindelay[i] = strconv.FormatFloat(a.minV, 'f', -1, 64)
+				mindelay[i] = strconv.FormatFloat(a.minV, 'f', 2, 64)
 			}
 			if a.nAvg > 0 {
-				avgdelay[i] = strconv.FormatFloat(a.sumAvg/float64(a.nAvg), 'f', -1, 64)
+				avgdelay[i] = strconv.FormatFloat(a.sumAvg/float64(a.nAvg), 'f', 2, 64)
 			}
 			if a.nLoss > 0 {
-				losspk[i] = strconv.FormatFloat(a.sumLoss/float64(a.nLoss), 'f', -1, 64)
+				losspk[i] = strconv.FormatFloat(a.sumLoss/float64(a.nLoss), 'f', 2, 64)
 			}
 			if a.nJit > 0 {
-				jitter[i] = strconv.FormatFloat(a.sumJit/float64(a.nJit), 'f', -1, 64)
+				jitter[i] = strconv.FormatFloat(a.sumJit/float64(a.nJit), 'f', 2, 64)
 			}
 		}
 		preout := map[string]interface{}{
@@ -215,6 +221,14 @@ func configApiRoutes() {
 		rangeStart := r.FormValue("start")
 		rangeEnd := r.FormValue("end")
 		useRange := rangeStart != "" && rangeEnd != ""
+		// 历史区间最长 31 天(每个目标都要扫一遍区间, 更长会算几十秒)
+		if useRange {
+			if s, e1 := g.ParseProbeTime(rangeStart); e1 == nil {
+				if e, e2 := g.ParseProbeTime(rangeEnd); e2 == nil && e.Sub(s) > 31*24*time.Hour {
+					rangeStart = e.Add(-31 * 24 * time.Hour).Format("2006-01-02 15:04")
+				}
+			}
+		}
 		preout := make(map[string]string)
 		for _, v := range g.SelfCfg.Topology {
 			var ok bool
@@ -362,10 +376,8 @@ func configApiRoutes() {
 		chinaMp.Text = g.Cfg.Name
 		chinaMp.Subtext = dataKey
 		chinaMp.Avgdelay = map[string][]g.MapVal{}
-		g.DLock.Lock()
 		querySql := "select mapjson from mappinglog where logtime = ?"
 		rows, err := g.Db.Query(querySql, dataKey)
-		g.DLock.Unlock()
 		seelog.Debug("[func:/api/mapping.json] Query ", querySql)
 		if err != nil {
 			seelog.Error("[func:/api/mapping.json] Query ", err)
@@ -846,13 +858,8 @@ func configApiRoutes() {
 			http.Error(w, "Get Remote Data Status Error", resCode)
 			return
 		}
-		var out bytes.Buffer
-		if err := json.Indent(&out, body, "", "\t"); err != nil {
-			// 非 JSON 时原样返回(截断已限)
-			fmt.Fprintln(w, string(body))
-			return
-		}
-		fmt.Fprintln(w, out.String())
+		// 原样转发(不再重新缩进 JSON: 多 14% 体积和每次一次完整解析)
+		w.Write(body)
 	})
 
 }

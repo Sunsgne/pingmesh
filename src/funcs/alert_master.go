@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cihub/seelog"
@@ -64,15 +65,17 @@ func fetchAlertHealth(endpoint string, timeout time.Duration) (AlertHealthSnapsh
 	// 优先新接口; 旧 Agent 回退到 topology.json
 	url := "http://" + endpoint + "/api/alerthealth.json"
 	resp, err := client.Get(g.SignURL(url, g.Cfg.Password))
-	if err == nil {
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if resp.StatusCode == 200 && json.Unmarshal(body, &snap) == nil {
-			if snap.Links == nil {
-				snap.Links = map[string]AlertLinkHealth{}
-			}
-			return snap, true
+	if err != nil {
+		// 网络不通时直接判不可达; 再试 topology.json 只会把一次巡检的耗时翻倍
+		return snap, false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == 200 && json.Unmarshal(body, &snap) == nil {
+		if snap.Links == nil {
+			snap.Links = map[string]AlertLinkHealth{}
 		}
+		return snap, true
 	}
 	url = "http://" + endpoint + "/api/topology.json"
 	resp2, err := client.Get(g.SignURL(url, g.Cfg.Password))
@@ -80,7 +83,7 @@ func fetchAlertHealth(endpoint string, timeout time.Duration) (AlertHealthSnapsh
 		return snap, false
 	}
 	defer resp2.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp2.Body, 1<<20))
+	body, _ = io.ReadAll(io.LimitReader(resp2.Body, 1<<20))
 	if resp2.StatusCode != 200 {
 		return snap, false
 	}
@@ -143,25 +146,54 @@ func masterSetStatus(key string, healthy bool) {
 
 // MasterAlertSweep 仅代理主节点执行: 汇总各探测节点健康快照, 统一判定并发送告警。
 // 其他节点只负责探测入库 + 暴露 /api/alerthealth.json, 不再自行发邮件/Webhook。
+// 巡检每 10 秒一次; 上一轮未结束就跳过, 避免并发判定导致同一告警重复发送
+var sweepRunning int32
+
+type sweepResult struct {
+	snap AlertHealthSnapshot
+	ok   bool
+}
+
 func MasterAlertSweep() {
 	if !g.IsActingMaster() {
 		return
 	}
-	seelog.Info("[func:MasterAlertSweep] starting cluster alert sweep")
+	if !atomic.CompareAndSwapInt32(&sweepRunning, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&sweepRunning, 0)
+	seelog.Debug("[func:MasterAlertSweep] starting cluster alert sweep")
 	remindMin := g.Cfg.Base["Remindmin"]
+
+	// 并行拉取各节点快照(串行时每个不可达节点要等满超时, 两三个节点断开一轮就超过 10 秒)
+	results := map[string]sweepResult{}
+	var resMu sync.Mutex
+	var wg sync.WaitGroup
+	for addr, member := range g.Cfg.Network {
+		if !member.Pingmesh {
+			continue
+		}
+		if addr == g.Cfg.Addr {
+			results[addr] = sweepResult{LocalAlertHealth(), true}
+			continue
+		}
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			snap, ok := fetchAlertHealth(nodeHTTPEndpoint(addr), 4*time.Second)
+			resMu.Lock()
+			results[addr] = sweepResult{snap, ok}
+			resMu.Unlock()
+		}(addr)
+	}
+	wg.Wait()
 
 	for addr, member := range g.Cfg.Network {
 		if !member.Pingmesh {
 			continue
 		}
-		var snap AlertHealthSnapshot
-		ok := false
-		if addr == g.Cfg.Addr {
-			snap = LocalAlertHealth()
-			ok = true
-		} else {
-			snap, ok = fetchAlertHealth(nodeHTTPEndpoint(addr), 5*time.Second)
-		}
+		res := results[addr]
+		snap, ok := res.snap, res.ok
 		if !ok {
 			seelog.Info("[func:MasterAlertSweep] skip unreachable probe ", member.Name, " (", addr, ")")
 			continue
@@ -276,5 +308,5 @@ func MasterAlertSweep() {
 			}
 		}
 	}
-	seelog.Info("[func:MasterAlertSweep] finish")
+	seelog.Debug("[func:MasterAlertSweep] finish")
 }

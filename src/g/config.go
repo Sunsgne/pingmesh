@@ -252,6 +252,8 @@ func InitDbSchema() {
 		Db.Exec(s)
 	}
 	Db.Exec(`CREATE INDEX IF NOT EXISTS idx_alertlog_tag ON alertlog (tag)`)
+	// 报警记录页按时间范围查询; 无索引时每次全表扫描(含每条数 KB 的 MTR 文本)
+	Db.Exec(`CREATE INDEX IF NOT EXISTS idx_alertlog_time ON alertlog (logtime)`)
 }
 
 func ParseConfig(ver string) {
@@ -420,7 +422,7 @@ func ParseConfig(ver string) {
 	// PRAGMA 写入 DSN: 连接池中每条连接都生效(busy_timeout/synchronous 为连接级,
 	// 旧写法仅作用于单条连接, 池化后其余连接仍可能 database is locked)。
 	dsn := "file:" + Root + "/db/database.db" +
-		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=journal_size_limit(67108864)"
 	Db, err = sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatalln("[Fault]db open fail .", err)
@@ -477,26 +479,36 @@ func SaveCloudConfig(url string) (Config, error) {
 	Password := Cfg.Password
 	Port := Cfg.Port
 	Endpoint := Cfg.Mode["Endpoint"]
-	Cfg = config
-	Cfg.Name = Name
-	Cfg.Addr = Addr
+	// 先把新配置补全, 最后一次性替换 Cfg: 替换后再改 Cfg.Mode 会与并发读请求冲突
+	config.Name = Name
+	config.Addr = Addr
 	// 集群模式以主节点的节点列表为命名权威: 主节点改名后 Agent 自动采用
-	if m, ok := Cfg.Network[Addr]; ok && m.Name != "" {
-		Cfg.Name = m.Name
+	if m, ok := config.Network[Addr]; ok && m.Name != "" {
+		config.Name = m.Name
 	}
-	Cfg.Ver = Ver
-	Cfg.Port = Port
-	Cfg.Password = Password
-	Cfg.Mode["LastSuccTime"] = time.Now().Format("2006-01-02 15:04:05")
-	Cfg.Mode["Status"] = "true"
-	Cfg.Mode["Endpoint"] = Endpoint
-	Cfg.Mode["Type"] = "cloud"
+	config.Ver = Ver
+	config.Port = Port
+	config.Password = Password
+	mode := map[string]string{}
+	for k, v := range config.Mode {
+		mode[k] = v
+	}
+	mode["LastSuccTime"] = time.Now().Format("2006-01-02 15:04:05")
+	mode["Status"] = "true"
+	mode["Endpoint"] = Endpoint
+	mode["Type"] = "cloud"
+	config.Mode = mode
+	Cfg = config
 	SelfCfg = Cfg.Network[Cfg.Addr]
 	saveAuth()
 	return config, nil
 }
 
+var saveConfigMu sync.Mutex
+
 func SaveConfig() error {
+	saveConfigMu.Lock()
+	defer saveConfigMu.Unlock()
 	saveAuth()
 	rrs, _ := json.Marshal(Cfg)
 	var out bytes.Buffer
@@ -505,14 +517,37 @@ func SaveConfig() error {
 		seelog.Error("[func:SaveConfig] Json Parse ", errjson)
 		return errjson
 	}
-	err := os.WriteFile(Root+"/conf/"+"config.json", []byte(out.String()), 0600)
-	if err != nil {
+	// 先写临时文件再改名: 磁盘写满或进程中途退出时不会留下截断/空的 config.json(否则节点起不来)
+	if err := writeFileAtomic(Root+"/conf/config.json", out.Bytes(), 0600); err != nil {
 		seelog.Error("[func:SaveConfig] Config File Write", err)
 		return err
 	}
 	// 自动快照: 保留最近若干份配置历史, 误改/故障后可回滚, 兼作本地灾备
 	go snapshotConfig([]byte(out.String()))
 	return nil
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 const maxConfigSnapshots = 30
@@ -547,25 +582,27 @@ func snapshotConfig(data []byte) {
 	}
 }
 
+// saveAuth 重建 IP 互信表。先在局部 map 里填好再整体替换:
+// 请求处理并发读这两个 map, 原地清空再填充会触发 Go 的并发读写致命错误(进程直接退出)。
 func saveAuth() {
-	AuthUserIpMap = map[string]bool{}
-	AuthAgentIpMap = map[string]bool{}
+	user := map[string]bool{}
+	agent := map[string]bool{}
 	for _, k := range Cfg.Network {
-		AuthAgentIpMap[k.Addr] = true
+		agent[k.Addr] = true
 		// 域名节点: 解析出的 IP 一并加入互信表(请求来源是 IP)
 		if net.ParseIP(k.Addr) == nil {
 			if ips, err := net.LookupHost(k.Addr); err == nil {
 				for _, ip := range ips {
-					AuthAgentIpMap[ip] = true
+					agent[ip] = true
 				}
 			}
 		}
 	}
 	Cfg.Authiplist = strings.Replace(Cfg.Authiplist, " ", "", -1)
 	if Cfg.Authiplist != "" {
-		authiplist := strings.Split(Cfg.Authiplist, ",")
-		for _, ip := range authiplist {
-			AuthUserIpMap[ip] = true
+		for _, ip := range strings.Split(Cfg.Authiplist, ",") {
+			user[ip] = true
 		}
 	}
+	AuthUserIpMap, AuthAgentIpMap = user, agent
 }

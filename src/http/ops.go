@@ -83,9 +83,7 @@ func configOpsRoutes() {
 				Createdby  string `json:"createdby"`
 			}
 			out := []muteRow{}
-			g.DLock.Lock()
 			rows, err := g.Db.Query("SELECT target, ifnull(reason,''), muteduntil, ifnull(createdby,'') FROM alertmute WHERE muteduntil > ?", now)
-			g.DLock.Unlock()
 			if err == nil {
 				for rows.Next() {
 					m := muteRow{}
@@ -161,7 +159,6 @@ func configOpsRoutes() {
 		occ, _ := strconv.Atoi(rule["Thdoccnum"])
 		since := time.Unix(time.Now().Unix()-int64(sec), 0).Format("2006-01-02 15:04")
 		var total, badDelay, badLoss, badJitter, bad int
-		g.DLock.Lock()
 		row := g.Db.QueryRow(`select count(1),
 			sum(case when cast(avgdelay as double) >= cast(? as double) then 1 else 0 end),
 			sum(case when cast(losspk as double) >= cast(? as double) then 1 else 0 end),
@@ -174,13 +171,10 @@ func configOpsRoutes() {
 			rule["Thdavgdelay"], rule["Thdloss"], rule["Thdjitter"], rule["Thdjitter"],
 			since, target)
 		row.Scan(&total, &badDelay, &badLoss, &badJitter, &bad)
-		g.DLock.Unlock()
 		muted := false
 		var muteUntil, muteReason string
-		g.DLock.Lock()
 		g.Db.QueryRow("SELECT muteduntil, ifnull(reason,'') FROM alertmute WHERE target = ? AND muteduntil > ?",
 			target, time.Now().Format("2006-01-02 15:04:05")).Scan(&muteUntil, &muteReason)
-		g.DLock.Unlock()
 		if muteUntil != "" {
 			muted = true
 		}

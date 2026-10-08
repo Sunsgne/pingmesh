@@ -43,11 +43,9 @@ type alertMsg struct {
 // recentStat 查询目标最近N分钟的实测均值(用于告警附带实际指标)
 func recentStat(target string, mins int) (avg float64, loss float64, jitter float64, ok bool) {
 	since := time.Unix(time.Now().Unix()-int64(mins)*60, 0).Format("2006-01-02 15:04")
-	g.DLock.Lock()
-	row := g.Db.QueryRow("select ifnull(avg(avgdelay),0), ifnull(avg(losspk),0), ifnull(avg(ifnull(jitter,0)),0), count(1) from pinglog where target = ? and logtime >= ?", target, since)
+	row := g.Db.QueryRow("select ifnull(avg(case when losspk < 100 then avgdelay end),0), ifnull(avg(losspk),0), ifnull(avg(ifnull(jitter,0)),0), count(1) from pinglog where target = ? and logtime >= ?", target, since)
 	var cnt int
 	err := row.Scan(&avg, &loss, &jitter, &cnt)
-	g.DLock.Unlock()
 	return avg, loss, jitter, err == nil && cnt > 0
 }
 

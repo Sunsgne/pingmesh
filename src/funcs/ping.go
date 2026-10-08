@@ -6,7 +6,6 @@ import (
 	"net"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cihub/seelog"
@@ -15,18 +14,22 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// 防止探测周期重叠(一轮可能超过10s)
-var pingCycleRunning int32
+// 一轮探测在有丢包时可能超过 10 秒(末尾的包要等满超时)。允许最多两轮重叠,
+// 否则下一轮会被整轮跳过, 恰好在出现丢包时丢样本。共享 ICMP socket 按 (id, seq) 区分回包, 重叠是安全的。
+var pingSlots = make(chan struct{}, 2)
 
 // 单轮探测的最大并发目标数
 const maxConcurrentTargets = 256
 
 func Ping() {
-	if !atomic.CompareAndSwapInt32(&pingCycleRunning, 0, 1) {
-		seelog.Info("[func:Ping] previous cycle still running, skip this tick")
+	start := time.Now()
+	select {
+	case pingSlots <- struct{}{}:
+	default:
+		seelog.Info("[func:Ping] two cycles still running, skip this tick")
 		return
 	}
-	defer atomic.StoreInt32(&pingCycleRunning, 0)
+	defer func() { <-pingSlots }()
 
 	targets := g.SelfCfg.Ping
 	if len(targets) == 0 {
@@ -45,7 +48,7 @@ func Ping() {
 	} else {
 		batch = pingCycleParallel(targets)
 	}
-	PingStorageBatch(batch)
+	PingStorageBatch(batch, start)
 	go StartAlert()
 }
 
@@ -152,7 +155,7 @@ func pingCyclePaced(targets []string) []targetResult {
 	for i, addr := range targets {
 		batch = append(batch, targetResult{Addr: addr, Stat: finalizePingStat(rtts[i])})
 	}
-	seelog.Info("[func:pingCyclePaced] paced ", n, " targets x ", count, " pkts, slot=", slot)
+	seelog.Debug("[func:pingCyclePaced] paced ", n, " targets x ", count, " pkts, slot=", slot)
 	return batch
 }
 
@@ -321,11 +324,12 @@ func finalizePingStat(rtts []float64) g.PingSt {
 }
 
 // PingStorageBatch 单事务批量落库(替代逐条INSERT+逐条fsync)
-func PingStorageBatch(batch []targetResult) {
+// PingStorageBatch 按本轮开始时刻归入采样桶(而不是结束时刻), 超时较长的一轮不会落到下一个桶里
+func PingStorageBatch(batch []targetResult, start time.Time) {
 	if len(batch) == 0 {
 		return
 	}
-	logtime := g.ProbeLogTime(time.Now())
+	logtime := g.ProbeLogTime(start)
 	g.DLock.Lock()
 	defer g.DLock.Unlock()
 	tx, err := g.Db.Begin()
@@ -349,5 +353,5 @@ func PingStorageBatch(batch []targetResult) {
 		seelog.Error("[func:PingStorageBatch] Commit ", err)
 		return
 	}
-	seelog.Info("[func:PingStorageBatch] (", logtime, ") stored ", len(batch), " targets in one tx")
+	seelog.Debug("[func:PingStorageBatch] (", logtime, ") stored ", len(batch), " targets in one tx")
 }

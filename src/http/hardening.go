@@ -133,7 +133,7 @@ var probeDialer = &net.Dialer{
 func probeHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: &http.Transport{DialContext: probeDialer.DialContext, TLSHandshakeTimeout: 10 * time.Second},
+		Transport: &http.Transport{DialContext: probeDialer.DialContext, TLSHandshakeTimeout: 10 * time.Second, DisableKeepAlives: true},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("跳转次数过多")

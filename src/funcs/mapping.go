@@ -42,7 +42,7 @@ func Mapping() {
 
 //ping main function
 func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
-	seelog.Info("Start MappingTask " + tel + " " + prov + "..")
+	seelog.Debug("Start MappingTask " + tel + " " + prov + "..")
 	statMap := []g.PingSt{}
 	for _, ip := range ips {
 		seelog.Debug("[func:StartChinaMapPing]", ip)
@@ -114,11 +114,11 @@ func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 	MapStatus[prov] = append(MapStatus[prov], gMapVal)
 	MapLock.Unlock()
 	wg.Done()
-	seelog.Info("Finish MappingTask " + tel + " " + prov + "..")
+	seelog.Debug("Finish MappingTask " + tel + " " + prov + "..")
 }
 
 func MapPingStorage() {
-	seelog.Info("Start MapPingStorage...")
+	seelog.Debug("Start MapPingStorage...")
 	seelog.Debug(MapStatus)
 	jdata, err := json.Marshal(MapStatus)
 	if err != nil {
@@ -130,5 +130,5 @@ func MapPingStorage() {
 		seelog.Error("[func:MapPingStorage] Sql Error ", err)
 	}
 	g.DLock.Unlock()
-	seelog.Info("Finish MapPingStorage...")
+	seelog.Debug("Finish MapPingStorage...")
 }

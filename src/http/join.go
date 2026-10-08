@@ -63,6 +63,8 @@ func configJoinRoutes() {
 			RenderJson(w, preout)
 			return
 		}
+		// 节点表变更要持锁: 其他请求和配置同步会并发读写 Cfg.Network
+		g.CfgLock.Lock()
 		g.AddMeshNode(name, addr)
 		if group != "" {
 			m := g.Cfg.Network[addr]
@@ -78,6 +80,7 @@ func configJoinRoutes() {
 		}
 		// 节点拓扑变更属权威写入: 自增纪元, 确保全网采纳本次组网结果
 		g.BumpEpochInPlace(&g.Cfg)
+		g.CfgLock.Unlock()
 		if err := g.SaveConfig(); err != nil {
 			preout["info"] = "保存配置失败: " + err.Error()
 			RenderJson(w, preout)

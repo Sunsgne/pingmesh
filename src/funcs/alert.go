@@ -7,12 +7,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cihub/seelog"
-	_ "modernc.org/sqlite"
 	"github.com/zenlenet/pingmesh/src/g"
 	"github.com/zenlenet/pingmesh/src/nettools"
+	_ "modernc.org/sqlite"
 )
 
 // incidentState 每条链路本次故障的过程状态(用于提醒/确认联动/时长统计)
@@ -59,8 +60,15 @@ func fmtDur(d time.Duration) string {
 	return strconv.Itoa(m) + " 分钟"
 }
 
+// 告警判定每 10 秒触发一次; 上一轮没跑完就跳过, 避免多轮同时写 g.AlertStatus(并发写 map 会让进程崩溃)
+var alertRunning int32
+
 func StartAlert() {
-	seelog.Info("[func:StartAlert] ", "starting run AlertCheck ")
+	if !atomic.CompareAndSwapInt32(&alertRunning, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&alertRunning, 0)
+	seelog.Debug("[func:StartAlert] ", "starting run AlertCheck ")
 	// 各节点只做本地判定与落库; 邮件/Webhook 统一由代理主节点 MasterAlertSweep 发送
 	for _, v := range g.SelfCfg.Topology {
 		if v["Addr"] == g.SelfCfg.Addr {
@@ -80,34 +88,22 @@ func StartAlert() {
 			g.AlertStatus[v["Addr"]] = false
 			l := newAlertLog(v)
 			FillAlertClassification(&l, v)
-			mtrString := ""
-			hops, err := nettools.RunMtr(v["Addr"], time.Second, 64, 6)
-			if nil != err {
-				seelog.Error("[func:StartAlert] Traceroute error ", err)
-				mtrString = err.Error()
-			} else {
-				jHops, jerr := json.Marshal(hops)
-				if jerr != nil {
-					mtrString = jerr.Error()
-				} else {
-					mtrString = string(jHops)
-				}
-			}
-			l.Tracert = mtrString
-			go AlertStorage(l)
+			// MTR 每个目标要 10~25 秒; 放到后台做, 否则整个上联断开时一轮判定会跑好几分钟
+			go func(l g.AlertLog, addr string) {
+				l.Tracert = mtrJSON(addr)
+				AlertStorage(l)
+			}(l, v["Addr"])
 			continue
 		}
 	}
-	seelog.Info("[func:StartAlert] ", "AlertCheck finish ")
+	seelog.Debug("[func:StartAlert] ", "AlertCheck finish ")
 }
 
 // IsMuted 目标是否在屏蔽期内(屏蔽期间仍记录告警, 但不发通知)
 func IsMuted(target string) bool {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	var cnt int
-	g.DLock.Lock()
 	g.Db.QueryRow("SELECT count(1) FROM alertmute WHERE target = ? AND muteduntil > ?", target, now).Scan(&cnt)
-	g.DLock.Unlock()
 	return cnt > 0
 }
 
@@ -233,8 +229,9 @@ func checkAlertStatusSince(v map[string]string, timeStartStr, timeEndStr string)
 	querysql += ")"
 	rows, err := g.Db.Query(querysql, args...)
 	if err != nil {
+		// 数据库出错 = 状态未知, 不等于链路故障; 返回 false 会在全网刷出告警风暴(还会逐个跑 MTR)
 		seelog.Error("[func:checkAlertStatusSince] Query Error ", err)
-		return false
+		return true
 	}
 	defer rows.Close()
 	seelog.Debug("[func:checkAlertStatusSince] ", querysql)
@@ -243,7 +240,7 @@ func checkAlertStatusSince(v map[string]string, timeStartStr, timeEndStr string)
 		err := rows.Scan(&l.Cnt)
 		if err != nil {
 			seelog.Error("[func:checkAlertStatusSince]", err)
-			return false
+			return true
 		}
 		Thdoccnum, _ := strconv.Atoi(v["Thdoccnum"])
 		// 异常分钟数"达到"触发次数即告警(与界面文案一致)
@@ -328,4 +325,18 @@ func SendMail(user, pwd, host, to, subject, body string) error {
 		return err
 	}
 	return c.Quit()
+}
+
+// mtrJSON 对目标做一次 MTR, 返回 JSON 文本(出错时返回错误信息)
+func mtrJSON(addr string) string {
+	hops, err := nettools.RunMtr(addr, time.Second, 64, 6)
+	if err != nil {
+		seelog.Error("[func:StartAlert] Traceroute error ", err)
+		return err.Error()
+	}
+	j, err := json.Marshal(hops)
+	if err != nil {
+		return err.Error()
+	}
+	return string(j)
 }
