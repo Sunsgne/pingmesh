@@ -273,7 +273,7 @@ function tooltipFormatter(p) {
         (d._gbad > 0 ? '，<b style="color:#fb7185">异常 ' + d._gbad + ' 条</b>' : '，<span style="color:#34d399">全部正常</span>');
     }
     return esc(d._fromName) + ' &rarr; ' + esc(d._toName) + '<br>' +
-      (d._bad ? '<b style="color:#fb7185">触发报警阈值</b>' : '<span style="color:#34d399">监测正常</span>');
+      (d._bad ? '<b style="color:#fb7185">所选时间内触发过告警</b><br><span style="color:#94a3b8">点击查看触发时刻</span>' : '<span style="color:#34d399">监测正常</span>');
   }
   let html = '<b>' + esc(p.data._tipName || p.name) + '</b><br>' + (p.data._sub || '');
   const info = asnCached(p.data._addr || '');

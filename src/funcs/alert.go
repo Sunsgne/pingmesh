@@ -259,8 +259,86 @@ func CheckAlertStatus(v map[string]string) bool {
 }
 
 // CheckAlertStatusInRange 按自定义时间范围判定链路是否告警(用于拓扑历史视图)
+// CheckAlertStatusInRange 历史区间判定: 区间内任意一段「检测窗口」长度的时间里异常采样点达到触发次数
+// 才算告警过, 与实时告警的判定口径一致(而不是把整个区间的异常点加在一起)。
 func CheckAlertStatusInRange(v map[string]string, startStr, endStr string) bool {
-	return checkAlertStatusSince(v, startStr, endStr)
+	r := AlertRangeEvents(v, startStr, endStr, 0)
+	return !r.Alerted
+}
+
+// BadSample 一个超过阈值的采样点
+type BadSample struct {
+	Time   string  `json:"time"`
+	Delay  float64 `json:"delay"`
+	Loss   float64 `json:"loss"`
+	Jitter float64 `json:"jitter"`
+}
+
+// AlertRange 历史区间内的告警判定结果
+type AlertRange struct {
+	Alerted   bool        `json:"alerted"`   // 区间内是否有窗口达到触发条件
+	Bad       int         `json:"bad"`       // 区间内异常采样点总数
+	FirstHit  string      `json:"first_hit"` // 第一次达到触发条件的时刻
+	LastHit   string      `json:"last_hit"`  // 最后一次达到触发条件的时刻
+	Events    []BadSample `json:"events"`    // 最近的异常采样点(最多 keep 个)
+	Truncated bool        `json:"truncated"` // 异常点超过 keep 个, 只返回了最近的
+}
+
+// AlertRangeEvents 扫描区间内的异常采样点, 用滑动窗口判断是否达到触发条件; keep>0 时保留最近 keep 个异常点
+func AlertRangeEvents(v map[string]string, startStr, endStr string, keep int) AlertRange {
+	out := AlertRange{Events: []BadSample{}}
+	sec, _ := strconv.Atoi(v["Thdchecksec"])
+	occ, _ := strconv.Atoi(v["Thdoccnum"])
+	if occ < 1 {
+		occ = 1
+	}
+	q := `SELECT logtime, ifnull(avgdelay,0), ifnull(losspk,0), ifnull(jitter,0) FROM pinglog
+		WHERE target = ? AND logtime >= ? AND logtime <= ?
+		AND (cast(avgdelay as double) >= cast(? as double) OR cast(losspk as double) >= cast(? as double)`
+	args := []interface{}{v["Addr"], startStr, endStr, v["Thdavgdelay"], v["Thdloss"]}
+	if v["Thdjitter"] != "" {
+		q += " OR cast(ifnull(jitter,0) as double) >= cast(? as double)"
+		args = append(args, v["Thdjitter"])
+	}
+	q += ") ORDER BY logtime"
+	rows, err := g.Db.Query(q, args...)
+	if err != nil {
+		seelog.Error("[func:AlertRangeEvents] ", err)
+		return out
+	}
+	defer rows.Close()
+	window := []int64{} // 当前窗口内异常点的时间
+	for rows.Next() {
+		var b BadSample
+		if rows.Scan(&b.Time, &b.Delay, &b.Loss, &b.Jitter) != nil {
+			continue
+		}
+		t, err := g.ParseProbeTime(b.Time)
+		if err != nil {
+			continue
+		}
+		out.Bad++
+		ts := t.Unix()
+		window = append(window, ts)
+		for len(window) > 0 && ts-window[0] >= int64(sec) {
+			window = window[1:]
+		}
+		if len(window) >= occ {
+			out.Alerted = true
+			if out.FirstHit == "" {
+				out.FirstHit = b.Time
+			}
+			out.LastHit = b.Time
+		}
+		if keep > 0 {
+			out.Events = append(out.Events, b)
+			if len(out.Events) > keep {
+				out.Events = out.Events[1:]
+				out.Truncated = true
+			}
+		}
+	}
+	return out
 }
 
 func AlertStorage(t g.AlertLog) {

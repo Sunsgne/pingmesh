@@ -276,7 +276,7 @@ export default function Topology({ config: cfg }) {
         </Button>
       </Box>
 
-      <DiagDialog diag={diag} selfAddr={cfg.Addr} port={cfg.Port} onClose={() => setDiag(null)} />
+      <DiagDialog diag={diag} range={tw.range} selfAddr={cfg.Addr} port={cfg.Port} onClose={() => setDiag(null)} />
     </Box>
   );
 }

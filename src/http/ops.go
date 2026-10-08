@@ -189,9 +189,15 @@ func configOpsRoutes() {
 		} else if total == 0 {
 			hint = "窗口内没有任何探测数据(节点刚启动或探测未运行)"
 		}
+		// 拓扑页按历史时间窗口着色时一并给出该窗口的判定, 否则弹窗只反映最近一个检测窗口, 两边对不上
+		var rng interface{}
+		if rs, re := r.FormValue("start"), r.FormValue("end"); rs != "" && re != "" {
+			res := funcs.AlertRangeEvents(rule, rs, re, 30)
+			rng = map[string]interface{}{"start": rs, "end": re, "result": res}
+		}
 		renderOk(w, map[string]interface{}{
 			"from": g.Cfg.Addr, "fromname": g.Cfg.Name,
-			"target": target, "rule": rule,
+			"target": target, "rule": rule, "range": rng,
 			"window_sec": sec, "capacity": capacity, "occ": occ,
 			"total": total, "bad": bad,
 			"bad_delay": badDelay, "bad_loss": badLoss, "bad_jitter": badJitter,

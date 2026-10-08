@@ -2,10 +2,55 @@ import { useEffect, useState } from 'react';
 import { Box, Dialog, DialogContent, DialogTitle, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { Badge, EmptyState, Spinner } from '../../components/ui';
-import { getJSON, proxy } from '../../api';
+import { getJSON, nestedQs, proxy } from '../../api';
 import { palette } from '../../theme';
 
 const muted = { color: palette.text3 };
+
+const lossTxt = (v) => Number(v).toFixed(2) + '%';
+const msTxt = (v) => Number(v).toFixed(1) + 'ms';
+
+// 拓扑页按所选时间窗口着色: 这里给出该窗口的判定和超标采样点, 与连线颜色对应
+function RangeSection({ rng, rule }) {
+  const res = rng.result || {};
+  const ev = (res.events || []).slice().reverse();
+  const over = (b) => {
+    const parts = [];
+    if (Number(b.delay) >= Number(rule.Thdavgdelay)) parts.push('延迟 ' + msTxt(b.delay));
+    if (Number(b.loss) >= Number(rule.Thdloss)) parts.push('丢包 ' + lossTxt(b.loss));
+    if (rule.Thdjitter && Number(b.jitter) >= Number(rule.Thdjitter)) parts.push('抖动 ' + msTxt(b.jitter));
+    return parts.join(' · ');
+  };
+  return (
+    <Box sx={{ mb: 2.5, p: 1.5, borderRadius: 1.5, border: `1px solid ${res.alerted ? '#fecdd3' : palette.border}`, background: res.alerted ? '#fff1f2' : '#f8fafc' }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 0.75 }}>
+        <b>所选时间窗口</b>
+        <Box component="span" sx={muted}>{rng.start} ~ {rng.end}</Box>
+        {res.alerted
+          ? <Badge tone="red" dot>期间触发过告警</Badge>
+          : <Badge tone="green" dot>期间未触发</Badge>}
+      </Box>
+      <Box sx={{ fontSize: 13 }}>
+        {res.alerted
+          ? <>首次 {res.first_hit}，最近 {res.last_hit}；窗口内共 {res.bad} 个超标采样点。连线标红即由此而来。</>
+          : <>窗口内共 {res.bad} 个超标采样点，未在任何 {rule.Thdchecksec} 秒内累计到触发次数 {rule.Thdoccnum}。</>}
+      </Box>
+      {ev.length > 0 && (
+        <Box component="table" sx={{ width: '100%', mt: 1, borderCollapse: 'collapse', fontSize: 12.5, '& td': { py: '4px', pr: 2, borderTop: '1px solid #f1f5f9' } }}>
+          <tbody>
+            {ev.map((b) => (
+              <tr key={b.time}>
+                <Box component="td" sx={{ ...muted, whiteSpace: 'nowrap' }}>{b.time}</Box>
+                <td>{over(b)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Box>
+      )}
+      {res.truncated && <Box sx={{ ...muted, fontSize: 12, mt: 0.5 }}>仅显示最近 {ev.length} 个</Box>}
+    </Box>
+  );
+}
 
 function DiagBody({ d }) {
   const r = d.rule || {};
@@ -33,7 +78,9 @@ function DiagBody({ d }) {
   }
   return (
     <>
-      <Box sx={{ mb: 2 }}>
+      {d.range && <RangeSection rng={d.range} rule={r} />}
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+        {d.range && <b>当前（最近 {d.window_sec} 秒）</b>}
         {d.verdict === 'alerting'
           ? <Badge tone="red" dot>判定: 告警中</Badge>
           : <Badge tone="green" dot>判定: 正常</Badge>}
@@ -60,15 +107,16 @@ function DiagBody({ d }) {
 }
 
 /** 告警判定诊断: diag = { from, to, fromName, toName } 打开, null 关闭 */
-export default function DiagDialog({ diag, selfAddr, port, onClose }) {
+export default function DiagDialog({ diag, range, selfAddr, port, onClose }) {
   const [res, setRes] = useState(null);
 
   useEffect(() => {
     if (!diag) return undefined;
     let alive = true;
     setRes({ loading: true });
-    const qs = '?target=' + encodeURIComponent(diag.to);
-    const url = diag.from === selfAddr ? '/api/alertdiag.json' + qs : proxy(diag.from, port, '/api/alertdiag.json' + qs);
+    let qs = '?target=' + encodeURIComponent(diag.to);
+    if (range && range.start && range.end) qs += '&start=' + encodeURIComponent(range.start) + '&end=' + encodeURIComponent(range.end);
+    const url = diag.from === selfAddr ? '/api/alertdiag.json' + qs : proxy(diag.from, port, '/api/alertdiag.json' + nestedQs('x', qs));
     getJSON(url)
       .then((d) => {
         if (!alive) return;
@@ -77,7 +125,7 @@ export default function DiagDialog({ diag, selfAddr, port, onClose }) {
       })
       .catch(() => alive && setRes({ msg: '源节点不可达' }));
     return () => { alive = false; };
-  }, [diag, selfAddr, port]);
+  }, [diag, selfAddr, port]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Dialog open={!!diag} onClose={onClose} fullWidth maxWidth={false} PaperProps={{ sx: { maxWidth: 580 } }}>
