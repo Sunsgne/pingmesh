@@ -134,8 +134,8 @@ export function lastMetric(avgdelay, losspk) {
 export function chartAxisLabels(lastcheck) {
   if (!lastcheck || !lastcheck.length) return [];
   // 按时间跨度决定是否带日期(超过 24 小时), 不按点数: 10 秒采样下 2 小时就有 720 个点
-  const t0 = new Date(String(lastcheck[0]).replace(' ', 'T')).getTime();
-  const t1 = new Date(String(lastcheck[lastcheck.length - 1]).replace(' ', 'T')).getTime();
+  const t0 = new Date(String(lastcheck[0]).replace(' ', 'T') + '+08:00').getTime();
+  const t1 = new Date(String(lastcheck[lastcheck.length - 1]).replace(' ', 'T') + '+08:00').getTime();
   const showDate = Number.isFinite(t0) && Number.isFinite(t1) ? t1 - t0 > 24 * 3600 * 1000 : lastcheck.length > 180;
   return lastcheck.map((x) => {
     const s = String(x);

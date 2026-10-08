@@ -119,11 +119,13 @@ export default function Topology({ config: cfg }) {
     return () => { alive = false; };
   }, [tw.range]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 自动刷新(筛选条件已存入 sessionStorage, 刷新后保持)
+  // 自动刷新链路状态(只重新拉数据, 不整页重载, 诊断弹窗和筛选保持不变)
   useEffect(() => {
     if (empty) return undefined;
-    const t = setTimeout(() => window.location.reload(), ((cfg.Base || {}).Refresh || 1) * 60 * 1000);
-    return () => clearTimeout(t);
+    const t = setInterval(() => {
+      if (!document.hidden) tw.refresh();
+    }, ((cfg.Base || {}).Refresh || 1) * 60 * 1000);
+    return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const st = useMemo(() => applyStatus(model, status), [model, status]);

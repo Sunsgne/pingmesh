@@ -136,7 +136,7 @@ export default function Tools({ config: cfg }) {
         return;
       }
       setRow(k, { state: 'run' });
-      const url = '/api/proxy.json?t=' + proxyT + '&g=http://' + k + '/api/tools.json?t=' + encodeURIComponent(t) + '%26type=' + ttype;
+      const url = '/api/proxy.json?t=' + proxyT + '&g=http://' + k + '/api/tools.json?t=' + encodeURIComponent(encodeURIComponent(t)) + '%26type=' + ttype;
       getText(url, { timeout })
         .then((text) => {
           let res;

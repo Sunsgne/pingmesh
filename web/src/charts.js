@@ -4,6 +4,22 @@ import { chartAxisLabels, fmtChartVal, fmtLossPct, sanitizeSeries } from './api'
 // 不做前端降采样(LTTB 会按像素丢点, 坐标轴提示框在被丢掉的时刻就缺了某条曲线);
 // 服务端已把长跨度聚合到 ≤2160 点, 直接全量绘制即可。
 
+// 断档画成断开(不再把中断连成一条平线); 只补 1~2 个桶的零星空缺, 避免曲线碎成虚线
+function bridged(arr, maxGap = 2) {
+  const out = sanitizeSeries(arr);
+  let i = 0;
+  while (i < out.length) {
+    if (out[i] !== null) { i++; continue; }
+    let j = i;
+    while (j < out.length && out[j] === null) j++;
+    if (i > 0 && j < out.length && j - i <= maxGap) {
+      for (let k = i; k < j; k++) out[k] = out[i - 1] + ((out[j] - out[i - 1]) * (k - i + 1)) / (j - i + 1);
+    }
+    i = j;
+  }
+  return out;
+}
+
 const gradient = (alpha) => {
   try {
     return {
@@ -19,7 +35,7 @@ const gradient = (alpha) => {
 
 const SERIES_KEYS = ['maxdelay', 'mindelay', 'avgdelay', 'losspk', 'jitter'];
 const isNum = (v) => v !== '-' && v !== '' && v != null && !Number.isNaN(parseFloat(v));
-const toTime = (s) => new Date(String(s).replace(' ', 'T')).getTime();
+const toTime = (s) => new Date(String(s).replace(' ', 'T') + '+08:00').getTime();
 
 /**
  * 去掉末尾尚未入库的空桶(当前采样周期 + 节点上报延迟), 避免曲线右侧留一截空白。
@@ -67,7 +83,8 @@ export function miniChartOption(raw) {
     animation: false,
     grid: { left: 6, right: 10, top: 14, bottom: 6, containLabel: true },
     tooltip: {
-      trigger: 'axis', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12],
+      // richText: 默认 HTML 模式下 \n 不换行, 三行挤成一行在窄卡片里被截断
+      trigger: 'axis', renderMode: 'richText', backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [8, 12],
       textStyle: { color: '#e2e8f0', fontSize: 11 }, confine: true, formatter: miniTooltip,
     },
     xAxis: {
@@ -81,21 +98,21 @@ export function miniChartOption(raw) {
     ],
     series: [
       {
-        name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: true, clip: true,
+        name: '延迟', type: 'line', animation: false, showSymbol: false, smooth: false, connectNulls: false, clip: true,
         itemStyle: { color: palette.primary2 }, lineStyle: { width: 2 }, areaStyle: gradient(0.28),
-        data: sanitizeSeries(d && d.avgdelay),
+        data: bridged(d && d.avgdelay),
       },
       {
-        name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: true, clip: true,
+        name: '丢包率', type: 'line', yAxisIndex: 1, animation: false, showSymbol: false, connectNulls: false, clip: true,
         itemStyle: { color: '#f43f5e' }, lineStyle: { width: 1.4, type: 'dashed' },
-        data: sanitizeSeries(d && d.losspk),
+        data: bridged(d && d.losspk),
       },
     ],
   };
 }
 
 const line = (name, color, extra) => ({
-  name, type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: true, clip: true,
+  name, type: 'line', animation: false, showSymbol: false, smooth: true, connectNulls: false, clip: true,
   emphasis: { disabled: true }, itemStyle: { color }, ...extra,
 });
 
@@ -152,11 +169,11 @@ export function bigChartOption(raw) {
       },
     ],
     series: [
-      line('最大延迟', '#a5b4fc', { areaStyle: { opacity: 0.12 }, lineStyle: { width: 1.2 }, data: sanitizeSeries(d && d.maxdelay) }),
-      line('最小延迟', '#c4b5fd', { areaStyle: { opacity: 0.12 }, lineStyle: { width: 1.2 }, data: sanitizeSeries(d && d.mindelay) }),
-      line('平均延迟', palette.primary2, { lineStyle: { width: 2.2 }, areaStyle: gradient(0.3), data: sanitizeSeries(d && d.avgdelay) }),
-      line('丢包率', '#f43f5e', { yAxisIndex: 1, smooth: false, lineStyle: { width: 1.8, type: 'dashed' }, data: sanitizeSeries(d && d.losspk) }),
-      line('抖动', palette.yellow, { lineStyle: { width: 1.6 }, data: sanitizeSeries((d && d.jitter) || []) }),
+      line('最大延迟', '#a5b4fc', { areaStyle: { opacity: 0.12 }, lineStyle: { width: 1.2 }, data: bridged(d && d.maxdelay) }),
+      line('最小延迟', '#c4b5fd', { areaStyle: { opacity: 0.12 }, lineStyle: { width: 1.2 }, data: bridged(d && d.mindelay) }),
+      line('平均延迟', palette.primary2, { lineStyle: { width: 2.2 }, areaStyle: gradient(0.3), data: bridged(d && d.avgdelay) }),
+      line('丢包率', '#f43f5e', { yAxisIndex: 1, smooth: false, lineStyle: { width: 1.8, type: 'dashed' }, data: bridged(d && d.losspk) }),
+      line('抖动', palette.yellow, { lineStyle: { width: 1.6 }, data: bridged((d && d.jitter) || []) }),
     ],
   };
 }

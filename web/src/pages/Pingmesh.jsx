@@ -244,7 +244,11 @@ export default function Pingmesh({ config }) {
 
   const { sources, targets } = useMemo(() => buildTopo(cfg, meshOnly), [cfg, meshOnly]);
 
+  const loadSeq = useRef(0);
   const load = useCallback((q = queryRef.current) => {
+    const my = ++loadSeq.current;
+    // 换了时间窗口就清掉旧矩阵, 避免新旧窗口的行混在一起
+    if (q !== queryRef.current) setMeshData({});
     queryRef.current = q;
     setLoading(true);
     getJSON('/api/config.json').then((ncfg) => ncfg, () => cfgRef.current).then((c) => {
@@ -254,7 +258,9 @@ export default function Pingmesh({ config }) {
       if (srcs.length === 0) { setLoading(false); return; }
       let pending = srcs.length;
       const qs = meshQueryString(q.custom ? null : q.mins, q.custom);
-      const timeout = ((c.Base && c.Base.Timeout) || 5) * 1000;
+      // 1 天及以上的窗口聚合较久, 给到 30 秒, 否则节点会被误判为不可达
+      const baseTimeout = ((c.Base && c.Base.Timeout) || 5) * 1000;
+      const timeout = q.custom || q.mins >= 1440 ? Math.max(baseTimeout, 30000) : baseTimeout;
       srcs.forEach((s) => {
         const url = s.Addr === c.Addr
           ? '/api/pingmesh.json' + qs
@@ -262,6 +268,7 @@ export default function Pingmesh({ config }) {
         getJSON(url, { timeout })
           .then((row) => row, () => ({ error: true }))
           .then((row) => {
+            if (my !== loadSeq.current) return;
             pending--;
             setMeshData((m) => ({ ...m, [s.Addr]: row }));
             setRendered(true);
@@ -283,7 +290,7 @@ export default function Pingmesh({ config }) {
     if (!autoRefresh) return undefined;
     const timer = setInterval(() => {
       // 历史图弹窗打开时暂停刷新, 避免背后矩阵重绘拖慢鼠标
-      if (chartRef.current) return;
+      if (chartRef.current || document.hidden) return;
       loadRef.current();
     }, 60000);
     return () => clearInterval(timer);

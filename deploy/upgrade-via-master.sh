@@ -18,16 +18,20 @@ cd /workspace && CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BUILD" ./src
 gzip -c "$BUILD" > "${BUILD}.gz"
 
 info "上传至主节点 ${PRIMARY}..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "root@${PRIMARY}" "mkdir -p ${REMOTE_DIR}"
-sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no \
+export SSHPASS="$PASSWORD"
+sshpass -e ssh -o StrictHostKeyChecking=accept-new "root@${PRIMARY}" "mkdir -p ${REMOTE_DIR}"
+sshpass -e scp -o StrictHostKeyChecking=accept-new \
   "${BUILD}.gz" \
   "${SCRIPT_DIR}/upgrade-agents-from-master.sh" \
   "${SCRIPT_DIR}/agents.list" \
+  "${SCRIPT_DIR}/node-harden.sh" \
   "root@${PRIMARY}:${REMOTE_DIR}/"
 
 info "主节点经内网升级 Agent..."
-sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no "root@${PRIMARY}" \
+# 密码经标准输入传给主节点, 不出现在远端进程命令行
+sshpass -e ssh -o StrictHostKeyChecking=accept-new "root@${PRIMARY}" \
   "apt-get install -y -qq sshpass curl >/dev/null 2>&1 || true
    chmod +x ${REMOTE_DIR}/upgrade-agents-from-master.sh
-   PINGMESH_SSH_PASSWORD='${PASSWORD}' BINARY=${REMOTE_DIR}/pingmesh-upgrade.gz AGENTS_LIST=${REMOTE_DIR}/agents.list \
-     bash ${REMOTE_DIR}/upgrade-agents-from-master.sh"
+   IFS= read -r PINGMESH_SSH_PASSWORD; export PINGMESH_SSH_PASSWORD
+   BINARY=${REMOTE_DIR}/pingmesh-upgrade.gz AGENTS_LIST=${REMOTE_DIR}/agents.list HARDEN_SCRIPT=${REMOTE_DIR}/node-harden.sh \
+     bash ${REMOTE_DIR}/upgrade-agents-from-master.sh" <<<"$PASSWORD"

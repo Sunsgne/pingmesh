@@ -23,7 +23,7 @@ err()   { echo -e "\033[31m[upgrade-int]\033[0m $*"; }
 
 ssh_run() {
   local host="$1" port="${2:-22}"; shift 2
-  sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p "$port" "root@${host}" "$@"
+  SSHPASS="$PASSWORD" sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$port" "root@${host}" "$@"
 }
 
 upgrade_agent() {
@@ -32,7 +32,7 @@ upgrade_agent() {
   if ! ssh_run "$host" "$port" "echo ok" 2>/dev/null; then
     err "  SSH 连接失败, 跳过 ${name}"; return 1
   fi
-  sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-upgrade.gz" || {
+  SSHPASS="$PASSWORD" sshpass -e scp -o StrictHostKeyChecking=accept-new -P "$port" "$BINARY" "root@${host}:/tmp/pingmesh-upgrade.gz" || {
     err "  scp 失败, 跳过 ${name}"; return 1
   }
   ssh_run "$host" "$port" "DIR=${INSTALL_DIR} bash -s" <<'REMOTE'
@@ -53,11 +53,19 @@ systemctl start pingmesh
 sleep 5
 curl -sf --max-time 8 http://127.0.0.1:8899/healthz | grep -q ok
 REMOTE
-  if [[ $? -eq 0 ]]; then
-    info "  ${name} 成功"
-  else
+  if [[ $? -ne 0 ]]; then
     err "  ${name} 失败"; return 1
   fi
+  # 新二进制已就绪后再做节点加固(令牌移出命令行 + 8899 仅内网), 失败会自动回滚 unit
+  if [[ -f "${HARDEN_SCRIPT:-}" ]]; then
+    if SSHPASS="$PASSWORD" sshpass -e scp -o StrictHostKeyChecking=accept-new -P "$port" "$HARDEN_SCRIPT" "root@${host}:/tmp/node-harden.sh" \
+      && ssh_run "$host" "$port" "bash /tmp/node-harden.sh" </dev/null; then
+      info "  ${name} 加固完成"
+    else
+      err "  ${name} 加固失败(已回滚)"; return 1
+    fi
+  fi
+  info "  ${name} 成功"
 }
 
 AGENTS=()

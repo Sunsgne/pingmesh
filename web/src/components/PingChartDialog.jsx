@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Dialog, DialogContent, DialogTitle, IconButton, Stack, TextField, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import EChart from './EChart';
@@ -22,17 +22,20 @@ export default function PingChartDialog({ chart, onClose }) {
   const [loading, setLoading] = useState(false);
   const [hint, setHint] = useState('');
 
+  // 只采用最近一次请求的结果: 关掉 A 再打开 B 时, A 迟到的响应不能画到 B 的标题下
+  const seq = useRef(0);
   const load = (apiurl, start, end) => {
+    const my = ++seq.current;
     setLoading(true);
     setHint('');
     getJSON(pingUrlWithRange(apiurl, start, end), { timeout: 60000 })
-      .then((d) => { setData(d); setHint(aggregationHint(d.step)); })
-      .catch(() => toast('获取数据失败（时间跨度过大或节点超时）', 'err'))
-      .finally(() => setLoading(false));
+      .then((d) => { if (my === seq.current) { setData(d); setHint(aggregationHint(d.step)); } })
+      .catch(() => { if (my === seq.current) toast('获取数据失败（时间跨度过大或节点超时）', 'err'); })
+      .finally(() => { if (my === seq.current) setLoading(false); });
   };
 
   useEffect(() => {
-    if (!chart) return;
+    if (!chart) { seq.current++; return; }
     const r = chart.start && chart.end ? { start: chart.start, end: chart.end } : rangeFromPreset(120);
     setRange(r);
     setData(null);

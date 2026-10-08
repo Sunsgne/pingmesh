@@ -79,14 +79,17 @@ function mapOption(data, activeLine) {
       backgroundColor: 'rgba(15,23,42,.92)', borderWidth: 0, padding: [9, 13],
       textStyle: { color: '#e2e8f0', fontSize: 12 },
       formatter: (p) => {
-        if (p.value == null || Number.isNaN(p.value)) return p.name + '<br>未配置探测点';
-        if (p.value >= UNREACH) return p.name + ' · ' + activeLine + '<br><b style="color:#f87171">不可达</b>';
+        // 区域名/线路名来自配置或远端节点数据, 写进 HTML 提示框前要转义
+        const name = escHtml(p.name);
+        const line = escHtml(activeLine);
+        if (p.value == null || Number.isNaN(p.value)) return name + '<br>未配置探测点';
+        if (p.value >= UNREACH) return name + ' · ' + line + '<br><b style="color:#f87171">不可达</b>';
         let extra = '';
         if (base > 0) {
           const pct = ((Number(p.value) - base) / base) * 100;
           extra = '<br>相对基线 ' + (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%';
         }
-        return p.name + ' · ' + activeLine + '<br>平均延迟 <b>' + Number(p.value).toFixed(1) + ' ms</b>' + extra;
+        return name + ' · ' + line + '<br>平均延迟 <b>' + Number(p.value).toFixed(1) + ' ms</b>' + extra;
       },
     },
     visualMap: {
@@ -129,6 +132,8 @@ const chipSx = (active) => ({
     : { bgcolor: '#fff', color: palette.text2, '&:hover': { bgcolor: '#fff', borderColor: palette.primary2, color: palette.primary } }),
 });
 
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 export default function Mapping({ config: cfg }) {
   const disabled = !!(cfg.Base && cfg.Base.Chinamap === 0);
   if (disabled) {
@@ -167,7 +172,10 @@ function MappingView({ cfg }) {
   const lineRef = useRef(null);
   const reqSeq = useRef(0);
 
+  // 正在看历史时刻时不自动刷新(否则会被拉回当前)
+  const historyRef = useRef(false);
   const load = (d) => {
+    historyRef.current = d !== '';
     const seq = ++reqSeq.current;
     setLoading(true);
     const url = baseRef.current + '/api/mapping.json' + (d !== '' ? '?d=' + encodeURIComponent(d) : '');
@@ -200,8 +208,11 @@ function MappingView({ cfg }) {
 
   useEffect(() => {
     load('');
-    const t = setTimeout(() => { window.location.reload(); }, ((cfg.Base && cfg.Base.Refresh) || 1) * 60 * 1000);
-    return () => clearTimeout(t);
+    // 定时只刷新数据, 不整页重载: 保留所选节点、线路和搜索条件, 也不用每分钟重新下载 1MB 的地图脚本
+    const t = setInterval(() => {
+      if (!document.hidden && !historyRef.current) load('');
+    }, ((cfg.Base && cfg.Base.Refresh) || 1) * 60 * 1000);
+    return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const option = useMemo(() => mapOption(data, activeLine), [data, activeLine]);

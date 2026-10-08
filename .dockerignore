@@ -1,0 +1,11 @@
+# 镜像构建上下文不需要也不能带进去的内容(部署密钥、依赖、数据库、本地配置)
+.git
+deploy/.env
+web/node_modules
+db/
+logs/
+conf/config.json
+conf/backups/
+*.db
+*.db-wal
+*.db-shm

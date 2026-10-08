@@ -36,31 +36,16 @@ uninstall_node() {
       cd /opt/pingmesh-docker && docker compose down 2>/dev/null || true
     fi
     docker rm -f pingmesh pingmesh-agent pingmesh-nginx 2>/dev/null || true
+    tar czf /root/pingmesh-pre-uninstall-$(date +%F-%H%M).tgz /opt/pingmesh-docker/data /opt/pingmesh/db /opt/pingmesh/conf 2>/dev/null || true
     rm -rf /opt/pingmesh /opt/pingmesh-docker
     pkill -f pingmesh 2>/dev/null || true
     echo cleaned
   ' && info "  ${name} 已拆除" || info "  ${name} 拆除不完整"
 }
 
-NODES=(
-  "43.229.152.50 22 sin1-sg2"
-  "163.53.245.90 22 hkg1"
-  "106.75.160.24 20001 can-xxg"
-  "42.240.152.238 20001 can-hxy"
-  "217.217.29.250 22 fra"
-  "129.227.133.75 22 hkg2"
-  "163.53.245.136 20001 hkg3"
-  "149.119.41.156 22 lax"
-  "106.38.203.8 20001 pek"
-  "61.172.165.219 20001 gds"
-  "113.31.161.79 20001 sjhl"
-  "109.244.32.190 20001 xtl"
-  "149.51.125.226 20001 sin2-gs"
-  "59.36.211.118 20001 szx"
-  "192.169.120.12 22 tpe"
-  "43.230.52.242 22 tyo-8"
-  "61.172.165.219 20001 tyo-7"
-)
+# 控制节点 + agents.list 里的全部 Agent(host port name)
+NODES=("${MASTER_PUBLIC} 22 primary" "${BACKUP_PUBLIC} 22 backup")
+while read -r h p n _; do NODES+=("$h $p $n"); done < <(grep -vE '^\s*(#|$)' "${SCRIPT_DIR}/agents.list")
 
 for entry in "${NODES[@]}"; do
   read -r host port name <<< "$entry"

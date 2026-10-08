@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: go vet ./src/...
+      - run: go test ./src/...
+      - run: CGO_ENABLED=0 go build -o /tmp/pingmesh ./src
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+      # html/ 由 web/ 构建后提交(Go 二进制内嵌它); 源码改了没重新构建就会发出旧页面
+      - name: html/ matches web/ source
+        run: |
+          git status --porcelain -- html
+          git diff --exit-code -- html
+          test -z "$(git status --porcelain -- html)"

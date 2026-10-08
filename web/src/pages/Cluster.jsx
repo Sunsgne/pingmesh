@@ -92,7 +92,7 @@ function ClusterAdmin({ config }) {
   useEffect(() => {
     alive.current = true;
     load();
-    const timer = setInterval(load, 15000);
+    const timer = setInterval(() => { if (!document.hidden) load(); }, 15000);
     return () => { alive.current = false; clearInterval(timer); };
   }, [load]);
 

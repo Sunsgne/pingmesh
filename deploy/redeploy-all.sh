@@ -68,7 +68,12 @@ deploy_control() {
   info "部署控制节点 ${name} [${role}] ${host} 内网${addr}"
   install_docker "$host" "$port"
   build_image "$host" "$port"
-  ssh_run "$host" "$port" "mkdir -p ${INSTALL_DIR}/certs ${INSTALL_DIR}/data && rm -rf ${INSTALL_DIR}/data/*"
+  # 重装前先备份数据库与配置(否则全部历史/用户/告警记录随重装丢失)
+  ssh_run "$host" "$port" "mkdir -p ${INSTALL_DIR}/certs ${INSTALL_DIR}/data /var/backups/pingmesh && \
+    ts=\$(date +%F-%H%M); \
+    if [ -f ${INSTALL_DIR}/data/db/database.db ]; then sqlite3 ${INSTALL_DIR}/data/db/database.db \".backup /var/backups/pingmesh/db-\$ts.db\" || exit 1; fi; \
+    cp -a ${INSTALL_DIR}/data/conf/config.json /var/backups/pingmesh/config-\$ts.json 2>/dev/null || true; \
+    rm -rf ${INSTALL_DIR}/data/*"
   scp_to "$host" "$port" "/workspace/deploy/docker/docker-compose.control.yml" "${INSTALL_DIR}/docker-compose.yml"
   scp_to "$host" "$port" "/workspace/deploy/docker/nginx.conf" "${INSTALL_DIR}/nginx.conf"
   ssh_run "$host" "$port" "openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
@@ -86,10 +91,11 @@ deploy_control() {
 }
 
 prepare_binary() {
-  if [[ ! -f /tmp/pingmesh-bin ]]; then
-    info "本地编译 pingmesh 二进制..."
-    cd /workspace && CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/pingmesh-bin ./src
-  fi
+  # 每次都从已提交的代码重新编译, 避免把旧的 /tmp 产物或未提交改动发到生产
+  git -C "${SCRIPT_DIR}/.." diff --quiet HEAD -- src html web || { err "工作区有未提交改动, 请先提交"; exit 1; }
+  info "本地编译 pingmesh 二进制..."
+  rm -f /tmp/pingmesh-bin
+  (cd "${SCRIPT_DIR}/.." && CGO_ENABLED=0 go build -ldflags="-s -w -X main.GitCommit=$(git rev-parse --short HEAD)" -o /tmp/pingmesh-bin ./src)
   gzip -c /tmp/pingmesh-bin > /tmp/pingmesh-bin.gz
 }
 

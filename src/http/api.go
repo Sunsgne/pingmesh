@@ -814,7 +814,8 @@ func configApiRoutes() {
 			http.Error(w, "Url Param Error!", 406)
 			return
 		}
-		url := strings.Replace(strings.Replace(r.Form["g"][0], "%26", "&", -1), " ", "%20", -1)
+		// 表单解析已把外层的 %26 还原成 &; 不再二次替换, 否则被代理参数里编码过的 &(如检测目标 URL)会被拆开
+		url := strings.Replace(r.Form["g"][0], " ", "%20", -1)
 		if err := proxyAllowed(url); err != nil {
 			http.Error(w, "Proxy Denied: "+err.Error(), 403)
 			return

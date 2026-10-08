@@ -67,6 +67,9 @@ func configIndexRoutes() {
 			w.Header().Set("Cache-Control", "no-cache")
 		} else if strings.HasPrefix(r.URL.Path, "/assets/app/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if strings.HasPrefix(r.URL.Path, "/assets/") {
+			// echarts / 世界地图 / logo 不带哈希, 缓存一天(约 1.2MB, 每次打开页面都重下太浪费)
+			w.Header().Set("Cache-Control", "public, max-age=86400")
 		}
 		http.FileServer(http.Dir(filepath.Join(g.Root, "/html"))).ServeHTTP(w, r)
 	})

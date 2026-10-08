@@ -94,4 +94,25 @@ cat >/etc/cron.d/pm-disk-watch <<'EOF'
 EOF
 chmod 644 /etc/cron.d/pm-disk-watch
 
+# ---------- 6) 每日备份数据库与配置(保留最近 2 份; 剩余空间不足 3 倍库大小时跳过) ----------
+command -v sqlite3 >/dev/null 2>&1 || apt-get install -y -qq sqlite3 >/dev/null 2>&1 || true
+cat >/usr/local/sbin/pm-db-backup.sh <<'EOF'
+#!/usr/bin/env bash
+d=/var/backups/pingmesh; mkdir -p "$d"; chmod 700 "$d"
+for db in /opt/pingmesh-docker/data/db/database.db /opt/pingmesh/db/database.db; do
+  [ -f "$db" ] || continue
+  size=$(stat -c %s "$db"); free=$(df -P --output=avail -B1 "$d" | tail -1)
+  if [ "$free" -lt $((size * 3)) ]; then logger -t pingmesh-backup "skip: not enough space for $db"; continue; fi
+  sqlite3 "$db" ".backup $d/db-$(date +%F).db" && logger -t pingmesh-backup "ok $db"
+done
+for c in /opt/pingmesh-docker/data/conf/config.json /opt/pingmesh/conf/config.json; do
+  [ -f "$c" ] && cp -a "$c" "$d/config-$(date +%F).json"
+done
+ls -1t "$d"/db-*.db 2>/dev/null | tail -n +3 | xargs -r rm -f
+ls -1t "$d"/config-*.json 2>/dev/null | tail -n +8 | xargs -r rm -f
+EOF
+chmod 755 /usr/local/sbin/pm-db-backup.sh
+echo "20 4 * * * root /usr/local/sbin/pm-db-backup.sh" > /etc/cron.d/pm-db-backup
+chmod 644 /etc/cron.d/pm-db-backup
+
 info "after: $(df -h / | tail -1)"
