@@ -107,7 +107,7 @@ for db in /opt/pingmesh-docker/data/db/database.db /opt/pingmesh/db/database.db;
   sqlite3 "$db" ".backup $d/db-$(date +%F).db" && logger -t pingmesh-backup "ok $db"
 done
 for c in /opt/pingmesh-docker/data/conf/config.json /opt/pingmesh/conf/config.json; do
-  [ -f "$c" ] && cp -a "$c" "$d/config-$(date +%F).json"
+  [ -f "$c" ] && cp "$c" "$d/config-$(date +%F).json" && chmod 600 "$d/config-$(date +%F).json"
 done
 ls -1t "$d"/db-*.db 2>/dev/null | tail -n +3 | xargs -r rm -f
 ls -1t "$d"/config-*.json 2>/dev/null | tail -n +8 | xargs -r rm -f
