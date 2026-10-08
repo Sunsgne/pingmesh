@@ -56,7 +56,9 @@ if [[ -f "$UNITF" ]] && grep -q -- ' -token ' "$UNITF"; then
   ok=0
   for i in $(seq 1 20); do
     sleep 2
-    if curl -sf --max-time 3 "http://127.0.0.1:${PORT}/healthz" | grep -q '"status":"ok"'; then ok=1; break; fi
+    pid=$(systemctl show -p MainPID --value pingmesh)
+    if systemctl is-active -q pingmesh && ss -lntp | grep ":${PORT} " | grep -q "pid=${pid}," \
+      && curl -sf --max-time 3 "http://127.0.0.1:${PORT}/healthz" | grep -q '"status":"ok"'; then ok=1; break; fi
   done
   if [[ $ok -ne 1 ]]; then
     echo "token migration: health check failed, rolling back"

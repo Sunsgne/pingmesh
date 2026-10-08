@@ -50,8 +50,16 @@ setcap cap_net_raw+ep "$DIR/pingmesh.new" 2>/dev/null || true
 mv -f "$DIR/pingmesh.new" "$DIR/pingmesh"
 rm -f /tmp/pingmesh-upgrade.gz
 systemctl start pingmesh
-sleep 5
-curl -sf --max-time 8 http://127.0.0.1:8899/healthz | grep -q ok
+# 必须是本服务自己在监听 8899: 若端口被残留进程/容器占着, healthz 会由它应答, 真正的 Agent 却在崩溃重启
+for i in $(seq 1 10); do
+  sleep 2
+  pid=$(systemctl show -p MainPID --value pingmesh)
+  if systemctl is-active -q pingmesh && ss -lntp | grep ':8899 ' | grep -q "pid=${pid},"; then
+    curl -sf --max-time 8 http://127.0.0.1:8899/healthz | grep -q ok && exit 0
+  fi
+done
+ss -lntp | grep ':8899 ' >&2
+exit 1
 REMOTE
   if [[ $? -ne 0 ]]; then
     err "  ${name} 失败"; return 1
