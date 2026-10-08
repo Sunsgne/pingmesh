@@ -207,18 +207,6 @@ func InitDbSchema() {
 			targetname VARCHAR (15),
 			tracert    TEXT
 		)`,
-		`CREATE TABLE IF NOT EXISTS pinglog (
-			logtime  VARCHAR (16),
-			target   VARCHAR (15),
-			maxdelay FLOAT,
-			mindelay FLOAT,
-			avgdelay FLOAT,
-			sendpk   INT,
-			revcpk   INT,
-			losspk   FLOAT
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_pinglog_target_time ON pinglog (target, logtime)`,
-		`CREATE INDEX IF NOT EXISTS idx_pinglog_time ON pinglog (logtime)`,
 		`CREATE TABLE IF NOT EXISTS mappinglog (logtime VARCHAR (16) PRIMARY KEY, mapjson TEXT)`,
 		`CREATE TABLE IF NOT EXISTS alertmute (
 			target     VARCHAR (64) PRIMARY KEY,
@@ -235,9 +223,11 @@ func InitDbSchema() {
 			log.Fatalln("[Fault]db schema init fail.", err)
 		}
 	}
+	if err := initProbeStorage(); err != nil {
+		log.Fatalln("[Fault]db schema init fail.", err)
+	}
 	// 告警确认/类型字段(老库升级, 已存在时报错忽略)
 	for _, s := range []string{
-		`ALTER TABLE pinglog ADD COLUMN jitter FLOAT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ack INT DEFAULT 0`,
 		`ALTER TABLE alertlog ADD COLUMN ackby VARCHAR(64)`,
 		`ALTER TABLE alertlog ADD COLUMN ackreason TEXT`,

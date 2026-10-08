@@ -66,6 +66,7 @@ func main() {
 		}
 	}
 	go funcs.ClearArchive()
+	funcs.StartDbMaintenance()
 	c := cron.New()
 	c.AddFunc("*/10 * * * * *", func() {
 		go funcs.Ping()

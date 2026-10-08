@@ -323,13 +323,14 @@ func finalizePingStat(rtts []float64) g.PingSt {
 	return stat
 }
 
-// PingStorageBatch 单事务批量落库(替代逐条INSERT+逐条fsync)
-// PingStorageBatch 按本轮开始时刻归入采样桶(而不是结束时刻), 超时较长的一轮不会落到下一个桶里
+// PingStorageBatch 单事务批量落库, 同一事务内累加 5 分钟汇总表。
+// 按本轮开始时刻归入采样桶(而不是结束时刻), 超时较长的一轮不会落到下一个桶里。
 func PingStorageBatch(batch []targetResult, start time.Time) {
 	if len(batch) == 0 {
 		return
 	}
 	logtime := g.ProbeLogTime(start)
+	bucket := g.RollupBucket(start)
 	g.DLock.Lock()
 	defer g.DLock.Unlock()
 	tx, err := g.Db.Begin()
@@ -337,17 +338,40 @@ func PingStorageBatch(batch []targetResult, start time.Time) {
 		seelog.Error("[func:PingStorageBatch] Begin ", err)
 		return
 	}
-	stmt, err := tx.Prepare("INSERT INTO pinglog (logtime, target, maxdelay, mindelay, avgdelay, sendpk, revcpk, losspk, jitter) values(?,?,?,?,?,?,?,?,?)")
+	// OR IGNORE: 聚簇表以 (target, logtime) 为主键, 同一时刻重复写入时只保留一条, 汇总也只累加一次
+	stmt, err := tx.Prepare("INSERT OR IGNORE INTO pinglog (logtime, target, maxdelay, mindelay, avgdelay, sendpk, revcpk, losspk, jitter) values(?,?,?,?,?,?,?,?,?)")
 	if err != nil {
 		seelog.Error("[func:PingStorageBatch] Prepare ", err)
 		tx.Rollback()
 		return
 	}
+	roll, err := tx.Prepare(g.RollupRowSQL)
+	if err != nil {
+		seelog.Error("[func:PingStorageBatch] Prepare rollup ", err)
+		stmt.Close()
+		tx.Rollback()
+		return
+	}
 	for _, r := range batch {
-		if _, err := stmt.Exec(logtime, r.Addr, r.Stat.MaxDelay, r.Stat.MinDelay, r.Stat.AvgDelay, r.Stat.SendPk, r.Stat.RevcPk, r.Stat.LossPk, r.Stat.Jitter); err != nil {
+		res, err := stmt.Exec(logtime, r.Addr, r.Stat.MaxDelay, r.Stat.MinDelay, r.Stat.AvgDelay, r.Stat.SendPk, r.Stat.RevcPk, r.Stat.LossPk, r.Stat.Jitter)
+		if err != nil {
 			seelog.Error("[func:PingStorageBatch] Exec ", r.Addr, " ", err)
+			continue
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			continue
+		}
+		nOK, sumAvg := 0, 0.0
+		var maxV, minV interface{}
+		if r.Stat.LossPk < 100 {
+			nOK, sumAvg, maxV = 1, r.Stat.AvgDelay, r.Stat.MaxDelay
+			minV = math.Max(r.Stat.MinDelay, 0)
+		}
+		if _, err := roll.Exec(r.Addr, bucket, nOK, sumAvg, maxV, minV, r.Stat.LossPk, r.Stat.Jitter); err != nil {
+			seelog.Error("[func:PingStorageBatch] rollup ", r.Addr, " ", err)
 		}
 	}
+	roll.Close()
 	stmt.Close()
 	if err := tx.Commit(); err != nil {
 		seelog.Error("[func:PingStorageBatch] Commit ", err)

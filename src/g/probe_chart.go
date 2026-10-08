@@ -15,12 +15,13 @@ func ChartStepSec(rangeSec int64) int64 {
 		return base
 	}
 	// 优先使用较「整齐」的档位, 便于读轴
-	for _, c := range []int64{10, 30, 60, 120, 300, 600, 900, 1800, 3600} {
+	// 5 分钟以上的档位都是 300 的整数倍, 才能直接由 5 分钟汇总表合并
+	for _, c := range []int64{10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400} {
 		if c >= want && c%base == 0 {
 			return c
 		}
 	}
-	return ((want + base - 1) / base) * base
+	return ((want + 86400 - 1) / 86400) * 86400
 }
 
 // AlignUnixStep 将 Unix 时间戳对齐到 step 秒边界。

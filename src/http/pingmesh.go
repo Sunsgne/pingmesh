@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -72,10 +73,25 @@ func configPingmeshRoutes() {
 		if g.SelfCfg.Ping != nil {
 			row.Targets = g.SelfCfg.Ping
 		}
+		// 按目标列表查询(主键前缀), 聚簇表上没有单独的时间索引
+		args := make([]interface{}, 0, len(row.Targets)+2)
+		for _, t := range row.Targets {
+			args = append(args, t)
+		}
+		args = append(args, timeStartStr, timeEndStr)
+		in := strings.TrimSuffix(strings.Repeat("?,", len(row.Targets)), ",")
 		// 全丢包的样本 avgdelay 记为 0, 不计入延迟均值, 否则中断期间会把延迟拉低成"更好"
-		querySql := "select target, ifnull(avg(case when losspk < 100 then avgdelay end),0), max(maxdelay), min(case when mindelay < 0 then 0 else mindelay end), avg(losspk), avg(ifnull(jitter,0)), max(logtime), count(1) from pinglog where logtime >= ? and logtime <= ? group by target"
+		querySql := "select target, ifnull(avg(case when losspk < 100 then avgdelay end),0), ifnull(max(case when losspk < 100 then maxdelay end),0), ifnull(min(case when losspk < 100 then (case when mindelay < 0 then 0 else mindelay end) end),0), ifnull(avg(losspk),0), ifnull(avg(ifnull(jitter,0)),0), max(logtime), count(1) from pinglog where target in (" + in + ") and logtime >= ? and logtime <= ? group by target"
+		// 6 小时以上的窗口读 5 分钟汇总表
+		if mins >= 360 && g.RollupCovers(timeStartStr) {
+			querySql = "select target, ifnull(sum(sum_avg)/nullif(sum(n_ok),0),0), ifnull(max(max_max),0), ifnull(min(min_min),0), ifnull(sum(sum_loss)/sum(n),0), ifnull(sum(sum_jit)/sum(n),0), max(bucket), sum(n) from pinglog_5m where target in (" + in + ") and bucket >= ? and bucket <= ? group by target"
+		}
+		if len(row.Targets) == 0 {
+			querySql = "select '', 0, 0, 0, 0, 0, '', 0 where 0"
+			args = nil
+		}
 		// 只读查询不加全局写锁(WAL 下读写并发安全), 避免长查询阻塞每 10 秒的入库与登录
-		rows, err := g.Db.QueryContext(r.Context(), querySql, timeStartStr, timeEndStr)
+		rows, err := g.Db.QueryContext(r.Context(), querySql, args...)
 		if err != nil {
 			seelog.Error("[func:/api/pingmesh.json] Query ", err)
 		} else {
@@ -125,7 +141,21 @@ func baselines24h() map[string]float64 {
 	out := map[string]float64{}
 	baseStart := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04")
 	baseEnd := time.Now().Format("2006-01-02 15:04")
-	rows, err := g.Db.Query("select target, avg(avgdelay) from pinglog where logtime >= ? and logtime <= ? and avgdelay > 0 and losspk < 100 group by target", baseStart, baseEnd)
+	targets := g.SelfCfg.Ping
+	if len(targets) == 0 {
+		return out
+	}
+	args := make([]interface{}, 0, len(targets)+2)
+	for _, t := range targets {
+		args = append(args, t)
+	}
+	args = append(args, baseStart, baseEnd)
+	in := strings.TrimSuffix(strings.Repeat("?,", len(targets)), ",")
+	q := "select target, avg(avgdelay) from pinglog where target in (" + in + ") and logtime >= ? and logtime <= ? and avgdelay > 0 and losspk < 100 group by target"
+	if g.RollupCovers(baseStart) {
+		q = "select target, sum(sum_avg)/sum(n_ok) from pinglog_5m where target in (" + in + ") and bucket >= ? and bucket <= ? and n_ok > 0 group by target"
+	}
+	rows, err := g.Db.Query(q, args...)
 	if err != nil {
 		seelog.Error("[func:/api/pingmesh.json] Baseline ", err)
 		return out

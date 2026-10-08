@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/cihub/seelog"
@@ -125,22 +126,23 @@ func configApiRoutes() {
 			maxdelay[i], mindelay[i], avgdelay[i], losspk[i], jitter[i] = "-", "-", "-", "-", "-"
 		}
 
-		querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"
-		rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
-		seelog.Debug("[func:/api/ping.json] Query ", querySql, " step=", step, " points=", cnt)
-		if err != nil {
-			// 查询失败如实返回错误, 不要伪装成"没有数据"的 200
-			seelog.Error("[func:/api/ping.json] Query ", err)
-			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		} else {
-			for rows.Next() {
-				l := new(g.PingLog)
-				if err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk, &l.Jitter); err != nil {
-					seelog.Error("[/api/ping.json] Rows", err)
+		// 步长为 5 分钟整数倍时读汇总表(一年跨度约 10 万行), 否则读原始 10 秒样本
+		if step%g.RollupBucketSec == 0 && g.RollupCovers(timeStartStr) {
+			rrows, err := g.Db.QueryContext(r.Context(), "SELECT bucket, n, n_ok, sum_avg, max_max, min_min, sum_loss, sum_jit FROM pinglog_5m WHERE target = ? AND bucket >= ? AND bucket <= ?", tableip, timeStartStr, timeEndStr)
+			if err != nil {
+				seelog.Error("[func:/api/ping.json] rollup query ", err)
+				http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for rrows.Next() {
+				var bucket string
+				var n, nOK int
+				var sumAvg, sumLoss, sumJit float64
+				var maxV, minV sql.NullFloat64
+				if err := rrows.Scan(&bucket, &n, &nOK, &sumAvg, &maxV, &minV, &sumLoss, &sumJit); err != nil {
 					continue
 				}
-				tm, err := g.ParseProbeTime(l.Logtime)
+				tm, err := g.ParseProbeTime(bucket)
 				if err != nil {
 					continue
 				}
@@ -149,35 +151,81 @@ func configApiRoutes() {
 					continue
 				}
 				a := &aggs[idx]
-				// 全丢包样本的延迟记为 0, 不参与延迟统计(否则中断被画成延迟变低); 丢包率照常统计
-				lp, _ := strconv.ParseFloat(l.Losspk, 64)
-				fullLoss := lp >= 100
-				if v, e := strconv.ParseFloat(l.Maxdelay, 64); e == nil && !fullLoss {
-					if a.nMax == 0 || v > a.maxV {
-						a.maxV = v
+				if maxV.Valid {
+					if a.nMax == 0 || maxV.Float64 > a.maxV {
+						a.maxV = maxV.Float64
 					}
 					a.nMax++
 				}
-				if v, e := strconv.ParseFloat(l.Mindelay, 64); e == nil && !fullLoss {
-					if a.nMin == 0 || v < a.minV {
-						a.minV = v
+				if minV.Valid {
+					if a.nMin == 0 || minV.Float64 < a.minV {
+						a.minV = minV.Float64
 					}
 					a.nMin++
 				}
-				if v, e := strconv.ParseFloat(l.Avgdelay, 64); e == nil && !fullLoss {
-					a.sumAvg += v
-					a.nAvg++
-				}
-				if v, e := strconv.ParseFloat(l.Losspk, 64); e == nil {
-					a.sumLoss += v
-					a.nLoss++
-				}
-				if v, e := strconv.ParseFloat(l.Jitter, 64); e == nil {
-					a.sumJit += v
-					a.nJit++
-				}
+				a.sumAvg += sumAvg
+				a.nAvg += nOK
+				a.sumLoss += sumLoss
+				a.nLoss += n
+				a.sumJit += sumJit
+				a.nJit += n
 			}
-			rows.Close()
+			rrows.Close()
+		} else {
+			querySql := "SELECT logtime,maxdelay,mindelay,avgdelay,losspk,ifnull(jitter,0) FROM pinglog where target=? and logtime between ? and ?"
+			rows, err := g.Db.Query(querySql, tableip, timeStartStr, timeEndStr)
+			seelog.Debug("[func:/api/ping.json] Query ", querySql, " step=", step, " points=", cnt)
+			if err != nil {
+				// 查询失败如实返回错误, 不要伪装成"没有数据"的 200
+				seelog.Error("[func:/api/ping.json] Query ", err)
+				http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+				return
+			} else {
+				for rows.Next() {
+					l := new(g.PingLog)
+					if err := rows.Scan(&l.Logtime, &l.Maxdelay, &l.Mindelay, &l.Avgdelay, &l.Losspk, &l.Jitter); err != nil {
+						seelog.Error("[/api/ping.json] Rows", err)
+						continue
+					}
+					tm, err := g.ParseProbeTime(l.Logtime)
+					if err != nil {
+						continue
+					}
+					idx := int((g.AlignUnixStep(tm.Unix(), step) - timeStart) / step)
+					if idx < 0 || idx >= cnt {
+						continue
+					}
+					a := &aggs[idx]
+					// 全丢包样本的延迟记为 0, 不参与延迟统计(否则中断被画成延迟变低); 丢包率照常统计
+					lp, _ := strconv.ParseFloat(l.Losspk, 64)
+					fullLoss := lp >= 100
+					if v, e := strconv.ParseFloat(l.Maxdelay, 64); e == nil && !fullLoss {
+						if a.nMax == 0 || v > a.maxV {
+							a.maxV = v
+						}
+						a.nMax++
+					}
+					if v, e := strconv.ParseFloat(l.Mindelay, 64); e == nil && !fullLoss {
+						if a.nMin == 0 || v < a.minV {
+							a.minV = v
+						}
+						a.nMin++
+					}
+					if v, e := strconv.ParseFloat(l.Avgdelay, 64); e == nil && !fullLoss {
+						a.sumAvg += v
+						a.nAvg++
+					}
+					if v, e := strconv.ParseFloat(l.Losspk, 64); e == nil {
+						a.sumLoss += v
+						a.nLoss++
+					}
+					if v, e := strconv.ParseFloat(l.Jitter, 64); e == nil {
+						a.sumJit += v
+						a.nJit++
+					}
+				}
+				rows.Close()
+			}
 		}
 		for i := range aggs {
 			a := aggs[i]
