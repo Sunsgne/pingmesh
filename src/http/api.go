@@ -736,6 +736,12 @@ func configApiRoutes() {
 				}
 			}
 		}
+		// 页面加载后配置已被别处改过(其他管理员或集群同步), 直接保存会把新改动悄悄覆盖掉
+		if posted, err := strconv.ParseInt(nconfig.Mode["Epoch"], 10, 64); err == nil && posted < g.GetEpoch() {
+			preout["info"] = "配置已在其他地方被修改(版本 " + strconv.FormatInt(g.GetEpoch(), 10) + "), 请刷新页面后重新修改再保存"
+			RenderJson(w, preout)
+			return
+		}
 		// 管理员保存属权威写入: 自增纪元, 使本次改动在集群内 LWW 收敛
 		g.BumpEpochInPlace(&nconfig)
 		g.CfgLock.Lock()
@@ -749,6 +755,7 @@ func configApiRoutes() {
 			return
 		}
 		preout["status"] = "true"
+		preout["epoch"] = strconv.FormatInt(g.GetEpoch(), 10)
 		RenderJson(w, preout)
 	})
 

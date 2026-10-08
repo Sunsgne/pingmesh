@@ -40,18 +40,23 @@ func SetActingMaster(v bool) {
 // IsActingMaster 本节点当前是否为代理主节点
 func IsActingMaster() bool { return atomic.LoadInt32(&actingMaster) == 1 }
 
-// CfgVersion 配置版本(纪元 + 时间戳), 用于 LWW 比较
+// CfgVersion 配置版本(纪元 + 时间戳 + 修改节点), 用于 LWW 比较
 type CfgVersion struct {
 	Epoch int64
 	Time  string
+	By    string
 }
 
-// Fresher 报告 a 是否严格比 b 更新(纪元优先, 其次时间戳)
+// Fresher 报告 a 是否严格比 b 更新: 纪元优先, 其次修改时间, 最后修改节点地址。
+// 三级比较构成全序, 两个节点同一秒保存同一纪元时也能决出唯一胜者, 集群不会长期分裂。
 func Fresher(a, b CfgVersion) bool {
 	if a.Epoch != b.Epoch {
 		return a.Epoch > b.Epoch
 	}
-	return a.Time > b.Time
+	if a.Time != b.Time {
+		return a.Time > b.Time
+	}
+	return a.By > b.By
 }
 
 // LocalVersion 当前本地配置版本
@@ -60,7 +65,7 @@ func LocalVersion() CfgVersion {
 		return CfgVersion{}
 	}
 	e, _ := strconv.ParseInt(Cfg.Mode["Epoch"], 10, 64)
-	return CfgVersion{Epoch: e, Time: Cfg.Mode["EpochTime"]}
+	return CfgVersion{Epoch: e, Time: Cfg.Mode["EpochTime"], By: Cfg.Mode["EpochBy"]}
 }
 
 // GetEpoch 读取当前配置纪元(权威配置版本号)
@@ -81,8 +86,15 @@ func BumpEpochInPlace(c *Config) {
 		next = sub
 	}
 	next++
+	// 祖先记录取本节点当前版本的谱系(而不是提交上来的副本), 并带上当前版本本身
+	hist := epochHist(Cfg.Mode)
+	if Cfg.Mode != nil && Cfg.Mode["Epoch"] != "" {
+		hist = strings.Split(appendHist(hist, VersionID(Cfg.Mode)), ",")
+	}
 	c.Mode["Epoch"] = strconv.FormatInt(next, 10)
 	c.Mode["EpochTime"] = time.Now().Format("2006-01-02 15:04:05")
+	c.Mode["EpochBy"] = SelfEndpoint()
+	c.Mode["EpochHist"] = appendHist(hist, VersionID(c.Mode))
 }
 
 // BumpEpoch 对全局配置自增纪元(调用方在 SaveConfig 前调用)

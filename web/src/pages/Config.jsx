@@ -103,6 +103,8 @@ function ConfigEditor({ config }) {
     postJq('/api/saveconfig.json', { config: JSON.stringify(finalCfg) }).then((res) => {
       if (res.status === 'true') {
         toast('配置保存成功', 'ok');
+        // 保存后版本号已变, 页面副本要跟上, 否则下一次保存会被当作过期副本拒绝
+        if (res.epoch) finalCfg.Mode = { ...(finalCfg.Mode || {}), Epoch: res.epoch };
         cfgRef.current = finalCfg;
         fill();
       } else {

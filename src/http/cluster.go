@@ -30,6 +30,8 @@ func configClusterRoutes() {
 			"name":      g.Cfg.Name,
 			"epoch":     v.Epoch,
 			"epochtime": v.Time,
+			"epochby":   v.By,
+			"conflicts": len(g.ListConflicts()),
 			"mode":      g.Cfg.Mode["Type"],
 			"acting":    g.IsActingMaster(),
 			"userrev":   g.UserRev(),
@@ -60,6 +62,34 @@ func configClusterRoutes() {
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
 		fmt.Fprintln(w, enc)
+	})
+
+	// 配置冲突(管理员): 列出被其他节点覆盖的本节点修改; POST action=restore 重新发布 / dismiss 忽略
+	http.HandleFunc("/api/cluster/conflicts.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthAdmin(r) {
+			deny(w)
+			return
+		}
+		if r.Method == http.MethodGet {
+			RenderJson(w, map[string]interface{}{"status": "true", "conflicts": g.ListConflicts()})
+			return
+		}
+		r.ParseForm()
+		id := r.FormValue("id")
+		switch r.FormValue("action") {
+		case "restore":
+			if err := g.RestoreConflict(id); err != nil {
+				RenderJson(w, map[string]string{"status": "false", "info": err.Error()})
+				return
+			}
+			seelog.Info("[func:/api/cluster/conflicts.json] restored overwritten config ", id)
+			RenderJson(w, map[string]string{"status": "true", "info": "已重新发布本节点被覆盖的版本, 将在下一同步周期同步到全网"})
+		case "dismiss":
+			g.DismissConflict(id)
+			RenderJson(w, map[string]string{"status": "true"})
+		default:
+			RenderJson(w, map[string]string{"status": "false", "info": "未知操作"})
+		}
 	})
 
 	// 聚合集群态势(界面用): 探测全网节点的在线/纪元/主从角色

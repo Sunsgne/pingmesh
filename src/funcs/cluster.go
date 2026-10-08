@@ -22,6 +22,7 @@ type clusterPeerInfo struct {
 	Name      string `json:"name"`
 	Epoch     int64  `json:"epoch"`
 	EpochTime string `json:"epochtime"`
+	EpochBy   string `json:"epochby"`
 	Mode      string `json:"mode"`
 	Acting    bool   `json:"acting"`
 	UserRev   int64  `json:"userrev"` // 用户数据版本(账户密码随主同步的 LWW 依据)
@@ -117,7 +118,7 @@ func ClusterSync() {
 		if info.Legacy {
 			continue
 		}
-		v := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime}
+		v := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime, By: info.EpochBy}
 		if g.Fresher(v, best) {
 			best = v
 			bestEp = ep
@@ -243,7 +244,7 @@ func tryCloudEndpointSync(local g.CfgVersion) {
 		seelog.Info("[func:ClusterSync] cloud endpoint ", hostport, " legacy/unauthorized, skip fallback sync")
 		return
 	}
-	remote := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime}
+	remote := g.CfgVersion{Epoch: info.Epoch, Time: info.EpochTime, By: info.EpochBy}
 	if !g.Fresher(remote, local) {
 		return
 	}

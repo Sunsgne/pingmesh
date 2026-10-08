@@ -57,6 +57,45 @@ const switchSx = {
   '& .MuiSwitch-track': { borderRadius: 999, bgcolor: '#cbd5e1', opacity: 1 },
 };
 
+const SECTION_NAMES = {
+  Base: '基础参数', Network: '节点与探测目标', Topology: '拓扑设置', Alert: '告警邮件', Channels: '告警通道',
+  Brand: '品牌', OAuth: '登录方式', Chinamap: '地图区域', Toollimit: '工具限额', Authiplist: 'IP 白名单', Mode: '集群策略',
+};
+const versionLabel = (id) => {
+  const [epoch, by] = String(id || '').split('@');
+  return '#' + epoch + (by ? ' · ' + by.replace(/:\d+$/, '') : '');
+};
+
+// 本节点被其他节点覆盖的修改: 两边同步前各改了一次, 只能保留一个版本
+function ConflictPanel({ items, onAction, busy }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <Panel flat sx={{ mb: 2, borderColor: palette.yellow, borderWidth: 1, borderStyle: 'solid' }}
+      title={'配置冲突 · ' + items.length + ' 条本节点修改被覆盖'}
+      sub="两个节点在同步前各自修改了配置，集群按「版本号 → 修改时间 → 节点地址」保留了一个版本。被覆盖的版本已自动备份，可重新发布或忽略。">
+      {items.map((c) => (
+        <Box key={c.id} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, py: 1.5, px: { xs: 2, sm: 2.5 }, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ flex: '1 1 320px', minWidth: 0, fontSize: 13, lineHeight: 1.7 }}>
+            <Box>
+              本节点的修改 <Box component="b" sx={mono}>{versionLabel(c.local)}</Box>
+              <Box component="span" sx={muted}> {c.localtime}</Box>
+              {' '}被 <Box component="b" sx={mono}>{versionLabel(c.remote)}</Box>
+              <Box component="span" sx={muted}> {c.remotetime}</Box> 覆盖
+            </Box>
+            <Box sx={muted}>
+              涉及：{(c.sections || []).map((k) => SECTION_NAMES[k] || k).join('、')} · 发现于 {c.time} · 备份 {c.file}
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>
+            <Button size="small" variant="contained" disabled={busy} onClick={() => onAction('restore', c)}>重新发布本节点版本</Button>
+            <Button size="small" variant="outlined" disabled={busy} onClick={() => onAction('dismiss', c)}>忽略</Button>
+          </Box>
+        </Box>
+      ))}
+    </Panel>
+  );
+}
+
 function ClusterAdmin({ config }) {
   const toast = useToast();
   const md = (config && config.Mode) || {};
@@ -68,6 +107,24 @@ function ClusterAdmin({ config }) {
   const [saving, setSaving] = useState(false);
   const loadingRef = useRef(false);
   const alive = useRef(true);
+  const [conflicts, setConflicts] = useState([]);
+  const [conflictBusy, setConflictBusy] = useState(false);
+  const loadConflicts = useCallback(() => {
+    getJSON('/api/cluster/conflicts.json')
+      .then((r) => { if (alive.current && r && r.status === 'true') setConflicts(r.conflicts || []); })
+      .catch(() => { /* 旧版本后端没有该接口 */ });
+  }, []);
+  const onConflict = (action, c) => {
+    if (action === 'restore' && !window.confirm('重新发布本节点被覆盖的版本？\n\n这会作为一次新的修改同步到全网，覆盖对方节点的这次改动（' +
+      (c.sections || []).map((k) => SECTION_NAMES[k] || k).join('、') + '）。')) return;
+    setConflictBusy(true);
+    postForm('/api/cluster/conflicts.json', { action, id: c.id })
+      .then((r) => {
+        if (r.status === 'true') { toast(r.info || '已忽略', 'ok'); loadConflicts(); if (action === 'restore') load(); } else toast(r.info || '操作失败', 'err');
+      })
+      .catch(() => toast('操作失败', 'err'))
+      .finally(() => setConflictBusy(false));
+  };
 
   const load = useCallback(() => {
     if (loadingRef.current) return;
@@ -92,6 +149,7 @@ function ClusterAdmin({ config }) {
   useEffect(() => {
     alive.current = true;
     load();
+    loadConflicts();
     const timer = setInterval(() => { if (!document.hidden) load(); }, 15000);
     return () => { alive.current = false; clearInterval(timer); };
   }, [load]);
@@ -118,6 +176,7 @@ function ClusterAdmin({ config }) {
 
   return (
     <>
+      <ConflictPanel items={conflicts} onAction={onConflict} busy={conflictBusy} />
       <Box sx={{ ...gridCols(4), mb: 2 }}>
         <StatCard tone="indigo" icon={ICONS.master} label="当前代理主节点"
           value={res ? (actingNode ? actingNode.name : (res.acting || '本机')) : '-'} />

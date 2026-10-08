@@ -24,10 +24,13 @@ func TestFresher(t *testing.T) {
 		a, b CfgVersion
 		want bool
 	}{
-		{CfgVersion{2, "2026-01-01 00:00:00"}, CfgVersion{1, "2030-01-01 00:00:00"}, true},  // 纪元优先
-		{CfgVersion{1, "2026-01-01 00:00:01"}, CfgVersion{1, "2026-01-01 00:00:00"}, true},  // 同纪元比时间
-		{CfgVersion{1, "2026-01-01 00:00:00"}, CfgVersion{1, "2026-01-01 00:00:00"}, false}, // 完全相同非更新
-		{CfgVersion{0, ""}, CfgVersion{1, ""}, false},
+		{CfgVersion{2, "2026-01-01 00:00:00", ""}, CfgVersion{1, "2030-01-01 00:00:00", ""}, true},  // 纪元优先
+		{CfgVersion{1, "2026-01-01 00:00:01", ""}, CfgVersion{1, "2026-01-01 00:00:00", ""}, true},  // 同纪元比时间
+		{CfgVersion{1, "2026-01-01 00:00:00", ""}, CfgVersion{1, "2026-01-01 00:00:00", ""}, false}, // 完全相同非更新
+		{CfgVersion{0, "", ""}, CfgVersion{1, "", ""}, false},
+		// 同纪元同一秒: 按修改节点决出唯一胜者, 双方结论一致
+		{CfgVersion{5, "2026-01-01 00:00:00", "10.0.0.2:8899"}, CfgVersion{5, "2026-01-01 00:00:00", "10.0.0.1:8899"}, true},
+		{CfgVersion{5, "2026-01-01 00:00:00", "10.0.0.1:8899"}, CfgVersion{5, "2026-01-01 00:00:00", "10.0.0.2:8899"}, false},
 	}
 	for i, c := range cases {
 		if got := Fresher(c.a, c.b); got != c.want {

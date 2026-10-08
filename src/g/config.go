@@ -469,6 +469,7 @@ func SaveCloudConfig(url string) (Config, error) {
 	Password := Cfg.Password
 	Port := Cfg.Port
 	Endpoint := Cfg.Mode["Endpoint"]
+	checkOverwrite(&Cfg, &config)
 	// 先把新配置补全, 最后一次性替换 Cfg: 替换后再改 Cfg.Mode 会与并发读请求冲突
 	config.Name = Name
 	config.Addr = Addr
