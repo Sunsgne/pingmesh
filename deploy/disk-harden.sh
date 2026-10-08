@@ -98,10 +98,11 @@ chmod 644 /etc/cron.d/pm-disk-watch
 command -v sqlite3 >/dev/null 2>&1 || apt-get install -y -qq sqlite3 >/dev/null 2>&1 || true
 cat >/usr/local/sbin/pm-db-backup.sh <<'EOF'
 #!/usr/bin/env bash
+umask 077
 d=/var/backups/pingmesh; mkdir -p "$d"; chmod 700 "$d"
 for db in /opt/pingmesh-docker/data/db/database.db /opt/pingmesh/db/database.db; do
   [ -f "$db" ] || continue
-  size=$(stat -c %s "$db"); free=$(df -P --output=avail -B1 "$d" | tail -1)
+  size=$(stat -c %s "$db"); free=$(df --output=avail -B1 "$d" | tail -1 | tr -d ' ')
   if [ "$free" -lt $((size * 3)) ]; then logger -t pingmesh-backup "skip: not enough space for $db"; continue; fi
   sqlite3 "$db" ".backup $d/db-$(date +%F).db" && logger -t pingmesh-backup "ok $db"
 done
