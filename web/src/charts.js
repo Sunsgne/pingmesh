@@ -149,6 +149,13 @@ export function bigChartOption(raw) {
       icon: 'roundRect', itemWidth: 14, itemHeight: 8, textStyle: { color: palette.text2, fontSize: 12 }, type: 'scroll',
     },
     grid: { left: 12, right: 16, top: 52, bottom: 56, containLabel: true },
+    // 框选放大: 弹窗在图上按住拖动选出时间段, 松开后按该时间段重新查询(粒度随之变细)
+    toolbox: { show: false, feature: { brush: { type: ['lineX'] } } },
+    brush: {
+      xAxisIndex: 0, brushType: 'lineX', brushMode: 'single', transformable: false, throttleType: 'debounce',
+      brushStyle: { borderWidth: 1, color: 'rgba(99,102,241,.12)', borderColor: 'rgba(99,102,241,.6)' },
+      outOfBrush: { colorAlpha: 1 },
+    },
     dataZoom: [{
       type: 'slider', height: 20, bottom: 8, borderColor: 'transparent', backgroundColor: '#f1f5f9',
       fillerColor: 'rgba(99,102,241,.15)', handleStyle: { color: palette.primary2 }, realtime: false, throttle: 100, filterMode: 'none',
