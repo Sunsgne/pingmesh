@@ -1,5 +1,5 @@
 # ZENLENET PingMesh - 多阶段构建, 产出单文件镜像
-FROM golang:1.25-alpine AS build
+FROM golang:1.27.3-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 go build \
     -ldflags="-s -w -X main.GitCommit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}" \
     -o /out/pingmesh ./src
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata wget
 ENV TZ=Asia/Shanghai
 WORKDIR /app

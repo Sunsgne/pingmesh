@@ -31,7 +31,7 @@ services:
       start_period: 15s
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30.6-alpine
     container_name: pingmesh-nginx
     network_mode: host
     depends_on:
