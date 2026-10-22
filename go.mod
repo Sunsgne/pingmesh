@@ -7,7 +7,6 @@ toolchain go1.27.3
 require (
 	github.com/cihub/seelog v0.0.0-20170130134532-f561c5e57575
 	github.com/jakecoffman/cron v0.0.0-20190106200828-7e2009c226a5
-	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	golang.org/x/oauth2 v0.37.0
 	modernc.org/sqlite v1.52.0

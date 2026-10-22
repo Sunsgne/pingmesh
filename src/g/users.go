@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cihub/seelog"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/zenlenet/pingmesh/src/crypt/bcrypt"
 )
 
 // User 系统登录用户

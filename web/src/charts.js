@@ -144,6 +144,8 @@ export function bigChartOption(raw) {
       },
     },
     legend: {
+      // 6.x 起图例默认沉到底部, 会压住时间轴; 固定在绘图区上方
+      top: 0,
       data: ['最大延迟', '平均延迟', '最小延迟', '丢包率', '抖动'],
       selected: { 最大延迟: false, 最小延迟: false },
       icon: 'roundRect', itemWidth: 14, itemHeight: 8, textStyle: { color: palette.text2, fontSize: 12 }, type: 'scroll',
