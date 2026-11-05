@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/jakecoffman/cron"
@@ -67,6 +68,20 @@ func main() {
 	}
 	go funcs.ClearArchive()
 	funcs.StartDbMaintenance()
+	sched := &scheduler{}
+	sched.start()
+	go sched.watchClock()
+	http.StartHttp()
+}
+
+// scheduler 跑周期任务。jakecoffman/cron 用墙上时间算出下一次触发点再 time.After 等待。
+// NTP 把时钟往回拨几个小时后，下一次触发点仍停在拨钟前的时刻，探测、告警和配置同步会一直停到时钟追上。
+type scheduler struct {
+	mu sync.Mutex
+	c  *cron.Cron
+}
+
+func (s *scheduler) start() {
 	c := cron.New()
 	c.AddFunc("*/10 * * * * *", func() {
 		go funcs.Ping()
@@ -85,5 +100,41 @@ func main() {
 		go funcs.ClearArchive()
 	}, "mtc")
 	c.Start()
-	http.StartHttp()
+	s.mu.Lock()
+	s.c = c
+	s.mu.Unlock()
+}
+
+func (s *scheduler) restart() {
+	s.mu.Lock()
+	old := s.c
+	s.mu.Unlock()
+	if old != nil {
+		old.Stop()
+	}
+	s.start()
+}
+
+func (s *scheduler) watchClock() {
+	prevWall := time.Now().Round(0)
+	prevMono := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for now := range ticker.C {
+		nowWall := now.Round(0)
+		if clockSteppedBack(prevWall, nowWall, now.Sub(prevMono)) {
+			log.Printf("[clock] wall clock stepped backward by %s, restarting scheduler", prevWall.Sub(nowWall).Round(time.Second))
+			s.restart()
+		}
+		prevWall = time.Now().Round(0)
+		prevMono = time.Now()
+	}
+}
+
+// clockSteppedBack 报告墙上时间相对单调时钟是否往回跳了超过 2 秒。
+func clockSteppedBack(prevWall, nowWall time.Time, monoElapsed time.Duration) bool {
+	if monoElapsed <= 0 {
+		return false
+	}
+	return monoElapsed-nowWall.Sub(prevWall) > 2*time.Second
 }
