@@ -33,6 +33,7 @@ var ChannelTypes = map[string]bool{
 
 // alertMsg 结构化告警内容, 各通道按自身格式渲染
 type alertMsg struct {
+	Kind      string // alert | recovery | reminder | mute_expired | test
 	Recovered bool
 	Title     string
 	Link      string      // A → B
@@ -59,8 +60,11 @@ func hasExtra(extras [][2]string, label string) bool {
 }
 
 func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][2]string) alertMsg {
+	if kind == "" {
+		kind = "alert"
+	}
 	recovered := kind == "recovery"
-	m := alertMsg{Recovered: recovered}
+	m := alertMsg{Kind: kind, Recovered: recovered}
 	m.Link = l.Fromname + " → " + l.Targetname
 	switch kind {
 	case "recovery":
@@ -188,14 +192,10 @@ func sendRich(ch g.AlertChannel, m alertMsg, payload map[string]interface{}) (st
 		if p["Url"] == "" {
 			return "", errors.New("企业微信机器人 Url 不能为空")
 		}
-		color := "warning"
-		if m.Recovered {
-			color = "info"
-		}
-		md := "## <font color=\"" + color + "\">" + m.Title + "</font>\n**" + m.Link + "**\n" + mdFields(m, "> ")
+		// markdown 的引用条在手机上会挤成一条灰边，字段换行也不受控。纯文本按行排。
 		body, err := postJson(p["Url"], map[string]interface{}{
-			"msgtype":  "markdown",
-			"markdown": map[string]string{"content": md},
+			"msgtype": "text",
+			"text":    map[string]string{"content": wecomText(m)},
 		})
 		return body, checkErrcode(body, err)
 	case "feishu":
@@ -284,6 +284,7 @@ func sendRich(ch g.AlertChannel, m alertMsg, payload map[string]interface{}) (st
 // SendChannelMessage 测试消息(配置页"发送测试"使用), 复用富文本渲染
 func SendChannelMessage(ch g.AlertChannel, title, text string, payload map[string]interface{}) (string, error) {
 	m := alertMsg{
+		Kind:      "test",
 		Recovered: true,
 		Title:     "🔔 测试消息",
 		Link:      g.Cfg.Name,
