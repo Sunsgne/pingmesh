@@ -60,7 +60,7 @@ Type=simple
 Environment=TZ=Asia/Shanghai
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=-${INSTALL_DIR}/pingmesh.env
-ExecStart=${INSTALL_DIR}/pingmesh -p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${MASTER_INTERNAL}:8899,${BACKUP_INTERNAL}:8899
+ExecStart=${INSTALL_DIR}/pingmesh -p 8899 -join http://${MASTER_INTERNAL}:8899 -token ${JOIN_TOKEN} -name ${name} -addr ${addr} -masters ${BACKUP_INTERNAL}:8899
 Restart=always
 RestartSec=3
 LimitNOFILE=65536

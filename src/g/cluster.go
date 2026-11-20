@@ -170,6 +170,22 @@ func SetStandbyMasters(list string) {
 	SaveConfig()
 }
 
+// ApplyStandbyMasters 仅在本机还没有备选列表时采纳 -masters。
+// 备选名单以主节点页面保存的配置为准, 经集群同步下发。每次重启都用启动参数覆盖,
+// 会把页面上的修改打回去, 主节点和 Agent 的备选列表就会长期不一致。
+// 返回 true 表示本次写入了启动参数。
+func ApplyStandbyMasters(list string) bool {
+	list = strings.TrimSpace(list)
+	if list == "" {
+		return false
+	}
+	if Cfg.Mode != nil && strings.TrimSpace(Cfg.Mode["Standbys"]) != "" {
+		return false
+	}
+	SetStandbyMasters(list)
+	return true
+}
+
 // MasterList 返回有序的主候选列表(host:port), 优先级从高到低:
 //  1. 显式主节点 Mode["Master"]
 //  2. 手动指定的备选主节点 Mode["Standbys"](逗号分隔)

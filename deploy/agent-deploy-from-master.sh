@@ -64,7 +64,7 @@ Wants=network-online.target
 Type=simple
 Environment=TZ=Asia/Shanghai
 WorkingDirectory=${DIR}
-ExecStart=${DIR}/pingmesh -p 8899 -join http://${MASTER}:8899 -token ${TOKEN} -name ${NAME} -addr ${ADDR} -masters ${MASTER}:8899,${BACKUP}:8899
+ExecStart=${DIR}/pingmesh -p 8899 -join http://${MASTER}:8899 -token ${TOKEN} -name ${NAME} -addr ${ADDR} -masters ${BACKUP}:8899
 Restart=always
 RestartSec=3
 LimitNOFILE=65536

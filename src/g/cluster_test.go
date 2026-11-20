@@ -96,6 +96,27 @@ func TestMasterListPriorityOrder(t *testing.T) {
 	}
 }
 
+func TestApplyStandbyMastersKeepsSyncedList(t *testing.T) {
+	resetCfg()
+	Cfg.Mode["Standbys"] = "10.0.0.9:8899"
+	if ApplyStandbyMasters("10.0.0.2:8899,10.0.0.3:8899") {
+		t.Fatal("startup -masters must not overwrite a standby list already on disk")
+	}
+	if Cfg.Mode["Standbys"] != "10.0.0.9:8899" {
+		t.Fatalf("standbys changed: %s", Cfg.Mode["Standbys"])
+	}
+	Cfg.Mode["Standbys"] = ""
+	if !ApplyStandbyMasters("10.0.0.3:8899") {
+		t.Fatal("empty standby list should accept -masters")
+	}
+	if Cfg.Mode["Standbys"] != "10.0.0.3:8899" {
+		t.Fatalf("standbys want 10.0.0.3:8899 got %s", Cfg.Mode["Standbys"])
+	}
+	if ApplyStandbyMasters("  ") {
+		t.Fatal("blank -masters should be ignored")
+	}
+}
+
 func TestClusterActive(t *testing.T) {
 	resetCfg()
 	if ClusterActive() {

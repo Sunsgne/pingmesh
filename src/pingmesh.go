@@ -58,9 +58,8 @@ func main() {
 			g.SaveConfig()
 		}
 	}
-	if *masters != "" {
-		g.SetStandbyMasters(*masters)
-	}
+	// 已有备选列表(来自主节点同步或上次保存)时不再用 -masters 覆盖
+	g.ApplyStandbyMasters(*masters)
 	if *join != "" {
 		if err := funcs.JoinMaster(*join, *token, *name, *addr, *group); err != nil {
 			log.Fatalln("[Fault]join master fail:", err)
