@@ -23,33 +23,36 @@ func TestWecomCardDelay(t *testing.T) {
 		},
 	})
 	want := strings.TrimSpace(`
-<font color="warning">— ZENLENET PingMesh —</font>
+<font color="comment">— ZENLENET PingMesh —</font>
 <font color="warning">级别：重要 (MAJOR) · 延迟</font>
-<font color="warning">类型：质量告警</font>
+类型：质量告警
 
 ## <font color="warning">【延迟】TYO-EQTY7 → PVG-GDS</font>
 
-<font color="warning">▌ 详情</font>
-<font color="warning">源：TYO-EQTY7 (10.100.1.9)</font>
-<font color="warning">目标：PVG-GDS (10.100.1.20)</font>
-<font color="warning">原因：延迟 41.6ms ≥ 33ms</font>
-<font color="warning">窗口：60s / 1 次</font>
-<font color="warning">近15分钟：延迟 41.6ms</font>
-<font color="warning">丢包 0% · 抖动 0.4ms</font>
-<font color="warning">规则：延迟 > 33ms</font>
-<font color="warning">或 丢包 > 1%</font>
-<font color="warning">时间：2026-11-20 15:56</font>
+<font color="comment">▌ 详情</font>
+源：TYO-EQTY7 (10.100.1.9)
+目标：PVG-GDS (10.100.1.20)
+原因：延迟 41.6ms ≥ 33ms
+窗口：60s / 1 次
+近15分钟：延迟 41.6ms
+丢包 0% · 抖动 0.4ms
+规则：延迟 > 33ms
+或 丢包 > 1%
+时间：2026-11-20 15:56
 
-<font color="warning">▌ 影响评估</font>
-<font color="warning">这条链路延迟已超阈值，探测质量下降。</font>
+<font color="comment">▌ 影响评估</font>
+这条链路延迟已超阈值，探测质量下降。
 
-<font color="warning">▌ 建议处置</font>
-<font color="warning">查看该链路曲线，确认是否持续。</font>
-<font color="warning">持续超标再查两端和中间网络。</font>
+<font color="comment">▌ 建议处置</font>
+查看该链路曲线，确认是否持续。
+持续超标再查两端和中间网络。
 
-<font color="warning">— 本消息由 ZENLENET PingMesh 自动发送 —</font>`)
+<font color="comment">— 本消息由 ZENLENET PingMesh 自动发送 —</font>`)
 	if got != want {
 		t.Fatalf("delay card:\n%s", got)
+	}
+	if strings.Count(got, `color="warning"`) != 2 {
+		t.Fatal("only the level and the title should be orange")
 	}
 	if strings.Contains(got, "故障 Tag") || strings.Contains(got, "DELAY:") {
 		t.Fatal("tag should stay off the WeCom card")

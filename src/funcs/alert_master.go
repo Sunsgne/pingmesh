@@ -144,6 +144,21 @@ func masterSetStatus(key string, healthy bool) {
 	masterAlertMu.Unlock()
 }
 
+// masterTransition 判断是否要发告警或恢复。
+// 进程刚启动时这条链路还没见过，只记基线，不把仍在故障中的链路再发一遍。
+func masterTransition(seen, wasHealthy, nowHealthy bool) (alert, recovery bool) {
+	if !seen {
+		return false, false
+	}
+	if nowHealthy && !wasHealthy {
+		return false, true
+	}
+	if !nowHealthy && wasHealthy {
+		return true, false
+	}
+	return false, false
+}
+
 // MasterAlertSweep 仅代理主节点执行: 汇总各探测节点健康快照, 统一判定并发送告警。
 // 其他节点只负责探测入库 + 暴露 /api/alerthealth.json, 不再自行发邮件/Webhook。
 // 巡检每 10 秒一次; 上一轮未结束就跳过, 避免并发判定导致同一告警重复发送
@@ -238,9 +253,10 @@ func MasterAlertSweep() {
 				}
 			}
 
+			alertNow, recoveryNow := masterTransition(haskey, old, healthy)
 			if healthy {
 				masterSetStatus(key, true)
-				if haskey && !old {
+				if recoveryNow {
 					seelog.Info("[func:MasterAlertSweep] recovered ", key)
 					if !h.Muted {
 						extras := [][2]string{}
@@ -262,8 +278,15 @@ func MasterAlertSweep() {
 				continue
 			}
 
-			// 异常
-			if !haskey || old {
+			// 异常。第一次见到只记状态，避免重启后把存量故障再通知一遍。
+			if !haskey {
+				masterSetStatus(key, false)
+				st.BadSince = time.Now()
+				st.LastNotify = time.Now()
+				seelog.Info("[func:MasterAlertSweep] baseline ", key, " down, skip notify")
+				continue
+			}
+			if alertNow {
 				seelog.Info("[func:MasterAlertSweep] alert ", key)
 				masterSetStatus(key, false)
 				st.BadSince = time.Now()

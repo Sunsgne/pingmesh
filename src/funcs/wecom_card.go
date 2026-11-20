@@ -3,25 +3,48 @@ package funcs
 import "strings"
 
 // wecomText 把告警排成企业微信 markdown。不用引用条，避免手机上挤成灰边。
-// 故障为橙色，恢复为绿色，测试为灰色，方便在群里一眼分开。
+// 只有级别和标题上色：故障橙色，恢复绿色，测试灰色。正文保持黑色。
 func wecomText(m alertMsg) string {
 	f := firstFields(m.Fields)
-	lines := []string{
-		"— ZENLENET PingMesh —",
-		"级别：" + wecomLevel(m, f),
-		"类型：" + wecomType(m),
-		"",
-		wecomHeadline(m, f),
-		"",
-		"▌ 详情",
+	accent := wecomColor(m.Kind)
+	var b strings.Builder
+	write := func(color, text string, head bool) {
+		if text == "" {
+			b.WriteByte('\n')
+			return
+		}
+		if head {
+			b.WriteString("## ")
+		}
+		if color == "" {
+			b.WriteString(text)
+			b.WriteByte('\n')
+			return
+		}
+		b.WriteString(`<font color="` + color + `">` + text + "</font>\n")
 	}
-	lines = append(lines, wecomDetail(m, f)...)
-	lines = append(lines, "", "▌ 影响评估")
-	lines = append(lines, wecomImpact(m, f)...)
-	lines = append(lines, "", "▌ 建议处置")
-	lines = append(lines, wecomAction(m)...)
-	lines = append(lines, "", "— 本消息由 ZENLENET PingMesh 自动发送 —")
-	return paintWecom(wecomColor(m.Kind), lines, 4)
+	writePlain := func(lines []string) {
+		for _, ln := range lines {
+			write("", ln, false)
+		}
+	}
+	write("comment", "— ZENLENET PingMesh —", false)
+	write(accent, "级别："+wecomLevel(m, f), false)
+	write("", "类型："+wecomType(m), false)
+	write("", "", false)
+	write(accent, wecomHeadline(m, f), true)
+	write("", "", false)
+	write("comment", "▌ 详情", false)
+	writePlain(wecomDetail(m, f))
+	write("", "", false)
+	write("comment", "▌ 影响评估", false)
+	writePlain(wecomImpact(m, f))
+	write("", "", false)
+	write("comment", "▌ 建议处置", false)
+	writePlain(wecomAction(m))
+	write("", "", false)
+	write("comment", "— 本消息由 ZENLENET PingMesh 自动发送 —", false)
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func wecomColor(kind string) string {
@@ -33,21 +56,6 @@ func wecomColor(kind string) string {
 	default:
 		return "warning"
 	}
-}
-
-func paintWecom(color string, lines []string, head int) string {
-	var b strings.Builder
-	for i, ln := range lines {
-		if ln == "" {
-			b.WriteByte('\n')
-			continue
-		}
-		if i == head {
-			b.WriteString("## ")
-		}
-		b.WriteString(`<font color="` + color + `">` + ln + "</font>\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func firstFields(fields [][2]string) map[string]string {

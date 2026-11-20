@@ -40,6 +40,26 @@ func containsAll(s string, parts ...string) bool {
 	return true
 }
 
+func TestMasterTransition(t *testing.T) {
+	if a, r := masterTransition(false, false, false); a || r {
+		t.Fatal("unseen down link must not notify")
+	}
+	if a, r := masterTransition(false, true, true); a || r {
+		t.Fatal("unseen healthy link must not notify")
+	}
+	a, r := masterTransition(true, true, false)
+	if !a || r {
+		t.Fatalf("new fault alert=%v recovery=%v", a, r)
+	}
+	a, r = masterTransition(true, false, true)
+	if a || !r {
+		t.Fatalf("recovery alert=%v recovery=%v", a, r)
+	}
+	if a, r := masterTransition(true, false, false); a || r {
+		t.Fatal("ongoing fault must not alert again")
+	}
+}
+
 func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
 		(func() bool {
