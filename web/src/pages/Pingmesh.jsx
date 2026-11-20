@@ -67,26 +67,40 @@ function buildTopo(cfg, meshOnly) {
 }
 
 function computeFit(wrap, n, zoom) {
-  // 手机屏幕收窄行头, 把宽度留给矩阵格子
+  // 宽高独立适配: 横向尽量铺满消掉留白, 纵向按可视高度收缩一屏看完。
   const phone = wrap.clientWidth < 600;
-  const rowW = phone ? (zoom === 'std' ? 88 : 72) : (zoom === 'std' ? 132 : (zoom === 'compact' ? 108 : 104));
+  const rowW = phone ? (zoom === 'std' ? 88 : 72) : (zoom === 'std' ? 128 : (zoom === 'compact' ? 100 : 96));
   const gap = zoom === 'heat' ? 2 : (zoom === 'compact' ? 3 : 4);
-  const avail = Math.max(200, wrap.clientWidth - rowW - 8);
-  const raw = Math.floor((avail - gap * (n + 1)) / n);
-  let cell; let font;
+  const availW = Math.max(200, wrap.clientWidth - rowW - 8);
+  const rect = wrap.getBoundingClientRect();
+  const bottomPad = (document.fullscreenElement || document.webkitFullscreenElement) ? 48 : 64;
+  const availH = Math.max(200, Math.floor(window.innerHeight - rect.top - bottomPad));
+  let minW; let maxW; let minH; let maxH;
   if (zoom === 'heat') {
-    // 色块也要能放下延迟+丢包两行
-    cell = Math.max(34, Math.min(52, raw > 0 ? raw : 40));
-    font = cell >= 42 ? 10.5 : 9.5;
+    minW = 28; maxW = 96; minH = 26; maxH = 88;
   } else if (zoom === 'compact') {
-    cell = Math.max(52, Math.min(78, raw > 0 ? raw : 60));
-    font = cell >= 60 ? 11.5 : 10.5;
+    minW = 44; maxW = 110; minH = 40; maxH = 100;
   } else {
-    cell = Math.max(72, Math.min(118, raw > 0 ? raw : 92));
-    font = cell >= 90 ? 12.5 : 11.5;
+    minW = 56; maxW = 140; minH = 52; maxH = 128;
   }
+  const rawW = Math.floor((availW - gap * (n + 1)) / n);
+  const cellW = Math.max(minW, Math.min(maxW, rawW > 0 ? rawW : minW));
+  // 列头高度随格宽浮动 (色块竖排节点名)
+  const headH = zoom === 'heat'
+    ? Math.max(56, Math.min(92, cellW + 18))
+    : (zoom === 'compact' ? 34 : 42);
+  const rawH = Math.floor((availH - headH - gap * (n + 1)) / n);
+  const cellH = Math.max(minH, Math.min(maxH, rawH > 0 ? rawH : minH));
+  // 兼容旧逻辑: cell 取较小边, 供 CellBody 判断字号/单行
+  const cell = Math.min(cellW, cellH);
+  let font;
+  if (zoom === 'heat') font = cell >= 48 ? 11 : (cell >= 36 ? 10 : 9);
+  else if (zoom === 'compact') font = cell >= 64 ? 12 : 10.5;
+  else font = cell >= 96 ? 13 : (cell >= 72 ? 12 : 11);
   const radius = zoom === 'heat' ? '4px' : (zoom === 'compact' ? '5px' : '7px');
-  return { cell, rowW, gap, font, radius, n, zoom };
+  const tableW = rowW + cellW * n + gap * (n + 1);
+  const center = tableW <= wrap.clientWidth - 4;
+  return { cell, cellW, cellH, rowW, gap, font, radius, n, zoom, headH, center };
 }
 
 function lossText(c) {
@@ -136,28 +150,31 @@ const statsSx = {
 
 const noHover = { transform: 'none', boxShadow: 'none', filter: 'none' };
 const meshSx = {
-  '--mesh-cell': '96px', '--mesh-row': '132px', '--mesh-gap': '4px', '--mesh-font': '12.5px', '--mesh-radius': '7px',
-  overflowX: 'auto', WebkitOverflowScrolling: 'touch', p: '2px 2px 8px', m: 0,
+  '--mesh-cell-w': '96px', '--mesh-cell-h': '96px', '--mesh-row': '132px', '--mesh-gap': '4px', '--mesh-font': '12.5px', '--mesh-radius': '7px', '--mesh-head': '42px',
+  overflowX: 'auto', overflowY: 'visible', WebkitOverflowScrolling: 'touch', p: '2px 2px 8px', m: 0,
   '&::-webkit-scrollbar': { height: 8 },
   '&::-webkit-scrollbar-thumb': { background: '#cbd5e1', borderRadius: 999 },
-  '& .mesh-table': { borderCollapse: 'separate', borderSpacing: 'var(--mesh-gap)', tableLayout: 'fixed', width: 'max-content', maxWidth: '100%' },
+  // 宽屏放得下时水平居中; 需滚动时由 .mesh-fit-left 贴左, 避免 sticky 行头被裁
+  '&.mesh-fit-center': { textAlign: 'center' },
+  '& .mesh-table': { borderCollapse: 'separate', borderSpacing: 'var(--mesh-gap)', tableLayout: 'fixed', width: 'max-content', textAlign: 'left' },
+  '&.mesh-fit-center .mesh-table': { display: 'inline-table' },
   '& .mesh-table th': { fontSize: 11.5, color: palette.text2, fontWeight: 600, p: '4px', whiteSpace: 'nowrap' },
   '& .mesh-table th.col-h': {
-    textAlign: 'center', width: 'var(--mesh-cell)', minWidth: 'var(--mesh-cell)', maxWidth: 'var(--mesh-cell)',
-    overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom',
+    textAlign: 'center', width: 'var(--mesh-cell-w)', minWidth: 'var(--mesh-cell-w)', maxWidth: 'var(--mesh-cell-w)',
+    height: 'var(--mesh-head)', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom',
   },
   '& .mesh-table th.col-h .col-name': { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11.5, fontWeight: 700, color: palette.text },
   '& .mesh-table th.col-h .col-ip': { display: 'block', fontWeight: 400, fontSize: 10, color: palette.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& .mesh-table th.row-h': { textAlign: 'right', pr: '12px', width: 'var(--mesh-row)', minWidth: 'var(--mesh-row)', maxWidth: 'var(--mesh-row)' },
+  '& .mesh-table th.row-h': { textAlign: 'right', pr: '12px', width: 'var(--mesh-row)', minWidth: 'var(--mesh-row)', maxWidth: 'var(--mesh-row)', height: 'var(--mesh-cell-h)' },
   // 横向滚动时源节点列固定在左侧
   '& .mesh-table th.row-h, & .mesh-table th.corner': { position: 'sticky', left: 0, zIndex: 3, background: '#fff' },
   '& .mesh-table th.row-h .src-name': { fontWeight: 700, fontSize: 12, display: 'block', color: palette.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   '& .mesh-table th.row-h .src-ip': { display: 'block', fontWeight: 400, fontSize: 10, color: palette.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  '& .mesh-table th.corner': { textAlign: 'right', pr: '12px', color: palette.text3, fontSize: 11, fontWeight: 600, letterSpacing: '.02em' },
-  '& .mesh-table td': { width: 'var(--mesh-cell)', minWidth: 'var(--mesh-cell)', maxWidth: 'var(--mesh-cell)', p: 0 },
+  '& .mesh-table th.corner': { textAlign: 'right', pr: '12px', color: palette.text3, fontSize: 11, fontWeight: 600, letterSpacing: '.02em', height: 'var(--mesh-head)' },
+  '& .mesh-table td': { width: 'var(--mesh-cell-w)', minWidth: 'var(--mesh-cell-w)', maxWidth: 'var(--mesh-cell-w)', p: 0 },
   '& .mono': { fontFamily: mono },
   '& .mesh-cell': {
-    width: '100%', height: 'var(--mesh-cell)', borderRadius: 'var(--mesh-radius)', textAlign: 'center',
+    width: '100%', height: 'var(--mesh-cell-h)', borderRadius: 'var(--mesh-radius)', textAlign: 'center',
     fontSize: 'var(--mesh-font)', fontWeight: 700, cursor: 'pointer', color: '#fff',
     transition: 'transform .1s ease, box-shadow .1s ease, filter .1s ease', position: 'relative',
     fontVariantNumeric: 'tabular-nums', boxSizing: 'border-box', overflow: 'hidden',
@@ -183,9 +200,9 @@ const meshSx = {
   '&.mesh-zoom-compact .mesh-table th.col-h .col-name': { fontSize: 10.5 },
   '&.mesh-zoom-compact .mesh-table th.row-h .src-name': { fontSize: 11 },
   '&.mesh-zoom-heat': { '--mesh-gap': '2px', '--mesh-font': '9.5px', '--mesh-radius': '4px', '--mesh-row': '104px' },
-  '&.mesh-zoom-heat .mesh-table th.col-h': { height: 86, verticalAlign: 'bottom', pb: '6px' },
+  '&.mesh-zoom-heat .mesh-table th.col-h': { height: 'var(--mesh-head)', verticalAlign: 'bottom', pb: '6px' },
   '&.mesh-zoom-heat .mesh-table th.col-h .col-name': {
-    writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxHeight: 78, m: '0 auto', fontSize: 10, fontWeight: 600,
+    writingMode: 'vertical-rl', transform: 'rotate(180deg)', maxHeight: 'calc(var(--mesh-head) - 8px)', m: '0 auto', fontSize: 10, fontWeight: 600,
     letterSpacing: '.02em', whiteSpace: 'nowrap',
   },
   '&.mesh-zoom-heat .mesh-table th.col-h .col-ip, &.mesh-zoom-heat .mesh-table th.row-h .src-ip': { display: 'none' },
@@ -319,7 +336,9 @@ export default function Pingmesh({ config }) {
     const wrap = wrapRef.current;
     if (!wrap || !targets.length) return;
     const f = computeFit(wrap, targets.length, zoom);
-    setFit((old) => (old && old.cell === f.cell && old.font === f.font && old.zoom === f.zoom && old.n === f.n ? old : f));
+    setFit((old) => (old && old.cell === f.cell && old.cellW === f.cellW && old.cellH === f.cellH
+      && old.font === f.font && old.zoom === f.zoom && old.n === f.n && old.rowW === f.rowW
+      && old.headH === f.headH && old.center === f.center ? old : f));
   });
 
   const onSeg = (_, v) => {
@@ -402,11 +421,17 @@ export default function Pingmesh({ config }) {
     : { nodes: '-', links: '-', ok: '-', bad: '-', avg: '-' };
 
   const wrapStyle = fit ? {
-    '--mesh-cell': fit.cell + 'px', '--mesh-row': fit.rowW + 'px', '--mesh-gap': fit.gap + 'px',
-    '--mesh-font': fit.font + 'px', '--mesh-radius': fit.radius,
+    '--mesh-cell-w': fit.cellW + 'px', '--mesh-cell-h': fit.cellH + 'px',
+    '--mesh-row': fit.rowW + 'px', '--mesh-gap': fit.gap + 'px',
+    '--mesh-font': fit.font + 'px', '--mesh-radius': fit.radius, '--mesh-head': fit.headH + 'px',
   } : undefined;
-  const fitHint = fit && targets.length ? targets.length + ' 列 · 格宽 ' + fit.cell + 'px' + (meshOnly ? ' · 仅 Mesh' : '') : '';
-  const zoomCls = zoom === 'compact' ? 'mesh-zoom-compact' : (zoom === 'heat' ? 'mesh-zoom-heat' : '');
+  const fitHint = fit && targets.length
+    ? targets.length + ' 列 · ' + fit.cellW + '×' + fit.cellH + 'px' + (meshOnly ? ' · 仅 Mesh' : '')
+    : '';
+  const zoomCls = [
+    zoom === 'compact' ? 'mesh-zoom-compact' : (zoom === 'heat' ? 'mesh-zoom-heat' : ''),
+    fit && fit.center ? 'mesh-fit-center' : 'mesh-fit-left',
+  ].filter(Boolean).join(' ');
 
   return (
     <Box ref={rootRef}>
