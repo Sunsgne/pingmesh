@@ -2,19 +2,52 @@ package funcs
 
 import "strings"
 
-// wecomText 把告警排成企业微信纯文本卡片。行宽按手机气泡控制，避免在词中间折行。
+// wecomText 把告警排成企业微信 markdown。不用引用条，避免手机上挤成灰边。
+// 故障为橙色，恢复为绿色，测试为灰色，方便在群里一眼分开。
 func wecomText(m alertMsg) string {
 	f := firstFields(m.Fields)
+	lines := []string{
+		"— ZENLENET PingMesh —",
+		"级别：" + wecomLevel(m, f),
+		"类型：" + wecomType(m),
+		"",
+		wecomHeadline(m, f),
+		"",
+		"▌ 详情",
+	}
+	lines = append(lines, wecomDetail(m, f)...)
+	lines = append(lines, "", "▌ 影响评估")
+	lines = append(lines, wecomImpact(m, f)...)
+	lines = append(lines, "", "▌ 建议处置")
+	lines = append(lines, wecomAction(m)...)
+	lines = append(lines, "", "— 本消息由 ZENLENET PingMesh 自动发送 —")
+	return paintWecom(wecomColor(m.Kind), lines, 4)
+}
+
+func wecomColor(kind string) string {
+	switch kind {
+	case "recovery":
+		return "info"
+	case "test":
+		return "comment"
+	default:
+		return "warning"
+	}
+}
+
+func paintWecom(color string, lines []string, head int) string {
 	var b strings.Builder
-	b.WriteString("— ZENLENET PingMesh —\n")
-	b.WriteString("级别：" + wecomLevel(m, f) + "\n")
-	b.WriteString("类型：" + wecomType(m) + "\n\n")
-	b.WriteString(wecomHeadline(m, f) + "\n")
-	writeSection(&b, "详情", wecomDetail(m, f))
-	writeSection(&b, "影响评估", wecomImpact(m, f))
-	writeSection(&b, "建议处置", wecomAction(m))
-	b.WriteString("\n— 本消息由 ZENLENET PingMesh 自动发送 —")
-	return b.String()
+	for i, ln := range lines {
+		if ln == "" {
+			b.WriteByte('\n')
+			continue
+		}
+		if i == head {
+			b.WriteString("## ")
+		}
+		b.WriteString(`<font color="` + color + `">` + ln + "</font>\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func firstFields(fields [][2]string) map[string]string {
@@ -25,17 +58,6 @@ func firstFields(fields [][2]string) map[string]string {
 		}
 	}
 	return out
-}
-
-func writeSection(b *strings.Builder, title string, lines []string) {
-	b.WriteString("\n▌ " + title + "\n")
-	for _, ln := range lines {
-		if ln == "" {
-			continue
-		}
-		b.WriteString(ln)
-		b.WriteByte('\n')
-	}
 }
 
 func wecomLevel(m alertMsg, f map[string]string) string {

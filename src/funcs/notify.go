@@ -192,10 +192,10 @@ func sendRich(ch g.AlertChannel, m alertMsg, payload map[string]interface{}) (st
 		if p["Url"] == "" {
 			return "", errors.New("企业微信机器人 Url 不能为空")
 		}
-		// markdown 的引用条在手机上会挤成一条灰边，字段换行也不受控。纯文本按行排。
+		// 纯文本没有颜色。markdown 只给文字上色，不用 > 引用条。
 		body, err := postJson(p["Url"], map[string]interface{}{
-			"msgtype": "text",
-			"text":    map[string]string{"content": wecomText(m)},
+			"msgtype":  "markdown",
+			"markdown": map[string]string{"content": wecomText(m)},
 		})
 		return body, checkErrcode(body, err)
 	case "feishu":
