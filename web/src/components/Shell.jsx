@@ -15,7 +15,6 @@ import { mono, palette } from '../theme';
 
 const DRAWER = 232;
 const RAIL = 72;
-const CONTENT_MAX = 1760;
 const fadeIn = keyframes`from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}`;
 
 const NAV = [
@@ -203,9 +202,9 @@ export default function Shell({ page, title, user, config, children }) {
           </Toolbar>
         </AppBar>
         <Box component="main" sx={{ p: 'clamp(14px, 1.8vw, 28px)', flex: 1, minWidth: 0 }}>
-          <Box sx={{ maxWidth: CONTENT_MAX, mx: 'auto', animation: `${fadeIn} .22s ease-out`, '@media (prefers-reduced-motion: reduce)': { animation: 'none' } }}>{children}</Box>
+          <Box sx={{ animation: `${fadeIn} .22s ease-out`, '@media (prefers-reduced-motion: reduce)': { animation: 'none' } }}>{children}</Box>
         </Box>
-        <Box sx={{ px: 'clamp(14px, 1.8vw, 28px)', pb: 2.25, color: palette.text3, fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', maxWidth: CONTENT_MAX + 56, width: '100%', mx: 'auto' }}>
+        <Box sx={{ px: 'clamp(14px, 1.8vw, 28px)', pb: 2.25, color: palette.text3, fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', width: '100%' }}>
           <span>&copy; 2026 ZENLENET PingMesh · Apache-2.0</span>
           <span>当前节点: {config.Name} ({config.Addr})</span>
         </Box>

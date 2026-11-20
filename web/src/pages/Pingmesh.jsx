@@ -158,7 +158,8 @@ const meshSx = {
   '&.mesh-fit-center': { textAlign: 'center' },
   '& .mesh-table': { borderCollapse: 'separate', borderSpacing: 'var(--mesh-gap)', tableLayout: 'fixed', width: 'max-content', textAlign: 'left' },
   '&.mesh-fit-center .mesh-table': { display: 'inline-table' },
-  '& .mesh-table th': { fontSize: 11.5, color: palette.text2, fontWeight: 600, p: '4px', whiteSpace: 'nowrap' },
+  // 表头内边距计入列宽, 否则每列比数据格宽 8px, 多节点时整表溢出右侧
+  '& .mesh-table th': { fontSize: 11.5, color: palette.text2, fontWeight: 600, p: '4px', whiteSpace: 'nowrap', boxSizing: 'border-box' },
   '& .mesh-table th.col-h': {
     textAlign: 'center', width: 'var(--mesh-cell-w)', minWidth: 'var(--mesh-cell-w)', maxWidth: 'var(--mesh-cell-w)',
     height: 'var(--mesh-head)', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom',
