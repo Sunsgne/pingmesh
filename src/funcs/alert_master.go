@@ -146,6 +146,13 @@ func masterSetStatus(key string, healthy bool) {
 
 // masterTransition 判断是否要发告警或恢复。
 // 进程刚启动时这条链路还没见过，只记基线，不把仍在故障中的链路再发一遍。
+const recoveryHold = 2 * time.Minute
+
+// recoveryHoldElapsed 恢复通知要等链路连续正常满 hold。since 为零表示还没开始计时。
+func recoveryHoldElapsed(since, now time.Time, hold time.Duration) bool {
+	return !since.IsZero() && now.Sub(since) >= hold
+}
+
 func masterTransition(seen, wasHealthy, nowHealthy bool) (alert, recovery bool) {
 	if !seen {
 		return false, false
@@ -255,6 +262,19 @@ func MasterAlertSweep() {
 
 			alertNow, recoveryNow := masterTransition(haskey, old, healthy)
 			if healthy {
+				if recoveryNow {
+					// 窗口刚清空就发恢复，抖动链路会变成「告警、恢复、告警」。
+					// 连续正常满 2 分钟再发，期间状态仍视为未恢复，不会再报一次新告警。
+					if st.HealthySince.IsZero() {
+						st.HealthySince = time.Now()
+					}
+					if !recoveryHoldElapsed(st.HealthySince, time.Now(), recoveryHold) {
+						continue
+					}
+					st.HealthySince = time.Time{}
+				} else {
+					st.HealthySince = time.Time{}
+				}
 				masterSetStatus(key, true)
 				if recoveryNow {
 					seelog.Info("[func:MasterAlertSweep] recovered ", key)
@@ -279,6 +299,7 @@ func MasterAlertSweep() {
 			}
 
 			// 异常。第一次见到只记状态，避免重启后把存量故障再通知一遍。
+			st.HealthySince = time.Time{}
 			if !haskey {
 				masterSetStatus(key, false)
 				st.BadSince = time.Now()

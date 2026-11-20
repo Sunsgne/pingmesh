@@ -18,10 +18,11 @@ import (
 
 // incidentState 每条链路本次故障的过程状态(用于提醒/确认联动/时长统计)
 type incidentState struct {
-	BadSince   time.Time
-	LastNotify time.Time
-	MutedSkip  bool      // 屏蔽期间漏发过告警
-	AckedUntil time.Time // 确认后暂停重复提醒至该时刻(24h), 仍未恢复则继续提醒
+	BadSince     time.Time
+	LastNotify   time.Time
+	MutedSkip    bool      // 屏蔽期间漏发过告警
+	AckedUntil   time.Time // 确认后暂停重复提醒至该时刻(24h), 仍未恢复则继续提醒
+	HealthySince time.Time // 窗口已恢复、尚未发恢复通知的起始时间
 }
 
 var (

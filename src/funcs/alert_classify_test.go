@@ -1,6 +1,9 @@
 package funcs
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestClassifyAlert(t *testing.T) {
 	rule := map[string]string{
@@ -38,6 +41,19 @@ func containsAll(s string, parts ...string) bool {
 		}
 	}
 	return true
+}
+
+func TestRecoveryHoldElapsed(t *testing.T) {
+	now := time.Date(2026, 11, 20, 17, 0, 0, 0, time.UTC)
+	if recoveryHoldElapsed(time.Time{}, now, recoveryHold) {
+		t.Fatal("zero start must not send recovery")
+	}
+	if recoveryHoldElapsed(now.Add(-90*time.Second), now, recoveryHold) {
+		t.Fatal("90s of normal must not send recovery")
+	}
+	if !recoveryHoldElapsed(now.Add(-2*time.Minute), now, recoveryHold) {
+		t.Fatal("2 minutes of normal should send recovery")
+	}
 }
 
 func TestMasterTransition(t *testing.T) {
