@@ -210,6 +210,7 @@ func MasterAlertSweep() {
 	}
 	wg.Wait()
 
+	var pending []pendingNotify
 	for addr, member := range g.Cfg.Network {
 		if !member.Pingmesh {
 			continue
@@ -289,7 +290,7 @@ func MasterAlertSweep() {
 									strconv.FormatFloat(h.Loss, 'f', 0, 64) + "% / 抖动 " +
 									strconv.FormatFloat(h.Jitter, 'f', 1, 64) + " ms"})
 						}
-						go NotifyAll(l, r, "recovery", extras)
+						pending = append(pending, pendingNotify{log: l, rule: r, kind: "recovery", extras: extras})
 					}
 					st.BadSince = time.Time{}
 					st.MutedSkip = false
@@ -331,7 +332,7 @@ func MasterAlertSweep() {
 								strconv.FormatFloat(h.Loss, 'f', 0, 64) + "% / 抖动 " +
 								strconv.FormatFloat(h.Jitter, 'f', 1, 64) + " ms"})
 					}
-					go NotifyAll(l, r, "alert", extras)
+					pending = append(pending, pendingNotify{log: l, rule: r, kind: "alert", extras: extras})
 				}
 				continue
 			}
@@ -343,14 +344,15 @@ func MasterAlertSweep() {
 				seelog.Info("[func:MasterAlertSweep] ", key, " mute expired but still down")
 				st.MutedSkip = false
 				st.LastNotify = time.Now()
-				go NotifyAll(l, r, "mute_expired", [][2]string{dur})
+				pending = append(pending, pendingNotify{log: l, rule: r, kind: "mute_expired", extras: [][2]string{dur}})
 			} else if remindMin > 0 && time.Now().After(st.AckedUntil) && !st.LastNotify.IsZero() &&
 				time.Since(st.LastNotify) >= time.Duration(remindMin)*time.Minute {
 				seelog.Info("[func:MasterAlertSweep] ", key, " reminder")
 				st.LastNotify = time.Now()
-				go NotifyAll(l, r, "reminder", [][2]string{dur})
+				pending = append(pending, pendingNotify{log: l, rule: r, kind: "reminder", extras: [][2]string{dur}})
 			}
 		}
 	}
+	sendPending(pending)
 	seelog.Debug("[func:MasterAlertSweep] finish")
 }

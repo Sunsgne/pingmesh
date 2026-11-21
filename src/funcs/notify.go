@@ -114,7 +114,15 @@ func buildAlertMsg(l g.AlertLog, rule map[string]string, kind string, extras [][
 // NotifyAll 通过所有已启用通道发送告警/恢复/提醒类通知
 // kind: alert | recovery | reminder | mute_expired
 func NotifyAll(l g.AlertLog, rule map[string]string, kind string, extras [][2]string) {
-	m := buildAlertMsg(l, rule, kind, extras)
+	dispatchAlert(buildAlertMsg(l, rule, kind, extras), l, kind)
+}
+
+// NotifyBuilt 发送已经排好版的通知。汇总告警走这里，不再拆成单条。
+func NotifyBuilt(m alertMsg) {
+	dispatchAlert(m, g.AlertLog{}, m.Kind)
+}
+
+func dispatchAlert(m alertMsg, l g.AlertLog, kind string) {
 	// 邮件
 	if g.Cfg.Alert["SendEmailAccount"] != "" && g.Cfg.Alert["SendEmailPassword"] != "" &&
 		g.Cfg.Alert["EmailHost"] != "" && g.Cfg.Alert["RevcEmailList"] != "" {
@@ -143,6 +151,9 @@ func NotifyAll(l g.AlertLog, rule map[string]string, kind string, extras [][2]st
 		}
 		if f[0] == "触发规则" {
 			payload["rule"] = f[1]
+		}
+		if f[0] == "判断" {
+			payload["where"] = f[1]
 		}
 	}
 	for _, ch := range g.Cfg.Channels {
