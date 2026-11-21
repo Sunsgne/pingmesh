@@ -15,12 +15,18 @@ import (
 
 // AlertLinkHealth 单条监测链路的健康快照(供主节点汇总告警)
 type AlertLinkHealth struct {
-	OK       bool    `json:"ok"`
-	Muted    bool    `json:"muted"`
-	Name     string  `json:"name"`
-	AvgDelay float64 `json:"avgdelay"`
-	Loss     float64 `json:"loss"`
-	Jitter   float64 `json:"jitter"`
+	OK         bool    `json:"ok"`
+	Muted      bool    `json:"muted"`
+	Name       string  `json:"name"`
+	AvgDelay   float64 `json:"avgdelay"`
+	Loss       float64 `json:"loss"`
+	Jitter     float64 `json:"jitter"`
+	PeakDelay  float64 `json:"peakdelay,omitempty"`
+	PeakLoss   float64 `json:"peakloss,omitempty"`
+	PeakJitter float64 `json:"peakjitter,omitempty"`
+	DelayHits  int     `json:"delayhits,omitempty"`
+	LossHits   int     `json:"losshits,omitempty"`
+	JitterHits int     `json:"jitterhits,omitempty"`
 }
 
 // AlertHealthSnapshot 某探测节点对外暴露的告警判定快照
@@ -51,8 +57,14 @@ func LocalAlertHealth() AlertHealthSnapshot {
 		if n, has := g.Cfg.Network[addr]; has && n.Name != "" {
 			h.Name = n.Name
 		}
-		if avg, loss, jitter, has := recentStat(addr, 15); has {
-			h.AvgDelay, h.Loss, h.Jitter = avg, loss, jitter
+		b := windowBreach(addr, v)
+		h.AvgDelay, h.Loss, h.Jitter = b.MeanDelay, b.MeanLoss, b.MeanJitter
+		h.PeakDelay, h.PeakLoss, h.PeakJitter = b.DelayMax, b.LossMax, b.JitterMax
+		h.DelayHits, h.LossHits, h.JitterHits = b.DelayN, b.LossN, b.JitterN
+		if b.Samples == 0 {
+			if avg, loss, jitter, has := recentStat(addr, 15); has {
+				h.AvgDelay, h.Loss, h.Jitter = avg, loss, jitter
+			}
 		}
 		out.Links[addr] = h
 	}
@@ -314,7 +326,7 @@ func MasterAlertSweep() {
 				st.BadSince = time.Now()
 				st.AckedUntil = time.Time{}
 				l.AvgDelay, l.Loss, l.Jitter = h.AvgDelay, h.Loss, h.Jitter
-				l.AlertType, l.Reason, l.Tag = ClassifyAlert(addr, target, r, h.AvgDelay, h.Loss, h.Jitter)
+				l.AlertType, l.Reason, l.Tag = classifyBreach(addr, target, r, breachFromHealth(h))
 				// 落库由探测节点本地 StartAlert 负责; 主节点只发通知, 避免错误记到主节点库
 				if h.Muted {
 					st.MutedSkip = true
@@ -326,10 +338,10 @@ func MasterAlertSweep() {
 						{"故障 Tag", l.Tag},
 						{"触发原因", l.Reason},
 					}
-					if h.AvgDelay > 0 || h.Loss > 0 || h.Jitter > 0 {
-						extras = append(extras, [2]string{"近15分钟实测",
-							"平均延迟 " + strconv.FormatFloat(h.AvgDelay, 'f', 1, 64) + " ms / 丢包 " +
-								strconv.FormatFloat(h.Loss, 'f', 0, 64) + "% / 抖动 " +
+					if h.AvgDelay > 0 || h.Loss > 0 || h.Jitter > 0 || h.DelayHits+h.LossHits+h.JitterHits > 0 {
+						extras = append(extras, [2]string{"窗口均值",
+							"延迟 " + strconv.FormatFloat(h.AvgDelay, 'f', 1, 64) + " ms / 丢包 " +
+								strconv.FormatFloat(h.Loss, 'f', 1, 64) + "% / 抖动 " +
 								strconv.FormatFloat(h.Jitter, 'f', 1, 64) + " ms"})
 					}
 					pending = append(pending, pendingNotify{log: l, rule: r, kind: "alert", extras: extras})

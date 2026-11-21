@@ -134,7 +134,7 @@ func ClassifyAlert(fromIP, targetIP string, rule map[string]string, avg, loss, j
 		kinds = append(kinds, "delay")
 		parts = append(parts, "延迟 "+formatMetric(avg)+"ms ≥ "+rule["Thdavgdelay"]+"ms")
 	}
-	if loss >= thdLoss {
+	if thdLoss > 0 && loss >= thdLoss {
 		kinds = append(kinds, "loss")
 		parts = append(parts, "丢包 "+formatMetric(loss)+"% ≥ "+rule["Thdloss"]+"%")
 	}
@@ -143,9 +143,8 @@ func ClassifyAlert(fromIP, targetIP string, rule map[string]string, avg, loss, j
 		parts = append(parts, "抖动 "+formatMetric(jitter)+"ms ≥ "+rule["Thdjitter"]+"ms")
 	}
 	if len(kinds) == 0 {
-		// 窗口内曾超标但当前均值已回落: 仍按规则兜底标为质量异常
 		kinds = append(kinds, "quality")
-		parts = append(parts, "链路质量超阈值(延迟/丢包/抖动)")
+		parts = append(parts, "窗口均值 延迟 "+formatMetric(avg)+"ms / 丢包 "+formatMetric(loss)+"% / 抖动 "+formatMetric(jitter)+"ms，低于对应阈值")
 	}
 	alertType = strings.Join(kinds, "+")
 	win := rule["Thdchecksec"]
@@ -158,6 +157,134 @@ func ClassifyAlert(fromIP, targetIP string, rule map[string]string, avg, loss, j
 	primary := kinds[0]
 	tag = strings.ToUpper(primary) + ":" + fromIP + "→" + targetIP
 	return alertType, reason, tag
+}
+
+// WindowBreach 检测窗口内真正越过阈值的采样。告警文案用峰值和次数，不用低于阈值的窗口均值冒充触发值。
+type WindowBreach struct {
+	DelayMax, LossMax, JitterMax    float64
+	DelayN, LossN, JitterN          int
+	MeanDelay, MeanLoss, MeanJitter float64
+	Samples                         int
+}
+
+func windowBreach(target string, rule map[string]string) WindowBreach {
+	var b WindowBreach
+	if g.Db == nil || target == "" {
+		return b
+	}
+	sec, _ := strconv.Atoi(rule["Thdchecksec"])
+	if sec <= 0 {
+		sec = 60
+	}
+	since := time.Now().Add(-time.Duration(sec) * time.Second).Format("2006-01-02 15:04:05")
+	thdD, _ := strconv.ParseFloat(rule["Thdavgdelay"], 64)
+	thdL, _ := strconv.ParseFloat(rule["Thdloss"], 64)
+	thdJ, _ := strconv.ParseFloat(rule["Thdjitter"], 64)
+	hasJ := strings.TrimSpace(rule["Thdjitter"]) != ""
+	rows, err := g.Db.Query(`SELECT ifnull(avgdelay,0), ifnull(losspk,0), ifnull(jitter,0) FROM pinglog WHERE target = ? AND logtime >= ?`, target, since)
+	if err != nil {
+		seelog.Error("[func:windowBreach] ", err)
+		return b
+	}
+	defer rows.Close()
+	var sumD, sumL, sumJ float64
+	for rows.Next() {
+		var d, l, j float64
+		if rows.Scan(&d, &l, &j) != nil {
+			continue
+		}
+		b.Samples++
+		sumD += d
+		sumL += l
+		sumJ += j
+		if thdD > 0 && d >= thdD {
+			b.DelayN++
+			if d > b.DelayMax {
+				b.DelayMax = d
+			}
+		}
+		if thdL > 0 && l >= thdL {
+			b.LossN++
+			if l > b.LossMax {
+				b.LossMax = l
+			}
+		}
+		if hasJ && j >= thdJ {
+			b.JitterN++
+			if j > b.JitterMax {
+				b.JitterMax = j
+			}
+		}
+	}
+	if b.Samples > 0 {
+		b.MeanDelay = sumD / float64(b.Samples)
+		b.MeanLoss = sumL / float64(b.Samples)
+		b.MeanJitter = sumJ / float64(b.Samples)
+	}
+	return b
+}
+
+// classifyBreach 用窗口内的峰值和观测次数生成原因。均值只在没有任何采样越阈值时作为对照。
+func classifyBreach(fromIP, toIP string, rule map[string]string, b WindowBreach) (alertType, reason, tag string) {
+	thdDelay, _ := strconv.ParseFloat(rule["Thdavgdelay"], 64)
+	thdLoss, _ := strconv.ParseFloat(rule["Thdloss"], 64)
+	thdJitter := 0.0
+	hasJitter := strings.TrimSpace(rule["Thdjitter"]) != ""
+	if hasJitter {
+		thdJitter, _ = strconv.ParseFloat(rule["Thdjitter"], 64)
+	}
+	var kinds, parts []string
+	if b.DelayN > 0 {
+		kinds = append(kinds, "delay")
+		parts = append(parts, hitText("延迟", "ms", b.DelayMax, rule["Thdavgdelay"], b.DelayN))
+	} else if thdDelay > 0 && b.MeanDelay >= thdDelay {
+		kinds = append(kinds, "delay")
+		parts = append(parts, hitText("延迟", "ms", b.MeanDelay, rule["Thdavgdelay"], 0))
+	}
+	if b.LossN > 0 {
+		kinds = append(kinds, "loss")
+		parts = append(parts, hitText("丢包", "%", b.LossMax, rule["Thdloss"], b.LossN))
+	} else if thdLoss > 0 && b.MeanLoss >= thdLoss {
+		kinds = append(kinds, "loss")
+		parts = append(parts, hitText("丢包", "%", b.MeanLoss, rule["Thdloss"], 0))
+	}
+	if b.JitterN > 0 {
+		kinds = append(kinds, "jitter")
+		parts = append(parts, hitText("抖动", "ms", b.JitterMax, rule["Thdjitter"], b.JitterN))
+	} else if hasJitter && b.MeanJitter >= thdJitter {
+		kinds = append(kinds, "jitter")
+		parts = append(parts, hitText("抖动", "ms", b.MeanJitter, rule["Thdjitter"], 0))
+	}
+	if len(kinds) == 0 {
+		kinds = append(kinds, "quality")
+		parts = append(parts, "窗口均值 延迟 "+formatMetric(b.MeanDelay)+"ms / 丢包 "+formatMetric(b.MeanLoss)+"% / 抖动 "+formatMetric(b.MeanJitter)+"ms，低于对应阈值")
+	}
+	alertType = strings.Join(kinds, "+")
+	win := rule["Thdchecksec"]
+	occ := rule["Thdoccnum"]
+	reason = strings.Join(parts, "；")
+	if win != "" && occ != "" {
+		reason += "（窗口 " + win + "s / 规则 " + occ + " 次）"
+	}
+	tag = strings.ToUpper(kinds[0]) + ":" + fromIP + "→" + toIP
+	return alertType, reason, tag
+}
+
+func hitText(name, unit string, value float64, th string, n int) string {
+	s := name + " " + formatMetric(value) + unit + " ≥ " + th + unit
+	if n > 0 {
+		s += "（观测 " + strconv.Itoa(n) + " 次）"
+	}
+	return s
+}
+
+func breachFromHealth(h AlertLinkHealth) WindowBreach {
+	return WindowBreach{
+		DelayMax: h.PeakDelay, LossMax: h.PeakLoss, JitterMax: h.PeakJitter,
+		DelayN: h.DelayHits, LossN: h.LossHits, JitterN: h.JitterHits,
+		MeanDelay: h.AvgDelay, MeanLoss: h.Loss, MeanJitter: h.Jitter,
+		Samples: h.DelayHits + h.LossHits + h.JitterHits,
+	}
 }
 
 func formatMetric(v float64) string {
@@ -200,16 +327,21 @@ func FillAlertClassification(l *g.AlertLog, rule map[string]string) {
 			mins = 1
 		}
 	}
-	avg, loss, jitter, ok := recentStat(l.Targetip, mins)
-	if !ok {
-		avg, loss, jitter, _ = recentStat(l.Targetip, 15)
+	b := windowBreach(l.Targetip, rule)
+	if b.Samples == 0 {
+		avg, loss, jitter, ok := recentStat(l.Targetip, mins)
+		if !ok {
+			avg, loss, jitter, _ = recentStat(l.Targetip, 15)
+		}
+		b.MeanDelay, b.MeanLoss, b.MeanJitter = avg, loss, jitter
+		b.DelayMax, b.LossMax, b.JitterMax = avg, loss, jitter
 	}
-	l.AvgDelay, l.Loss, l.Jitter = avg, loss, jitter
+	l.AvgDelay, l.Loss, l.Jitter = b.MeanDelay, b.MeanLoss, b.MeanJitter
 	from := l.Fromip
 	if from == "" {
 		from = g.SelfCfg.Addr
 	}
-	l.AlertType, l.Reason, l.Tag = ClassifyAlert(from, l.Targetip, rule, avg, loss, jitter)
+	l.AlertType, l.Reason, l.Tag = classifyBreach(from, l.Targetip, rule, b)
 }
 
 func checkAlertStatusSince(v map[string]string, timeStartStr, timeEndStr string) bool {

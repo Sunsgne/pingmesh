@@ -36,12 +36,16 @@ func wecomText(m alertMsg) string {
 	write("", "", false)
 	write("comment", "▌ 详情", false)
 	writePlain(wecomDetail(m, f))
-	write("", "", false)
-	write("comment", "▌ 影响评估", false)
-	writePlain(wecomImpact(m, f))
-	write("", "", false)
-	write("comment", "▌ 建议处置", false)
-	writePlain(wecomAction(m))
+	if impact := wecomImpact(m, f); len(impact) > 0 {
+		write("", "", false)
+		write("comment", "▌ 影响评估", false)
+		writePlain(impact)
+	}
+	if action := wecomAction(m); len(action) > 0 {
+		write("", "", false)
+		write("comment", "▌ 建议处置", false)
+		writePlain(action)
+	}
 	write("", "", false)
 	write("comment", "— 本消息由 ZENLENET PingMesh 自动发送 —", false)
 	return strings.TrimRight(b.String(), "\n")
@@ -75,7 +79,7 @@ func wecomLevel(m alertMsg, f map[string]string) string {
 	case "recovery", "digest_recovery":
 		return "恢复 (OK)"
 	case "digest":
-		return "重要 (MAJOR) · 同一故障"
+		return "重要 (MAJOR) · 故障区间"
 	case "digest_reminder":
 		return "重要 (MAJOR) · 仍未恢复"
 	case "digest_mute":
@@ -100,7 +104,7 @@ func wecomType(m alertMsg) string {
 	case "recovery", "digest_recovery":
 		return "恢复通知"
 	case "digest":
-		return "汇总告警"
+		return "故障区间"
 	case "digest_reminder":
 		return "持续提醒"
 	case "digest_mute":
@@ -121,7 +125,7 @@ func wecomHeadline(m alertMsg, f map[string]string) string {
 	case "recovery", "digest_recovery":
 		return "【已恢复】" + m.Link
 	case "digest":
-		return "【同一故障】" + m.Link
+		return "【故障区间】" + m.Link
 	case "digest_reminder":
 		return "【仍未恢复】" + m.Link
 	case "digest_mute":
@@ -142,8 +146,11 @@ func wecomHeadline(m alertMsg, f map[string]string) string {
 func wecomDetail(m alertMsg, f map[string]string) []string {
 	if strings.HasPrefix(m.Kind, "digest") {
 		var lines []string
-		if v := f["判断"]; v != "" {
-			lines = append(lines, v)
+		if v := f["故障区间"]; v != "" {
+			lines = append(lines, "故障区间："+v)
+		}
+		if v := f["依据"]; v != "" {
+			lines = append(lines, "依据："+v)
 		}
 		if v := f["链路"]; v != "" {
 			for _, ln := range strings.Split(v, "\n") {
@@ -186,6 +193,9 @@ func wecomDetail(m alertMsg, f map[string]string) []string {
 	if v := f["近15分钟实测"]; v != "" {
 		lines = append(lines, shortMetricLines(v)...)
 	}
+	if v := f["窗口均值"]; v != "" {
+		lines = append(lines, "窗口均值："+v)
+	}
 	if v := f["触发规则"]; v != "" {
 		lines = append(lines, ruleLines(v)...)
 	}
@@ -199,14 +209,8 @@ func wecomImpact(m alertMsg, f map[string]string) []string {
 	switch m.Kind {
 	case "test":
 		return []string{"这是一条测试通知，不代表真实故障。"}
-	case "digest":
-		return []string{"这几条是一起发生的，按上面的判断看一处即可。"}
-	case "digest_recovery":
-		return []string{"这几条已经一起回到阈值以内。"}
-	case "digest_reminder":
-		return []string{"还是同一批故障，不是新的几十条。"}
-	case "digest_mute":
-		return []string{"这批屏蔽都结束了，目标仍异常。"}
+	case "digest", "digest_recovery", "digest_reminder", "digest_mute":
+		return nil
 	case "recovery":
 		if d := f["故障持续"]; d != "" {
 			return []string{"链路已回到阈值以内，故障持续 " + d + "。"}
@@ -233,14 +237,8 @@ func wecomAction(m alertMsg) []string {
 	switch m.Kind {
 	case "test":
 		return []string{"无需处理。误收请检查通道配置。"}
-	case "digest":
-		return []string{"先查判断里的那一台或那一段。", "不用逐条建单，明细在告警记录里。"}
-	case "digest_recovery":
-		return []string{"无需逐条处理。", "抽查一条曲线确认已经稳住。"}
-	case "digest_reminder":
-		return []string{"确认这批是否已有人处理，不必按链路重复建单。"}
-	case "digest_mute":
-		return []string{"按上面的判断重新看这一处，屏蔽不会再挡住通知。"}
+	case "digest", "digest_recovery", "digest_reminder", "digest_mute":
+		return nil
 	case "recovery":
 		return []string{"无需处理。", "可抽查曲线确认已经稳住。"}
 	case "reminder":

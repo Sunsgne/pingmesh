@@ -22,121 +22,207 @@ type digestLink struct {
 	FromName string
 	ToIP     string
 	ToName   string
+	Detail   string
 }
 
-// digestView 同一批告警的结论：出在哪，以及要列出来的链路。
+// digestView 同一批告警的两端划分。
 type digestView struct {
 	Headline string
 	Judgment string
 	Lines    []string
 }
 
-// diagnoseLinks 判断这批同时出现的链路是不是同一处故障。
-// 某一台出现在每一条上，就归到这台或它的接入；否则归到这几台之间的线路。
+// diagnoseLinks 把同一批异常链路划成两端。
+// 能二分的，故障区间就是这两端；有奇数环的，不编造一对端点，改列节点对。
 func diagnoseLinks(links []digestLink) digestView {
-	n := len(links)
-	type end struct {
-		ip, name string
-		in, out  int
+	labelOf := map[string]string{}
+	adj := map[string]map[string]bool{}
+	touch := func(ip, name string) string {
+		k := ip
+		if k == "" {
+			k = "name:" + name
+		} else {
+			k = "ip:" + k
+		}
+		if name != "" {
+			labelOf[k] = name
+		} else if labelOf[k] == "" {
+			labelOf[k] = ip
+		}
+		if adj[k] == nil {
+			adj[k] = map[string]bool{}
+		}
+		return k
 	}
-	nodes := map[string]*end{}
+	for _, l := range links {
+		a := touch(l.FromIP, l.FromName)
+		b := touch(l.ToIP, l.ToName)
+		if a == b {
+			continue
+		}
+		adj[a][b] = true
+		adj[b][a] = true
+	}
+	seen := map[string]bool{}
+	var keys []string
+	for k := range labelOf {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return labelOf[keys[i]] < labelOf[keys[j]] })
+	var comps [][]string
+	for _, k := range keys {
+		if seen[k] {
+			continue
+		}
+		var comp []string
+		stack := []string{k}
+		seen[k] = true
+		for len(stack) > 0 {
+			u := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			comp = append(comp, u)
+			var nxt []string
+			for v := range adj[u] {
+				nxt = append(nxt, v)
+			}
+			sort.Strings(nxt)
+			for _, v := range nxt {
+				if !seen[v] {
+					seen[v] = true
+					stack = append(stack, v)
+				}
+			}
+		}
+		comps = append(comps, comp)
+	}
+	var intervals, evidences []string
+	for _, comp := range comps {
+		left, right, ok := colorComponent(comp, adj)
+		if !ok {
+			intervals = append(intervals, "无法二分")
+			evidences = append(evidences, oddCycleEvidence(comp, adj, labelOf))
+			continue
+		}
+		left, right = orderSides(left, right, labelOf)
+		intervals = append(intervals, sideText(left, labelOf)+" — "+sideText(right, labelOf))
+		evidences = append(evidences, cutEvidence(links, left, right, labelOf))
+	}
+	return digestView{
+		Headline: strings.Join(intervals, "；"),
+		Judgment: strings.Join(evidences, " "),
+		Lines:    digestLinkLines(links),
+	}
+}
+
+func colorComponent(comp []string, adj map[string]map[string]bool) (left, right []string, ok bool) {
+	col := map[string]int{}
+	ok = true
+	sorted := append([]string(nil), comp...)
+	sort.Strings(sorted)
+	var dfs func(u string, c int)
+	dfs = func(u string, c int) {
+		if prev, has := col[u]; has {
+			if prev != c {
+				ok = false
+			}
+			return
+		}
+		col[u] = c
+		var nxt []string
+		for v := range adj[u] {
+			nxt = append(nxt, v)
+		}
+		sort.Strings(nxt)
+		for _, v := range nxt {
+			dfs(v, 1-c)
+		}
+	}
+	for _, u := range sorted {
+		if _, has := col[u]; !has {
+			dfs(u, 0)
+		}
+	}
+	if !ok {
+		return nil, nil, false
+	}
+	for _, u := range sorted {
+		if col[u] == 0 {
+			left = append(left, u)
+		} else {
+			right = append(right, u)
+		}
+	}
+	return left, right, true
+}
+
+func orderSides(left, right []string, labelOf map[string]string) ([]string, []string) {
+	if len(right) < len(left) || (len(right) == len(left) && sideText(right, labelOf) < sideText(left, labelOf)) {
+		return right, left
+	}
+	return left, right
+}
+
+func sideText(keys []string, labelOf map[string]string) string {
+	names := make([]string, 0, len(keys))
+	for _, k := range keys {
+		names = append(names, labelOf[k])
+	}
+	sort.Strings(names)
+	if len(names) <= 4 {
+		return strings.Join(names, "、")
+	}
+	return strings.Join(names[:4], "、") + " 等 " + strconv.Itoa(len(names)) + " 台"
+}
+
+func cutEvidence(links []digestLink, left, right []string, labelOf map[string]string) string {
+	inLeft := map[string]bool{}
+	for _, k := range left {
+		inLeft[k] = true
+	}
 	keyOf := func(ip, name string) string {
 		if ip != "" {
 			return "ip:" + ip
 		}
 		return "name:" + name
 	}
-	get := func(ip, name string) *end {
-		k := keyOf(ip, name)
-		e := nodes[k]
-		if e == nil {
-			e = &end{ip: ip, name: name}
-			nodes[k] = e
-		}
-		if name != "" {
-			e.name = name
-		}
-		return e
-	}
+	l2r, r2l := 0, 0
 	for _, l := range links {
-		get(l.FromIP, l.FromName).out++
-		get(l.ToIP, l.ToName).in++
-	}
-	label := func(e *end) string {
-		if e.name != "" {
-			return e.name
+		a, b := keyOf(l.FromIP, l.FromName), keyOf(l.ToIP, l.ToName)
+		aLeft, bLeft := inLeft[a], inLeft[b]
+		if aLeft == bLeft {
+			continue
 		}
-		return e.ip
-	}
-	var universal []*end
-	for _, e := range nodes {
-		if e.in+e.out == n {
-			universal = append(universal, e)
+		if aLeft {
+			l2r++
+		} else {
+			r2l++
 		}
 	}
-	sort.Slice(universal, func(i, j int) bool { return label(universal[i]) < label(universal[j]) })
-	lines := digestLinkLines(links)
-	count := strconv.Itoa(n)
+	return "该区间 " + strconv.Itoa(l2r+r2l) + " 条。两端为 " + sideText(left, labelOf) + "（" + strconv.Itoa(len(left)) + " 台）与 " + sideText(right, labelOf) + "（" + strconv.Itoa(len(right)) + " 台）。前一侧 → 后一侧 " + strconv.Itoa(l2r) + " 条，后一侧 → 前一侧 " + strconv.Itoa(r2l) + " 条。"
+}
 
-	switch len(universal) {
-	case 1:
-		e := universal[0]
-		name := label(e)
-		switch {
-		case e.out > 0 && e.in > 0:
-			return digestView{
-				Headline: name + " 进出方向的 " + count + " 条链路",
-				Judgment: "同一轮里这些链路一起越过阈值，进出都经过 " + name + "。优先查这台机器或它所在机房的接入，不必按每条链路分开处理。",
-				Lines:    lines,
+func oddCycleEvidence(comp []string, adj map[string]map[string]bool, labelOf map[string]string) string {
+	var pairs []string
+	seen := map[string]bool{}
+	for _, u := range comp {
+		for v := range adj[u] {
+			a, b := labelOf[u], labelOf[v]
+			if a > b {
+				a, b = b, a
 			}
-		case e.out > 0:
-			return digestView{
-				Headline: "从 " + name + " 出去的 " + count + " 条链路",
-				Judgment: "同一轮里这些链路一起越过阈值，都是从 " + name + " 发出的。优先查这台机器的出口或它接入的线路。",
-				Lines:    lines,
+			k := a + "—" + b
+			if seen[k] {
+				continue
 			}
-		default:
-			return digestView{
-				Headline: "打到 " + name + " 的 " + count + " 条链路",
-				Judgment: "同一轮里这些链路一起越过阈值，都是打到 " + name + " 的。优先查这台机器或它的入口线路。",
-				Lines:    lines,
-			}
-		}
-	case 2:
-		a, b := label(universal[0]), label(universal[1])
-		return digestView{
-			Headline: a + " 与 " + b + " 之间的 " + count + " 条链路",
-			Judgment: "全部发生在这两台之间。更像这一段线路，不像整台机器故障。",
-			Lines:    lines,
-		}
-	default:
-		var names []string
-		for _, e := range nodes {
-			if e.in+e.out >= 2 {
-				names = append(names, label(e))
-			}
-		}
-		sort.Strings(names)
-		if len(names) >= 2 {
-			total := len(names)
-			shown := names
-			tail := ""
-			if total > 4 {
-				shown = names[:4]
-				tail = " 等 " + strconv.Itoa(total) + " 台"
-			}
-			return digestView{
-				Headline: strings.Join(shown, "、") + tail + " 之间的 " + count + " 条链路",
-				Judgment: "没有单独一台机器出现在每一条链路上。更像这一段网络一起变差，不是某一台自己坏了。",
-				Lines:    lines,
-			}
-		}
-		return digestView{
-			Headline: count + " 条互不相关的链路",
-			Judgment: "这几条没有共同的机器，可能只是同时发生。告警记录里可以逐条看。",
-			Lines:    lines,
+			seen[k] = true
+			pairs = append(pairs, k)
 		}
 	}
+	sort.Strings(pairs)
+	if len(pairs) > 8 {
+		pairs = append(pairs[:8], "等 "+strconv.Itoa(len(seen))+" 对")
+	}
+	return "异常链路含奇数环，不能划成唯一的两端。节点对：" + strings.Join(pairs, "、") + "。"
 }
 
 func digestLinkLines(links []digestLink) []string {
@@ -157,10 +243,14 @@ func digestLinkLines(links []digestLink) []string {
 	}
 	out := make([]string, 0, limit+1)
 	for i := 0; i < limit; i++ {
-		out = append(out, digestEnd(cp[i].FromName, cp[i].FromIP)+" → "+digestEnd(cp[i].ToName, cp[i].ToIP))
+		line := digestEnd(cp[i].FromName, cp[i].FromIP) + " → " + digestEnd(cp[i].ToName, cp[i].ToIP)
+		if d := strings.TrimSpace(cp[i].Detail); d != "" {
+			line += "  " + d
+		}
+		out = append(out, line)
 	}
 	if len(cp) > maxLines {
-		out = append(out, "还有 "+strconv.Itoa(len(cp)-maxLines)+" 条，告警记录里可以逐条看")
+		out = append(out, "其余 "+strconv.Itoa(len(cp)-maxLines)+" 条见告警记录")
 	}
 	return out
 }
@@ -172,32 +262,34 @@ func digestEnd(name, ip string) string {
 	return ip
 }
 
-// buildDigest 把同一轮、同一类的多条通知收成一条。
+// buildDigest 把同一轮、同一类的多条通知收成一条，并写明两端和每条链路的触发值。
 func buildDigest(kind string, items []pendingNotify) alertMsg {
 	links := make([]digestLink, 0, len(items))
 	for _, it := range items {
 		links = append(links, digestLink{
 			FromIP: it.log.Fromip, FromName: it.log.Fromname,
 			ToIP: it.log.Targetip, ToName: it.log.Targetname,
+			Detail: it.log.Reason,
 		})
 	}
 	view := diagnoseLinks(links)
-	msgKind, title := "digest", "🔴 同一故障"
+	msgKind, title := "digest", "🔴 故障区间"
 	recovered := false
 	switch kind {
 	case "recovery":
-		msgKind, title, recovered = "digest_recovery", "✅ 这批已恢复", true
+		msgKind, title, recovered = "digest_recovery", "✅ 已恢复", true
 	case "reminder":
-		msgKind, title = "digest_reminder", "⏰ 这批仍未恢复"
+		msgKind, title = "digest_reminder", "⏰ 仍未恢复"
 	case "mute_expired":
-		msgKind, title = "digest_mute", "🔔 这批屏蔽已到期"
+		msgKind, title = "digest_mute", "🔔 屏蔽到期"
 	}
 	when := ""
 	if len(items) > 0 {
 		when = items[0].log.Logtime
 	}
 	fields := [][2]string{
-		{"判断", view.Judgment},
+		{"故障区间", view.Headline},
+		{"依据", view.Judgment},
 		{"链路", strings.Join(view.Lines, "\n")},
 		{"时间", when},
 	}
