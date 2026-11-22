@@ -397,10 +397,11 @@ export default function Alerts({ user, config: cfg }) {
       </Panel>
       )}
 
-      <SpDialog open={!!eventOpen} onClose={() => setEventOpen(null)} title={eventOpen ? `#${eventOpen.id}  ${eventOpen.headline}` : ''} wide>
+      <SpDialog open={!!eventOpen} onClose={() => setEventOpen(null)} title={eventOpen ? `#${eventOpen.id}` : ''} wide>
         {eventOpen && (
           <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Box sx={{ fontSize: 18, fontWeight: 700, mb: 1.5 }}>{eventOpen.headline}</Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
               {eventOpen.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复</Badge>}
               <Box sx={{ color: palette.text2, fontSize: 13 }}>{eventOpen.recovered} / {eventOpen.links} 条链路</Box>
               <Box sx={{ color: palette.text3, fontSize: 12.5 }}>{eventOpen.opened}{eventOpen.closed ? ` → ${eventOpen.closed}` : ''}</Box>
@@ -413,7 +414,7 @@ export default function Alerts({ user, config: cfg }) {
               </Box>
             )}
             {(eventOpen.lines || []).length > 0 && (
-              <Box sx={{ mb: 2, fontFamily: mono, fontSize: 12.5, lineHeight: 1.7 }}>
+              <Box sx={{ mb: 2, display: 'grid', gap: 0.75, fontFamily: mono, fontSize: 12.5, lineHeight: 1.6 }}>
                 {eventOpen.lines.map((ln, i) => <Box key={i}>{ln}</Box>)}
               </Box>
             )}
