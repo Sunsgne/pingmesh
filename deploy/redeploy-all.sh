@@ -140,13 +140,13 @@ verify() {
 case "${1:-all}" in
   uninstall) bash /workspace/deploy/uninstall-all.sh ;;
   primary)   deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary" ;;
-  backup)    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup" ;;
+  backup)    deploy_control "$BACKUP_PUBLIC" 22 "HKG-EQHK1" "$BACKUP_INTERNAL" "backup" ;;
   agents)    deploy_agents_from_master ;;
   verify)    verify ;;
   all)
     bash /workspace/deploy/uninstall-all.sh
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
-    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
+    deploy_control "$BACKUP_PUBLIC" 22 "HKG-EQHK1" "$BACKUP_INTERNAL" "backup"
     deploy_agents_from_master
     sleep 30
     verify

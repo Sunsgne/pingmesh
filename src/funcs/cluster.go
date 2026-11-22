@@ -292,6 +292,15 @@ func StartCloudMonitor() {
 	ClusterSync()
 }
 
+// nodeDisplayName 展示名以节点表为准。启动参数 -name 和节点自报的名字只在表里还没有名字时兜底，
+// 避免部署简称（hkg1、sin1-sg2）盖掉已经配好的正式名称。
+func nodeDisplayName(tableName, reported string) string {
+	if name := strings.TrimSpace(tableName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(reported)
+}
+
 // ClusterNode 集群状态视图中的单个节点(供界面渲染容灾态势)
 type ClusterNode struct {
 	Endpoint  string `json:"endpoint"`
@@ -346,8 +355,12 @@ func ClusterStatus() map[string]interface{} {
 	if p, ok := prio[selfEp]; ok {
 		selfPrio = p
 	}
+	selfTable := ""
+	if m, ok := g.Cfg.Network[g.Cfg.Addr]; ok {
+		selfTable = m.Name
+	}
 	nodes = append(nodes, ClusterNode{
-		Endpoint: selfEp, Addr: g.Cfg.Addr, Name: g.Cfg.Name,
+		Endpoint: selfEp, Addr: g.Cfg.Addr, Name: nodeDisplayName(selfTable, g.Cfg.Name),
 		Epoch: local.Epoch, EpochTime: local.Time, Mode: g.Cfg.Mode["Type"],
 		Online: true, Self: true, Acting: g.IsActingMaster(),
 		Candidate: selfPrio >= 0, Priority: selfPrio,
@@ -364,9 +377,11 @@ func ClusterStatus() map[string]interface{} {
 			host = ep[:i]
 		}
 		n.Addr = host
+		tableName := ""
 		if m, ok := g.Cfg.Network[host]; ok {
-			n.Name = m.Name
+			tableName = m.Name
 		}
+		reported := ""
 		if info, ok := infos[ep]; ok {
 			n.Online = true
 			n.Legacy = info.Legacy
@@ -374,10 +389,9 @@ func ClusterStatus() map[string]interface{} {
 			n.EpochTime = info.EpochTime
 			n.Mode = info.Mode
 			n.Acting = info.Acting
-			if info.Name != "" {
-				n.Name = info.Name
-			}
+			reported = info.Name
 		}
+		n.Name = nodeDisplayName(tableName, reported)
 		nodes = append(nodes, n)
 	}
 

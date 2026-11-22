@@ -119,7 +119,7 @@ case "${1:-all}" in
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
   ;;
   backup)
-    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
+    deploy_control "$BACKUP_PUBLIC" 22 "HKG-EQHK1" "$BACKUP_INTERNAL" "backup"
   ;;
   agents)
   deploy_require_join
@@ -143,7 +143,7 @@ case "${1:-all}" in
   ;;
   all)
     deploy_control "$MASTER_PUBLIC" 22 "sin1-sg2" "$MASTER_INTERNAL" "primary"
-    deploy_control "$BACKUP_PUBLIC" 22 "hkg1" "$BACKUP_INTERNAL" "backup"
+    deploy_control "$BACKUP_PUBLIC" 22 "HKG-EQHK1" "$BACKUP_INTERNAL" "backup"
     deploy_require_join
     TOKEN=$(get_token)
     info "接入令牌: ${TOKEN}"
