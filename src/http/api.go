@@ -404,6 +404,21 @@ func configApiRoutes() {
 		fmt.Fprintln(w, "["+string(lout)+","+string(dout)+"]")
 	})
 
+	// 报警事件: 与企业微信同一条记录。一条事件对应一次告警和一次恢复。
+	http.HandleFunc("/api/alertevents.json", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthData(r) {
+			deny(w)
+			return
+		}
+		r.ParseForm()
+		start, end := r.FormValue("start"), r.FormValue("end")
+		if start == "" || end == "" {
+			day := time.Now().Format("2006-01-02")
+			start, end = day+" 00:00:00", day+" 23:59:59"
+		}
+		RenderJson(w, map[string]interface{}{"status": "true", "events": funcs.ListAlertEvents(start, end)})
+	})
+
 	//全国延迟API
 	http.HandleFunc("/api/mapping.json", func(w http.ResponseWriter, r *http.Request) {
 		if !AuthData(r) {

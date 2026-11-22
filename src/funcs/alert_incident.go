@@ -18,6 +18,8 @@ type alertEvent struct {
 	ID         string            `json:"id"`
 	Opened     time.Time         `json:"opened"`
 	Headline   string            `json:"headline"`
+	Judgment   string            `json:"judgment"`
+	Lines      []string          `json:"lines"`
 	Members    map[string]string `json:"members"` // key=from|to, value=链路名
 	Resolved   map[string]bool   `json:"resolved"`
 	LastNotify time.Time         `json:"lastnotify"`
@@ -189,6 +191,8 @@ func settleEvents(d sweepDelta) {
 		}
 		view := localizeFocus(d.cells, focus)
 		ev.Headline = view.Headline
+		ev.Judgment = view.Judgment
+		ev.Lines = view.Lines
 		openEvents[ev.ID] = ev
 		saveEvent(ev, false)
 		toSend = append(toSend, eventAlertMsg(ev, view, d.now))
@@ -280,4 +284,71 @@ func eventMsg(kind, title, link string, fields [][2]string, recovered bool) aler
 		Kind: kind, Recovered: recovered, Title: title, Link: link,
 		Fields: fields, Plain: strings.TrimRight(b.String(), "\n"),
 	}
+}
+
+// AlertEventMember 报警记录里一条事件包含的链路。
+type AlertEventMember struct {
+	Key      string `json:"key"`
+	Name     string `json:"name"`
+	Resolved bool   `json:"resolved"`
+}
+
+// AlertEventRecord 报警记录页的一行：一次通知对应一条，恢复后仍是这一条。
+type AlertEventRecord struct {
+	ID        string             `json:"id"`
+	Opened    string             `json:"opened"`
+	Closed    string             `json:"closed"`
+	Headline  string             `json:"headline"`
+	Judgment  string             `json:"judgment"`
+	Lines     []string           `json:"lines"`
+	Links     int                `json:"links"`
+	Recovered int                `json:"recovered"`
+	Open      bool               `json:"open"`
+	Members   []AlertEventMember `json:"members"`
+}
+
+// ListAlertEvents 返回与时间窗有交集的事件。opened、closed 为可排序的本地时间字符串。
+func ListAlertEvents(start, end string) []AlertEventRecord {
+	out := []AlertEventRecord{}
+	if g.Db == nil {
+		return out
+	}
+	if _, err := g.Db.Exec(eventDDL); err != nil {
+		seelog.Error("[func:ListAlertEvents] ", err)
+		return out
+	}
+	rows, err := g.Db.Query(`SELECT state, closed FROM alert_event WHERE opened <= ? AND (closed = '' OR closed >= ?) ORDER BY opened DESC`, end, start)
+	if err != nil {
+		seelog.Error("[func:ListAlertEvents] ", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var state, closed string
+		if rows.Scan(&state, &closed) != nil {
+			continue
+		}
+		ev := &alertEvent{}
+		if json.Unmarshal([]byte(state), ev) != nil || ev.ID == "" {
+			continue
+		}
+		rec := AlertEventRecord{
+			ID: ev.ID, Opened: ev.Opened.Format("2006-01-02 15:04:05"), Closed: closed,
+			Headline: ev.Headline, Judgment: ev.Judgment, Lines: ev.Lines,
+			Links: len(ev.Members), Open: closed == "",
+		}
+		if rec.Lines == nil {
+			rec.Lines = []string{}
+		}
+		for k, name := range ev.Members {
+			done := ev.Resolved[k]
+			if done {
+				rec.Recovered++
+			}
+			rec.Members = append(rec.Members, AlertEventMember{Key: k, Name: name, Resolved: done})
+		}
+		sort.Slice(rec.Members, func(i, j int) bool { return rec.Members[i].Name < rec.Members[j].Name })
+		out = append(out, rec)
+	}
+	return out
 }

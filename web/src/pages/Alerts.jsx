@@ -93,6 +93,9 @@ export default function Alerts({ user, config: cfg }) {
   const [crStart, setCrStart] = useState('');
   const [crEnd, setCrEnd] = useState('');
   const [rows, setRows] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [eventOpen, setEventOpen] = useState(null);
+  const [showLinks, setShowLinks] = useState(false);
   const [count, setCount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
@@ -141,6 +144,9 @@ export default function Alerts({ user, config: cfg }) {
       setCount(all.length);
       setLoading(false);
     });
+    getJSON('/api/alertevents.json' + qs, { timeout })
+      .then((res) => { if (seq === alertSeq.current) setEvents((res && res.events) || []); })
+      .catch(() => { if (seq === alertSeq.current) setEvents([]); });
     loadMutes();
   }, [cfg, timeout, loadMutes]);
 
@@ -169,6 +175,12 @@ export default function Alerts({ user, config: cfg }) {
     return { r, reason, blob };
   }), [rows]);
   const q = query.trim().toLowerCase();
+  const eventView = useMemo(() => events.filter((ev) => {
+    if (q === '') return true;
+    const blob = [ev.id, ev.headline, ev.judgment, ...(ev.lines || []), ...(ev.members || []).map((m) => m.name)].join(' ').toLowerCase();
+    return blob.indexOf(q) >= 0;
+  }), [events, q]);
+  const linksVisible = showLinks || (!loading && events.length === 0 && count > 0);
 
   const openAck = (r) => { setAckRow(r); setAckReason(''); };
   const saveAck = () => {
@@ -248,9 +260,16 @@ export default function Alerts({ user, config: cfg }) {
       )}
 
       <Panel
-        title={<>报警记录 {count > 0 && <Badge tone="red">{count} 条</Badge>}</>}
-        sub="确认与屏蔽需管理员权限"
-        actions={loading ? <Spinner /> : null}
+        title={<>报警记录 {events.length > 0 && <Badge tone="red">{events.length} 起</Badge>}</>}
+        sub="与通知同一条记录：一次故障一个编号，链路全部恢复后记为已恢复"
+        actions={(
+          <>
+            {loading && <Spinner />}
+            <Button variant="outlined" size="small" sx={btnSm} onClick={() => setShowLinks((v) => !v)}>
+              {linksVisible ? '收起链路明细' : `链路明细${count > 0 ? ` (${count})` : ''}`}
+            </Button>
+          </>
+        )}
         bodySx={{ pt: '14px', pb: { xs: '14px', md: 2.25 }, px: { xs: '14px', md: 2.25 } }}
       >
         <ToolbarBox sx={{ flexWrap: 'nowrap', overflowX: 'auto', '@media (max-width:600px)': { flexWrap: 'wrap', overflowX: 'visible', '& > *': { width: '100%' } } }}>
@@ -272,11 +291,50 @@ export default function Alerts({ user, config: cfg }) {
           </Box>
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
             <Box sx={{ display: { xs: 'none', md: 'inline' } }}><ToolbarLabel>筛选</ToolbarLabel></Box>
-            <TextField size="small" value={query} placeholder="节点 / IP / 类型 / Tag..." onChange={(e) => setQuery(e.target.value)}
+            <TextField size="small" value={query} placeholder="节点 / 事件编号..." onChange={(e) => setQuery(e.target.value)}
               sx={{ width: 'min(230px,100%)', '@media (max-width:600px)': { width: '100%' } }} />
           </Box>
         </ToolbarBox>
+        <ResponsiveTable sx={{ mx: { xs: '-14px', md: '-18px' } }}>
+          <Table sx={tableSx}>
+            <TableHead>
+              <TableRow>
+                <TableCell>开始</TableCell><TableCell>事件</TableCell><TableCell>故障点对</TableCell>
+                <TableCell>链路</TableCell><TableCell>状态</TableCell><TableCell>恢复</TableCell><TableCell sx={{ width: 80 }}>明细</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {eventView.map((ev) => (
+                <TableRow hover key={ev.id}>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.opened}</TableCell>
+                  <TableCell sx={{ fontFamily: mono, fontSize: 12.5 }}>#{ev.id}</TableCell>
+                  <TableCell>
+                    <b>{ev.headline}</b>
+                    {ev.judgment && <Box sx={{ ...muted, fontSize: 12, mt: '4px', maxWidth: 420, lineHeight: 1.4 }}>{ev.judgment}</Box>}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.recovered} / {ev.links}</TableCell>
+                  <TableCell>{ev.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复</Badge>}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.closed || '-'}</TableCell>
+                  <TableCell>
+                    <Link component="button" underline="none" onClick={() => setEventOpen(ev)}
+                      sx={{ fontSize: 13.5, color: palette.primary }}>{'查看'}</Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {events.length === 0 && !loading && (
+            <EmptyState>该时间范围内没有报警事件。链路级的历史记录在「链路明细」里。</EmptyState>
+          )}
+        </ResponsiveTable>
+      </Panel>
 
+      {linksVisible && (
+      <Panel
+        title={<>链路明细 {count > 0 && <Badge tone="gray">{count} 条</Badge>}</>}
+        sub="各探测节点自己记下的每一格，用于确认和屏蔽；通知和上面的事件按这一批合并"
+        bodySx={{ pt: '14px', pb: { xs: '14px', md: 2.25 }, px: { xs: '14px', md: 2.25 } }}
+      >
         <ResponsiveTable sx={{ mx: { xs: '-14px', md: '-18px' } }}>
           <Table sx={tableSx}>
             <TableHead>
@@ -340,6 +398,24 @@ export default function Alerts({ user, config: cfg }) {
           )}
         </ResponsiveTable>
       </Panel>
+      )}
+
+      <SpDialog open={!!eventOpen} onClose={() => setEventOpen(null)} title={eventOpen ? `#${eventOpen.id} ${eventOpen.headline}` : ''} wide>
+        {eventOpen && (
+          <Box sx={{ fontSize: 13.5, lineHeight: 1.6 }}>
+            <Box sx={{ mb: 1 }}>{eventOpen.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复 {eventOpen.recovered}/{eventOpen.links}</Badge>}</Box>
+            {eventOpen.judgment && <Box sx={{ mb: 1.5 }}>{eventOpen.judgment}</Box>}
+            {(eventOpen.lines || []).map((ln, i) => <Box key={i} sx={{ fontFamily: mono, fontSize: 12.5 }}>{ln}</Box>)}
+            <Box sx={{ mt: 1.5, fontWeight: 700 }}>链路 {eventOpen.recovered}/{eventOpen.links}</Box>
+            {(eventOpen.members || []).map((m) => (
+              <Box key={m.key} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <span>{m.name}</span>
+                {m.resolved ? <Badge tone="green">已恢复</Badge> : <Badge tone="red">未恢复</Badge>}
+              </Box>
+            ))}
+          </Box>
+        )}
+      </SpDialog>
 
       <SpDialog open={!!mtr} onClose={() => setMtr(null)} title="MTR 路由追踪快照" wide
         bodySx={{ p: '0 !important', maxHeight: '70vh', overflowY: 'auto' }}>
