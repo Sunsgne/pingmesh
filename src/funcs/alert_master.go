@@ -223,6 +223,7 @@ func MasterAlertSweep() {
 	wg.Wait()
 
 	var pending []pendingNotify
+	var matrix []meshCell
 	for addr, member := range g.Cfg.Network {
 		if !member.Pingmesh {
 			continue
@@ -272,6 +273,15 @@ func MasterAlertSweep() {
 					r[k] = v
 				}
 			}
+			cellDetail := ""
+			if !h.OK {
+				_, cellDetail, _ = classifyBreach(addr, target, r, breachFromHealth(h))
+			}
+			toName := l.Targetname
+			matrix = append(matrix, meshCell{
+				FromIP: addr, FromName: snap.FromName, ToIP: target, ToName: toName,
+				OK: h.OK, Delay: h.AvgDelay, Loss: h.Loss, Detail: cellDetail,
+			})
 
 			alertNow, recoveryNow := masterTransition(haskey, old, healthy)
 			if healthy {
@@ -365,6 +375,6 @@ func MasterAlertSweep() {
 			}
 		}
 	}
-	sendPending(pending)
+	sendPending(pending, matrix)
 	seelog.Debug("[func:MasterAlertSweep] finish")
 }

@@ -79,7 +79,10 @@ func wecomLevel(m alertMsg, f map[string]string) string {
 	case "recovery", "digest_recovery":
 		return "恢复 (OK)"
 	case "digest":
-		return "重要 (MAJOR) · 故障区间"
+		if strings.HasPrefix(m.Link, "节点 ") {
+			return "重要 (MAJOR) · 节点"
+		}
+		return "重要 (MAJOR) · 点对"
 	case "digest_reminder":
 		return "重要 (MAJOR) · 仍未恢复"
 	case "digest_mute":
@@ -104,7 +107,10 @@ func wecomType(m alertMsg) string {
 	case "recovery", "digest_recovery":
 		return "恢复通知"
 	case "digest":
-		return "故障区间"
+		if strings.HasPrefix(m.Link, "节点 ") {
+			return "故障节点"
+		}
+		return "故障点对"
 	case "digest_reminder":
 		return "持续提醒"
 	case "digest_mute":
@@ -125,7 +131,7 @@ func wecomHeadline(m alertMsg, f map[string]string) string {
 	case "recovery", "digest_recovery":
 		return "【已恢复】" + m.Link
 	case "digest":
-		return "【故障区间】" + m.Link
+		return "【" + m.Link + "】"
 	case "digest_reminder":
 		return "【仍未恢复】" + m.Link
 	case "digest_mute":
@@ -146,13 +152,13 @@ func wecomHeadline(m alertMsg, f map[string]string) string {
 func wecomDetail(m alertMsg, f map[string]string) []string {
 	if strings.HasPrefix(m.Kind, "digest") {
 		var lines []string
-		if v := f["故障区间"]; v != "" {
-			lines = append(lines, "故障区间："+v)
+		if v := f["故障点对"]; v != "" {
+			lines = append(lines, "故障点对："+v)
 		}
-		if v := f["依据"]; v != "" {
-			lines = append(lines, "依据："+v)
+		if v := f["对照"]; v != "" {
+			lines = append(lines, "对照："+v)
 		}
-		if v := f["链路"]; v != "" {
+		if v := f["实测"]; v != "" {
 			for _, ln := range strings.Split(v, "\n") {
 				if ln != "" {
 					lines = append(lines, ln)

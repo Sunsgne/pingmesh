@@ -25,256 +25,279 @@ type digestLink struct {
 	Detail   string
 }
 
-// digestView 同一批告警的两端划分。
+// meshCell 矩阵里的一条有向探测。OK 为 false 表示这条当前超阈值。
+type meshCell struct {
+	FromIP, FromName, ToIP, ToName string
+	OK                             bool
+	Delay, Loss                    float64
+	Detail                         string
+}
+
+// digestView 用整张矩阵对照后得到的故障点。
 type digestView struct {
 	Headline string
 	Judgment string
 	Lines    []string
 }
 
-// diagnoseLinks 把同一批异常链路划成两端。
-// 能二分的，故障区间就是这两端；有奇数环的，不编造一对端点，改列节点对。
-func diagnoseLinks(links []digestLink) digestView {
-	labelOf := map[string]string{}
-	adj := map[string]map[string]bool{}
-	touch := func(ip, name string) string {
-		k := ip
-		if k == "" {
-			k = "name:" + name
-		} else {
-			k = "ip:" + k
-		}
-		if name != "" {
-			labelOf[k] = name
-		} else if labelOf[k] == "" {
-			labelOf[k] = ip
-		}
-		if adj[k] == nil {
-			adj[k] = map[string]bool{}
-		}
-		return k
+func endKey(ip, name string) string {
+	if ip != "" {
+		return "ip:" + ip
 	}
-	for _, l := range links {
-		a := touch(l.FromIP, l.FromName)
-		b := touch(l.ToIP, l.ToName)
-		if a == b {
-			continue
-		}
-		adj[a][b] = true
-		adj[b][a] = true
-	}
-	seen := map[string]bool{}
-	var keys []string
-	for k := range labelOf {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return labelOf[keys[i]] < labelOf[keys[j]] })
-	var comps [][]string
-	for _, k := range keys {
-		if seen[k] {
-			continue
-		}
-		var comp []string
-		stack := []string{k}
-		seen[k] = true
-		for len(stack) > 0 {
-			u := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			comp = append(comp, u)
-			var nxt []string
-			for v := range adj[u] {
-				nxt = append(nxt, v)
-			}
-			sort.Strings(nxt)
-			for _, v := range nxt {
-				if !seen[v] {
-					seen[v] = true
-					stack = append(stack, v)
-				}
-			}
-		}
-		comps = append(comps, comp)
-	}
-	var intervals, evidences []string
-	for _, comp := range comps {
-		left, right, ok := colorComponent(comp, adj)
-		if !ok {
-			intervals = append(intervals, "无法二分")
-			evidences = append(evidences, oddCycleEvidence(comp, adj, labelOf))
-			continue
-		}
-		left, right = orderSides(left, right, labelOf)
-		intervals = append(intervals, sideText(left, labelOf)+" — "+sideText(right, labelOf))
-		evidences = append(evidences, cutEvidence(links, left, right, labelOf))
-	}
-	return digestView{
-		Headline: strings.Join(intervals, "；"),
-		Judgment: strings.Join(evidences, " "),
-		Lines:    digestLinkLines(links),
-	}
+	return "name:" + name
 }
 
-func colorComponent(comp []string, adj map[string]map[string]bool) (left, right []string, ok bool) {
-	col := map[string]int{}
-	ok = true
-	sorted := append([]string(nil), comp...)
-	sort.Strings(sorted)
-	var dfs func(u string, c int)
-	dfs = func(u string, c int) {
-		if prev, has := col[u]; has {
-			if prev != c {
-				ok = false
-			}
-			return
-		}
-		col[u] = c
-		var nxt []string
-		for v := range adj[u] {
-			nxt = append(nxt, v)
-		}
-		sort.Strings(nxt)
-		for _, v := range nxt {
-			dfs(v, 1-c)
-		}
-	}
-	for _, u := range sorted {
-		if _, has := col[u]; !has {
-			dfs(u, 0)
-		}
-	}
-	if !ok {
-		return nil, nil, false
-	}
-	for _, u := range sorted {
-		if col[u] == 0 {
-			left = append(left, u)
-		} else {
-			right = append(right, u)
-		}
-	}
-	return left, right, true
-}
-
-func orderSides(left, right []string, labelOf map[string]string) ([]string, []string) {
-	if len(right) < len(left) || (len(right) == len(left) && sideText(right, labelOf) < sideText(left, labelOf)) {
-		return right, left
-	}
-	return left, right
-}
-
-func sideText(keys []string, labelOf map[string]string) string {
-	names := make([]string, 0, len(keys))
-	for _, k := range keys {
-		names = append(names, labelOf[k])
-	}
-	sort.Strings(names)
-	if len(names) <= 4 {
-		return strings.Join(names, "、")
-	}
-	return strings.Join(names[:4], "、") + " 等 " + strconv.Itoa(len(names)) + " 台"
-}
-
-func cutEvidence(links []digestLink, left, right []string, labelOf map[string]string) string {
-	inLeft := map[string]bool{}
-	for _, k := range left {
-		inLeft[k] = true
-	}
-	keyOf := func(ip, name string) string {
-		if ip != "" {
-			return "ip:" + ip
-		}
-		return "name:" + name
-	}
-	l2r, r2l := 0, 0
-	for _, l := range links {
-		a, b := keyOf(l.FromIP, l.FromName), keyOf(l.ToIP, l.ToName)
-		aLeft, bLeft := inLeft[a], inLeft[b]
-		if aLeft == bLeft {
-			continue
-		}
-		if aLeft {
-			l2r++
-		} else {
-			r2l++
-		}
-	}
-	return "该区间 " + strconv.Itoa(l2r+r2l) + " 条。两端为 " + sideText(left, labelOf) + "（" + strconv.Itoa(len(left)) + " 台）与 " + sideText(right, labelOf) + "（" + strconv.Itoa(len(right)) + " 台）。前一侧 → 后一侧 " + strconv.Itoa(l2r) + " 条，后一侧 → 前一侧 " + strconv.Itoa(r2l) + " 条。"
-}
-
-func oddCycleEvidence(comp []string, adj map[string]map[string]bool, labelOf map[string]string) string {
-	var pairs []string
-	seen := map[string]bool{}
-	for _, u := range comp {
-		for v := range adj[u] {
-			a, b := labelOf[u], labelOf[v]
-			if a > b {
-				a, b = b, a
-			}
-			k := a + "—" + b
-			if seen[k] {
-				continue
-			}
-			seen[k] = true
-			pairs = append(pairs, k)
-		}
-	}
-	sort.Strings(pairs)
-	if len(pairs) > 8 {
-		pairs = append(pairs[:8], "等 "+strconv.Itoa(len(seen))+" 对")
-	}
-	return "异常链路含奇数环，不能划成唯一的两端。节点对：" + strings.Join(pairs, "、") + "。"
-}
-
-func digestLinkLines(links []digestLink) []string {
-	cp := append([]digestLink(nil), links...)
-	sort.Slice(cp, func(i, j int) bool {
-		if cp[i].FromName != cp[j].FromName {
-			return cp[i].FromName < cp[j].FromName
-		}
-		if cp[i].ToName != cp[j].ToName {
-			return cp[i].ToName < cp[j].ToName
-		}
-		return cp[i].FromIP < cp[j].FromIP
-	})
-	const maxLines = 8
-	limit := len(cp)
-	if limit > maxLines {
-		limit = maxLines
-	}
-	out := make([]string, 0, limit+1)
-	for i := 0; i < limit; i++ {
-		line := digestEnd(cp[i].FromName, cp[i].FromIP) + " → " + digestEnd(cp[i].ToName, cp[i].ToIP)
-		if d := strings.TrimSpace(cp[i].Detail); d != "" {
-			line += "  " + d
-		}
-		out = append(out, line)
-	}
-	if len(cp) > maxLines {
-		out = append(out, "其余 "+strconv.Itoa(len(cp)-maxLines)+" 条见告警记录")
-	}
-	return out
-}
-
-func digestEnd(name, ip string) string {
+func endLabel(ip, name string) string {
 	if name != "" {
 		return name
 	}
 	return ip
 }
 
-// buildDigest 把同一轮、同一类的多条通知收成一条，并写明两端和每条链路的触发值。
-func buildDigest(kind string, items []pendingNotify) alertMsg {
-	links := make([]digestLink, 0, len(items))
-	for _, it := range items {
-		links = append(links, digestLink{
-			FromIP: it.log.Fromip, FromName: it.log.Fromname,
-			ToIP: it.log.Targetip, ToName: it.log.Targetname,
-			Detail: it.log.Reason,
+// localizeMatrix 用全矩阵把故障收到两个点，或收到一个节点。
+// 某个点到其余方向都正常、只有和对端异常，故障就在这两个点之间。
+// 某个点到多数对端都异常，故障就在这个点，而不是随便划两侧。
+func localizeMatrix(cells []meshCell) digestView {
+	type ns struct {
+		label         string
+		outBad, outOK int
+		inBad, inOK   int
+		peers         map[string]bool
+	}
+	nodes := map[string]*ns{}
+	ensure := func(ip, name string) *ns {
+		k := endKey(ip, name)
+		n := nodes[k]
+		if n == nil {
+			n = &ns{label: endLabel(ip, name), peers: map[string]bool{}}
+			nodes[k] = n
+		}
+		if name != "" {
+			n.label = name
+		}
+		return n
+	}
+	badN := 0
+	for _, c := range cells {
+		a, b := ensure(c.FromIP, c.FromName), ensure(c.ToIP, c.ToName)
+		bk := endKey(c.ToIP, c.ToName)
+		ak := endKey(c.FromIP, c.FromName)
+		if c.OK {
+			a.outOK++
+			b.inOK++
+			continue
+		}
+		badN++
+		a.outBad++
+		b.inBad++
+		a.peers[bk] = true
+		b.peers[ak] = true
+	}
+	if badN == 0 {
+		return digestView{Headline: "无异常点对", Judgment: "矩阵内没有超阈值的方向。"}
+	}
+	type cand struct {
+		key   string
+		score int
+	}
+	var best *cand
+	for k, n := range nodes {
+		incident := n.outBad + n.inBad
+		if len(n.peers) < 3 || incident < 3 || incident*5 < badN*4 {
+			continue
+		}
+		if best == nil || incident > best.score || (incident == best.score && n.label < nodes[best.key].label) {
+			best = &cand{key: k, score: incident}
+		}
+	}
+	if best != nil {
+		n := nodes[best.key]
+		lines := badLinesTouching(cells, best.key)
+		return digestView{
+			Headline: "节点 " + n.label,
+			Judgment: n.label + " 发出 " + strconv.Itoa(n.outBad) + " 异常 / " + strconv.Itoa(n.outOK) + " 正常；收到 " + strconv.Itoa(n.inBad) + " 异常 / " + strconv.Itoa(n.inOK) + " 正常。",
+			Lines:    lines,
+		}
+	}
+	type pair struct {
+		a, b         string
+		aName, bName string
+		abBad, baBad bool
+	}
+	seen := map[string]*pair{}
+	var order []string
+	for _, c := range cells {
+		if c.OK {
+			continue
+		}
+		a, b := endKey(c.FromIP, c.FromName), endKey(c.ToIP, c.ToName)
+		lo, hi := a, b
+		loName, hiName := endLabel(c.FromIP, c.FromName), endLabel(c.ToIP, c.ToName)
+		fwd := true
+		if hi < lo {
+			lo, hi = hi, lo
+			loName, hiName = hiName, loName
+			fwd = false
+		}
+		k := lo + "|" + hi
+		p := seen[k]
+		if p == nil {
+			p = &pair{a: lo, b: hi, aName: loName, bName: hiName}
+			seen[k] = p
+			order = append(order, k)
+		}
+		if fwd {
+			p.abBad = true
+		} else {
+			p.baBad = true
+		}
+	}
+	sort.Strings(order)
+	var isolated, all []*pair
+	for _, k := range order {
+		p := seen[k]
+		all = append(all, p)
+		if restBad(cells, p.a, p.b) == 0 && restBad(cells, p.b, p.a) == 0 {
+			isolated = append(isolated, p)
+		}
+	}
+	use := all
+	isolatedOnly := false
+	if len(isolated) > 0 {
+		use = isolated
+		isolatedOnly = true
+	}
+	var heads, judges, lines []string
+	for _, p := range use {
+		if p.abBad && p.baBad {
+			heads = append(heads, p.aName+" ↔ "+p.bName)
+		} else if p.abBad {
+			heads = append(heads, p.aName+" → "+p.bName)
+		} else {
+			heads = append(heads, p.bName+" → "+p.aName)
+		}
+		if isolatedOnly {
+			judges = append(judges, p.aName+" 其余 "+restText(cells, p.a, p.b)+"；"+p.bName+" 其余 "+restText(cells, p.b, p.a))
+		}
+		lines = append(lines, pairDirectionLines(cells, p.a, p.b)...)
+	}
+	judgment := strings.Join(judges, "。")
+	if !isolatedOnly {
+		judgment = "这些点对同时超阈值，两端到其他节点也有异常，不能收成一个节点。"
+	}
+	if judgment != "" && !strings.HasSuffix(judgment, "。") {
+		judgment += "。"
+	}
+	return digestView{Headline: strings.Join(heads, "；"), Judgment: judgment, Lines: lines}
+}
+
+func restBad(cells []meshCell, self, other string) int {
+	bad, _ := restCount(cells, self, other)
+	return bad
+}
+
+func restText(cells []meshCell, self, other string) string {
+	bad, ok := restCount(cells, self, other)
+	return strconv.Itoa(ok) + " 正常 / " + strconv.Itoa(bad) + " 异常"
+}
+
+func restCount(cells []meshCell, self, other string) (bad, ok int) {
+	for _, c := range cells {
+		a, b := endKey(c.FromIP, c.FromName), endKey(c.ToIP, c.ToName)
+		if a != self && b != self {
+			continue
+		}
+		otherEnd := b
+		if b == self {
+			otherEnd = a
+		}
+		if otherEnd == other {
+			continue
+		}
+		if c.OK {
+			ok++
+		} else {
+			bad++
+		}
+	}
+	return bad, ok
+}
+
+func pairDirectionLines(cells []meshCell, a, b string) []string {
+	var lines []string
+	for _, c := range cells {
+		ak, bk := endKey(c.FromIP, c.FromName), endKey(c.ToIP, c.ToName)
+		if !((ak == a && bk == b) || (ak == b && bk == a)) {
+			continue
+		}
+		lines = append(lines, cellLine(c))
+	}
+	sort.Strings(lines)
+	return lines
+}
+
+func badLinesTouching(cells []meshCell, key string) []string {
+	var lines []string
+	for _, c := range cells {
+		if c.OK {
+			continue
+		}
+		if endKey(c.FromIP, c.FromName) != key && endKey(c.ToIP, c.ToName) != key {
+			continue
+		}
+		lines = append(lines, cellLine(c))
+	}
+	sort.Strings(lines)
+	const maxLines = 8
+	if len(lines) > maxLines {
+		extra := len(lines) - maxLines
+		lines = append(lines[:maxLines], "其余 "+strconv.Itoa(extra)+" 条见告警记录")
+	}
+	return lines
+}
+
+func cellLine(c meshCell) string {
+	line := endLabel(c.FromIP, c.FromName) + " → " + endLabel(c.ToIP, c.ToName)
+	if c.OK {
+		return line + "  正常  延迟 " + formatMetric(c.Delay) + "ms  丢包 " + formatMetric(c.Loss) + "%"
+	}
+	if strings.TrimSpace(c.Detail) != "" {
+		return line + "  " + c.Detail
+	}
+	return line + "  异常  延迟 " + formatMetric(c.Delay) + "ms  丢包 " + formatMetric(c.Loss) + "%"
+}
+
+// localizeLinks 没有全矩阵时，只根据这批异常链路本身找点对，供测试和兜底。
+func localizeLinks(links []digestLink) digestView {
+	cells := make([]meshCell, 0, len(links))
+	for _, l := range links {
+		cells = append(cells, meshCell{
+			FromIP: l.FromIP, FromName: l.FromName, ToIP: l.ToIP, ToName: l.ToName,
+			Detail: l.Detail,
 		})
 	}
-	view := diagnoseLinks(links)
-	msgKind, title := "digest", "🔴 故障区间"
+	return localizeMatrix(cells)
+}
+
+// buildDigest 用矩阵把同一轮通知收成「哪两个点」或「哪一个节点」。
+func buildDigest(kind string, items []pendingNotify, cells []meshCell) alertMsg {
+	view := localizeMatrix(cells)
+	if kind == "recovery" || len(cells) == 0 {
+		links := make([]digestLink, 0, len(items))
+		for _, it := range items {
+			links = append(links, digestLink{
+				FromIP: it.log.Fromip, FromName: it.log.Fromname,
+				ToIP: it.log.Targetip, ToName: it.log.Targetname,
+				Detail: it.log.Reason,
+			})
+		}
+		view = localizeLinks(links)
+	}
+	msgKind, title := "digest", "🔴 故障点对"
 	recovered := false
+	if strings.HasPrefix(view.Headline, "节点 ") {
+		title = "🔴 故障节点"
+	}
 	switch kind {
 	case "recovery":
 		msgKind, title, recovered = "digest_recovery", "✅ 已恢复", true
@@ -288,9 +311,9 @@ func buildDigest(kind string, items []pendingNotify) alertMsg {
 		when = items[0].log.Logtime
 	}
 	fields := [][2]string{
-		{"故障区间", view.Headline},
-		{"依据", view.Judgment},
-		{"链路", strings.Join(view.Lines, "\n")},
+		{"故障点对", view.Headline},
+		{"对照", view.Judgment},
+		{"实测", strings.Join(view.Lines, "\n")},
 		{"时间", when},
 	}
 	var b strings.Builder
@@ -304,8 +327,8 @@ func buildDigest(kind string, items []pendingNotify) alertMsg {
 	}
 }
 
-// sendPending 一轮结束时发送。只有一条时保持原来的单链路卡片，两条及以上收成一条结论。
-func sendPending(items []pendingNotify) {
+// sendPending 一轮结束时发送。告警用整张矩阵定位到两个点或一个节点。
+func sendPending(items []pendingNotify, cells []meshCell) {
 	if len(items) == 0 {
 		return
 	}
@@ -319,11 +342,11 @@ func sendPending(items []pendingNotify) {
 	}
 	for _, kind := range order {
 		batch := groups[kind]
-		if len(batch) == 1 {
+		if kind != "alert" && kind != "reminder" && len(batch) == 1 {
 			it := batch[0]
 			NotifyAll(it.log, it.rule, it.kind, it.extras)
 			continue
 		}
-		NotifyBuilt(buildDigest(kind, batch))
+		NotifyBuilt(buildDigest(kind, batch, cells))
 	}
 }

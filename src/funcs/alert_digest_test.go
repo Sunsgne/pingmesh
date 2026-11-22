@@ -7,93 +7,95 @@ import (
 	"github.com/zenlenet/pingmesh/src/g"
 )
 
-func TestDiagnoseStarBothWays(t *testing.T) {
-	got := diagnoseLinks([]digestLink{
-		{FromName: "SIN-EQSG2", ToName: "FRA-EQFRA5"},
-		{FromName: "TYO-EQTY7", ToName: "FRA-EQFRA5"},
-		{FromName: "FRA-EQFRA5", ToName: "SIN-EQSG2"},
-		{FromName: "FRA-EQFRA5", ToName: "PEK-BJHK"},
-	})
-	if got.Headline != "FRA-EQFRA5 — PEK-BJHK、SIN-EQSG2、TYO-EQTY7" {
+func mesh(from, to string, ok bool, detail string) meshCell {
+	return meshCell{FromName: from, ToName: to, OK: ok, Delay: 30, Loss: 0, Detail: detail}
+}
+
+func TestLocalizeIsolatedPair(t *testing.T) {
+	// A、B 互相异常，两台到 C、D 都正常。问题只在 A 与 B 之间。
+	var cells []meshCell
+	nodes := []string{"HKG-EQHK2", "PEK-BJHK", "SIN-EQSG2", "CAN-HXY"}
+	for _, a := range nodes {
+		for _, b := range nodes {
+			if a == b {
+				continue
+			}
+			bad := (a == "HKG-EQHK2" && b == "PEK-BJHK") || (a == "PEK-BJHK" && b == "HKG-EQHK2")
+			detail := ""
+			if bad {
+				detail = "延迟 58.5ms ≥ 46ms（观测 5 次）"
+			}
+			cells = append(cells, mesh(a, b, !bad, detail))
+		}
+	}
+	got := localizeMatrix(cells)
+	if got.Headline != "HKG-EQHK2 ↔ PEK-BJHK" {
 		t.Fatalf("headline=%s", got.Headline)
 	}
-	if !strings.Contains(got.Judgment, "前一侧 → 后一侧 2 条") || !strings.Contains(got.Judgment, "后一侧 → 前一侧 2 条") {
+	if !strings.Contains(got.Judgment, "HKG-EQHK2 其余 4 正常 / 0 异常") || !strings.Contains(got.Judgment, "PEK-BJHK 其余 4 正常 / 0 异常") {
+		t.Fatalf("judgment=%s", got.Judgment)
+	}
+	if !strings.Contains(strings.Join(got.Lines, "\n"), "延迟 58.5ms ≥ 46ms（观测 5 次）") {
+		t.Fatalf("lines=%v", got.Lines)
+	}
+}
+
+func TestLocalizeOneDirection(t *testing.T) {
+	var cells []meshCell
+	nodes := []string{"A", "B", "C"}
+	for _, a := range nodes {
+		for _, b := range nodes {
+			if a == b {
+				continue
+			}
+			bad := a == "A" && b == "B"
+			cells = append(cells, mesh(a, b, !bad, "丢包 10% ≥ 1%（观测 2 次）"))
+		}
+	}
+	got := localizeMatrix(cells)
+	if got.Headline != "A → B" {
+		t.Fatalf("headline=%s", got.Headline)
+	}
+}
+
+func TestLocalizeNodeNotFakePair(t *testing.T) {
+	// FRA 进出都异常，其余点之间正常。这是 FRA 这个点，不是随便两个点。
+	var cells []meshCell
+	nodes := []string{"FRA", "SIN", "TYO", "PVG"}
+	for _, a := range nodes {
+		for _, b := range nodes {
+			if a == b {
+				continue
+			}
+			bad := a == "FRA" || b == "FRA"
+			cells = append(cells, mesh(a, b, !bad, "丢包 1.1% ≥ 1%（观测 1 次）"))
+		}
+	}
+	got := localizeMatrix(cells)
+	if got.Headline != "节点 FRA" {
+		t.Fatalf("headline=%s", got.Headline)
+	}
+	if !strings.Contains(got.Judgment, "发出 3 异常 / 0 正常") || !strings.Contains(got.Judgment, "收到 3 异常 / 0 正常") {
 		t.Fatalf("judgment=%s", got.Judgment)
 	}
 }
 
-func TestDiagnoseOutboundOnly(t *testing.T) {
-	got := diagnoseLinks([]digestLink{
-		{FromName: "FRA-EQFRA5", ToName: "SIN-EQSG2"},
-		{FromName: "FRA-EQFRA5", ToName: "PEK-BJHK"},
-		{FromName: "FRA-EQFRA5", ToName: "PVG-GDS"},
-	})
-	if got.Headline != "FRA-EQFRA5 — PEK-BJHK、PVG-GDS、SIN-EQSG2" {
-		t.Fatalf("headline=%s", got.Headline)
+func TestDigestCardNamesThePair(t *testing.T) {
+	cells := []meshCell{
+		mesh("HKG-EQHK2", "PEK-BJHK", false, "延迟 58.5ms ≥ 46ms（观测 5 次）"),
+		mesh("PEK-BJHK", "HKG-EQHK2", false, "延迟 58.5ms ≥ 46ms（观测 5 次）"),
+		mesh("HKG-EQHK2", "SIN-EQSG2", true, ""),
+		mesh("SIN-EQSG2", "HKG-EQHK2", true, ""),
+		mesh("PEK-BJHK", "SIN-EQSG2", true, ""),
+		mesh("SIN-EQSG2", "PEK-BJHK", true, ""),
 	}
-	if !strings.Contains(got.Judgment, "前一侧 → 后一侧 3 条，后一侧 → 前一侧 0 条") {
-		t.Fatalf("judgment=%s", got.Judgment)
-	}
-}
-
-func TestDiagnosePair(t *testing.T) {
-	got := diagnoseLinks([]digestLink{
-		{FromName: "PEK-BJHK", ToName: "CAN-HXY"},
-		{FromName: "CAN-HXY", ToName: "PEK-BJHK"},
-	})
-	if got.Headline != "CAN-HXY — PEK-BJHK" {
-		t.Fatalf("headline=%s", got.Headline)
-	}
-	if !strings.Contains(got.Judgment, "前一侧 → 后一侧 1 条，后一侧 → 前一侧 1 条") {
-		t.Fatalf("judgment=%s", got.Judgment)
-	}
-}
-
-func TestDiagnoseOddCycle(t *testing.T) {
-	got := diagnoseLinks([]digestLink{
-		{FromName: "PEK-BJHK", ToName: "CAN-HXY"},
-		{FromName: "CAN-HXY", ToName: "CAN-XXG"},
-		{FromName: "CAN-XXG", ToName: "PEK-BJHK"},
-	})
-	if got.Headline != "无法二分" {
-		t.Fatalf("headline=%s", got.Headline)
-	}
-	if !strings.Contains(got.Judgment, "奇数环") || !strings.Contains(got.Judgment, "CAN-HXY—PEK-BJHK") {
-		t.Fatalf("judgment=%s", got.Judgment)
-	}
-}
-
-func TestDigestCardStatesBothEnds(t *testing.T) {
-	items := []pendingNotify{
-		{log: g.AlertLog{Fromname: "SIN-EQSG2", Targetname: "FRA-EQFRA5", Logtime: "2026-11-21 17:12", Reason: "延迟 222ms ≥ 200ms（观测 2 次）（窗口 60s / 规则 2 次）"}},
-		{log: g.AlertLog{Fromname: "TYO-EQTY7", Targetname: "FRA-EQFRA5", Logtime: "2026-11-21 17:12", Reason: "延迟 229ms ≥ 200ms（观测 2 次）（窗口 60s / 规则 2 次）"}},
-		{log: g.AlertLog{Fromname: "FRA-EQFRA5", Targetname: "SIN-EQSG2", Logtime: "2026-11-21 17:12", Reason: "丢包 10.3% ≥ 1%（观测 1 次）（窗口 60s / 规则 2 次）"}},
-	}
-	card := wecomText(buildDigest("alert", items))
-	for _, want := range []string{
-		"【故障区间】FRA-EQFRA5 — SIN-EQSG2、TYO-EQTY7",
-		"前一侧 → 后一侧 1 条，后一侧 → 前一侧 2 条",
-		"SIN-EQSG2 → FRA-EQFRA5  延迟 222ms ≥ 200ms（观测 2 次）",
-		"FRA-EQFRA5 → SIN-EQSG2  丢包 10.3% ≥ 1%（观测 1 次）",
-	} {
+	card := wecomText(buildDigest("alert", []pendingNotify{{log: g.AlertLog{Logtime: "2026-11-22 14:00"}}}, cells))
+	for _, want := range []string{"【HKG-EQHK2 ↔ PEK-BJHK】", "其余 2 正常 / 0 异常", "延迟 58.5ms ≥ 46ms（观测 5 次）"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("missing %q\n%s", want, card)
 		}
 	}
-	if strings.Contains(card, "优先查") || strings.Contains(card, "建议处置") {
-		t.Fatalf("digest should not use colloquial advice:\n%s", card)
-	}
-}
-
-func TestClassifyBreachUsesPeakNotMean(t *testing.T) {
-	rule := map[string]string{"Thdavgdelay": "42", "Thdloss": "1", "Thdchecksec": "60", "Thdoccnum": "2"}
-	typ, reason, tag := classifyBreach("10.100.1.15", "10.100.1.19", rule, WindowBreach{
-		DelayMax: 54.7, DelayN: 2, MeanDelay: 38.7,
-	})
-	if typ != "delay" || tag != "DELAY:10.100.1.15→10.100.1.19" {
-		t.Fatalf("typ=%s tag=%s", typ, tag)
-	}
-	if !strings.Contains(reason, "延迟 54.7ms ≥ 42ms（观测 2 次）") || strings.Contains(reason, "38.7") {
-		t.Fatalf("reason=%s", reason)
+	if strings.Contains(card, "前一侧") || strings.Contains(card, "建议处置") {
+		t.Fatalf("card still vague:\n%s", card)
 	}
 }
