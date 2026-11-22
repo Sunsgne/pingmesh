@@ -306,15 +306,12 @@ export default function Alerts({ user, config: cfg }) {
             <TableBody>
               {eventView.map((ev) => (
                 <TableRow hover key={ev.id}>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.opened}</TableCell>
-                  <TableCell sx={{ fontFamily: mono, fontSize: 12.5 }}>#{ev.id}</TableCell>
-                  <TableCell>
-                    <b>{ev.headline}</b>
-                    {ev.judgment && <Box sx={{ ...muted, fontSize: 12, mt: '4px', maxWidth: 420, lineHeight: 1.4 }}>{ev.judgment}</Box>}
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.recovered} / {ev.links}</TableCell>
-                  <TableCell>{ev.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复</Badge>}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{ev.closed || '-'}</TableCell>
+                  <TableCell sx={{ width: 168, whiteSpace: 'nowrap' }}>{ev.opened}</TableCell>
+                  <TableCell sx={{ width: 130, fontFamily: mono, fontSize: 12.5, whiteSpace: 'nowrap' }}>#{ev.id}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{ev.headline}</TableCell>
+                  <TableCell sx={{ width: 72, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{ev.recovered} / {ev.links}</TableCell>
+                  <TableCell sx={{ width: 96 }}>{ev.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复</Badge>}</TableCell>
+                  <TableCell sx={{ width: 168, whiteSpace: 'nowrap' }}>{ev.closed || '—'}</TableCell>
                   <TableCell>
                     <Link component="button" underline="none" onClick={() => setEventOpen(ev)}
                       sx={{ fontSize: 13.5, color: palette.primary }}>{'查看'}</Link>
@@ -400,19 +397,34 @@ export default function Alerts({ user, config: cfg }) {
       </Panel>
       )}
 
-      <SpDialog open={!!eventOpen} onClose={() => setEventOpen(null)} title={eventOpen ? `#${eventOpen.id} ${eventOpen.headline}` : ''} wide>
+      <SpDialog open={!!eventOpen} onClose={() => setEventOpen(null)} title={eventOpen ? `#${eventOpen.id}  ${eventOpen.headline}` : ''} wide>
         {eventOpen && (
-          <Box sx={{ fontSize: 13.5, lineHeight: 1.6 }}>
-            <Box sx={{ mb: 1 }}>{eventOpen.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复 {eventOpen.recovered}/{eventOpen.links}</Badge>}</Box>
-            {eventOpen.judgment && <Box sx={{ mb: 1.5 }}>{eventOpen.judgment}</Box>}
-            {(eventOpen.lines || []).map((ln, i) => <Box key={i} sx={{ fontFamily: mono, fontSize: 12.5 }}>{ln}</Box>)}
-            <Box sx={{ mt: 1.5, fontWeight: 700 }}>链路 {eventOpen.recovered}/{eventOpen.links}</Box>
-            {(eventOpen.members || []).map((m) => (
-              <Box key={m.key} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <span>{m.name}</span>
-                {m.resolved ? <Badge tone="green">已恢复</Badge> : <Badge tone="red">未恢复</Badge>}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+              {eventOpen.open ? <Badge tone="red" dot>未恢复</Badge> : <Badge tone="green">已恢复</Badge>}
+              <Box sx={{ color: palette.text2, fontSize: 13 }}>{eventOpen.recovered} / {eventOpen.links} 条链路</Box>
+              <Box sx={{ color: palette.text3, fontSize: 12.5 }}>{eventOpen.opened}{eventOpen.closed ? ` → ${eventOpen.closed}` : ''}</Box>
+            </Box>
+            {eventOpen.judgment && (
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 1, mb: 2 }}>
+                {eventOpen.judgment.replace(/。$/, '').split('；').filter(Boolean).map((part) => (
+                  <Box key={part} sx={{ px: 1.5, py: 1, borderRadius: '8px', bgcolor: '#f8fafc', border: `1px solid ${palette.border}`, fontSize: 13 }}>{part}</Box>
+                ))}
               </Box>
-            ))}
+            )}
+            {(eventOpen.lines || []).length > 0 && (
+              <Box sx={{ mb: 2, fontFamily: mono, fontSize: 12.5, lineHeight: 1.7 }}>
+                {eventOpen.lines.map((ln, i) => <Box key={i}>{ln}</Box>)}
+              </Box>
+            )}
+            <Box sx={{ borderTop: `1px solid ${palette.border}`, pt: 1.5, display: 'grid', gap: 0.75 }}>
+              {(eventOpen.members || []).map((m) => (
+                <Box key={m.key} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, fontSize: 13.5 }}>
+                  <span>{m.name}</span>
+                  {m.resolved ? <Badge tone="green">已恢复</Badge> : <Badge tone="red">未恢复</Badge>}
+                </Box>
+              ))}
+            </Box>
           </Box>
         )}
       </SpDialog>
