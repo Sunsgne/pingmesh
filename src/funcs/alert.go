@@ -45,10 +45,11 @@ func incidentOf(addr string) *incidentState {
 // (有人在处理, 别吵; 24小时后仍未恢复则继续提醒, 恢复后自动重置)
 func AckIncident(target string) {
 	incidentMu.Lock()
-	defer incidentMu.Unlock()
 	if st, ok := incidents[target]; ok {
 		st.AckedUntil = time.Now().Add(24 * time.Hour)
 	}
+	incidentMu.Unlock()
+	ackEventsForTarget(target)
 }
 
 func fmtDur(d time.Duration) string {

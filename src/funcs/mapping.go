@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cihub/seelog"
-	_ "modernc.org/sqlite"
 	"github.com/zenlenet/pingmesh/src/g"
 	"github.com/zenlenet/pingmesh/src/nettools"
 	"math"
+	_ "modernc.org/sqlite"
 	"net"
 	"strconv"
 	"sync"
@@ -40,7 +40,7 @@ func Mapping() {
 	MapPingStorage()
 }
 
-//ping main function
+// ping main function
 func MappingTask(tel string, prov string, ips []string, wg *sync.WaitGroup) {
 	seelog.Debug("Start MappingTask " + tel + " " + prov + "..")
 	statMap := []g.PingSt{}

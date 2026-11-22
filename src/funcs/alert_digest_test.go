@@ -3,8 +3,7 @@ package funcs
 import (
 	"strings"
 	"testing"
-
-	"github.com/zenlenet/pingmesh/src/g"
+	"time"
 )
 
 func mesh(from, to string, ok bool, detail string) meshCell {
@@ -89,8 +88,9 @@ func TestDigestCardNamesThePair(t *testing.T) {
 		mesh("PEK-BJHK", "SIN-EQSG2", true, ""),
 		mesh("SIN-EQSG2", "PEK-BJHK", true, ""),
 	}
-	card := wecomText(buildDigest("alert", []pendingNotify{{log: g.AlertLog{Logtime: "2026-11-22 14:00"}}}, cells))
-	for _, want := range []string{"【HKG-EQHK2 ↔ PEK-BJHK】", "行 HKG-EQHK2 1 正常 / 0 异常", "延迟 58.5ms ≥ 46ms（观测 5 次）"} {
+	ev := &alertEvent{ID: "1122-140000", Members: map[string]string{"a": "x", "b": "y"}}
+	card := wecomText(eventAlertMsg(ev, localizeMatrix(cells), time.Date(2026, 11, 22, 14, 0, 0, 0, time.Local)))
+	for _, want := range []string{"【HKG-EQHK2 ↔ PEK-BJHK】", "事件：#1122-140000", "行 HKG-EQHK2 1 正常 / 0 异常", "延迟 58.5ms ≥ 46ms（观测 5 次）"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("missing %q\n%s", want, card)
 		}

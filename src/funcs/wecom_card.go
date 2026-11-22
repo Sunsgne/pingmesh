@@ -125,15 +125,21 @@ func wecomType(m alertMsg) string {
 }
 
 func wecomHeadline(m alertMsg, f map[string]string) string {
+	id := ""
+	if v := f["事件"]; v != "" {
+		id = " " + v
+	}
 	switch m.Kind {
 	case "test":
 		return "【通道测试】企业微信告警联通测试"
-	case "recovery", "digest_recovery":
+	case "digest_recovery":
+		return "【已恢复】" + m.Link + id
+	case "recovery":
 		return "【已恢复】" + m.Link
 	case "digest":
-		return "【" + m.Link + "】"
+		return "【" + m.Link + "】" + id
 	case "digest_reminder":
-		return "【仍未恢复】" + m.Link
+		return "【仍未恢复】" + m.Link + id
 	case "digest_mute":
 		return "【屏蔽到期】" + m.Link
 	case "reminder":
@@ -152,21 +158,25 @@ func wecomHeadline(m alertMsg, f map[string]string) string {
 func wecomDetail(m alertMsg, f map[string]string) []string {
 	if strings.HasPrefix(m.Kind, "digest") {
 		var lines []string
-		if v := f["故障点对"]; v != "" {
-			lines = append(lines, "故障点对："+v)
-		}
-		if v := f["对照"]; v != "" {
-			lines = append(lines, "对照："+v)
-		}
-		if v := f["实测"]; v != "" {
-			for _, ln := range strings.Split(v, "\n") {
+		for _, kv := range m.Fields {
+			if kv[1] == "" {
+				continue
+			}
+			parts := strings.Split(kv[1], "\n")
+			if kv[0] == "实测" {
+				for _, ln := range parts {
+					if ln != "" {
+						lines = append(lines, ln)
+					}
+				}
+				continue
+			}
+			lines = append(lines, kv[0]+"："+parts[0])
+			for _, ln := range parts[1:] {
 				if ln != "" {
 					lines = append(lines, ln)
 				}
 			}
-		}
-		if v := f["时间"]; v != "" {
-			lines = append(lines, "时间："+v)
 		}
 		return lines
 	}

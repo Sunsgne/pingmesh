@@ -60,6 +60,7 @@ func probeClusterInfo(endpoint string, timeout time.Duration) (clusterPeerInfo, 
 //  1. 探测所有"其他"主候选节点的纪元与可达性
 //  2. 选出代理主节点(优先级最高且可达者), 仅用于展示与运维指引
 //  3. 采用 LWW: 从纪元最新的可达候选采纳配置, 实现全网收敛与主挂自动接管
+//
 // takeoverStreak 备选节点连续判定应接管的轮数(仅 ClusterSync 单协程读写)
 var takeoverStreak int
 

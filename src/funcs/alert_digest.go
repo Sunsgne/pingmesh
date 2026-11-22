@@ -58,11 +58,21 @@ func endLabel(ip, name string) string {
 // 某个点到其余方向都正常、只有和对端异常，故障就在这两个点之间。
 // 某个点到多数对端都异常，故障就在这个点，而不是随便划两侧。
 func localizeMatrix(cells []meshCell) digestView {
+	return localizeFocus(cells, nil)
+}
+
+// localizeFocus 只对 focus 里的异常格定位（同一事件的链路），对照时仍按整张矩阵的真实状态计数。
+// focus 为 nil 时取全部异常格。
+func localizeFocus(cells []meshCell, focus map[string]bool) digestView {
+	inFocus := func(c meshCell) bool {
+		return !c.OK && (focus == nil || focus[c.FromIP+"|"+c.ToIP])
+	}
 	type ns struct {
-		label         string
-		outBad, outOK int
-		inBad, inOK   int
-		peers         map[string]bool
+		label               string
+		outBad, outOK       int
+		inBad, inOK         int
+		outBadAll, inBadAll int
+		peers               map[string]bool
 	}
 	nodes := map[string]*ns{}
 	ensure := func(ip, name string) *ns {
@@ -85,6 +95,11 @@ func localizeMatrix(cells []meshCell) digestView {
 		if c.OK {
 			a.outOK++
 			b.inOK++
+			continue
+		}
+		a.outBadAll++
+		b.inBadAll++
+		if !inFocus(c) {
 			continue
 		}
 		badN++
@@ -112,10 +127,10 @@ func localizeMatrix(cells []meshCell) digestView {
 	}
 	if best != nil {
 		n := nodes[best.key]
-		lines := badLinesTouching(cells, best.key)
+		lines := badLinesTouching(cells, best.key, inFocus)
 		return digestView{
 			Headline: "节点 " + n.label,
-			Judgment: "行 " + n.label + " " + countText(n.outOK, n.outBad) + "；列 " + n.label + " " + countText(n.inOK, n.inBad) + "。",
+			Judgment: "行 " + n.label + " " + countText(n.outOK, n.outBadAll) + "；列 " + n.label + " " + countText(n.inOK, n.inBadAll) + "。",
 			Lines:    lines,
 		}
 	}
@@ -127,7 +142,7 @@ func localizeMatrix(cells []meshCell) digestView {
 	seen := map[string]*pair{}
 	var order []string
 	for _, c := range cells {
-		if c.OK {
+		if !inFocus(c) {
 			continue
 		}
 		a, b := endKey(c.FromIP, c.FromName), endKey(c.ToIP, c.ToName)
@@ -257,10 +272,10 @@ func pairDirectionLines(cells []meshCell, a, b string) []string {
 	return lines
 }
 
-func badLinesTouching(cells []meshCell, key string) []string {
+func badLinesTouching(cells []meshCell, key string, inFocus func(meshCell) bool) []string {
 	var lines []string
 	for _, c := range cells {
-		if c.OK {
+		if !inFocus(c) {
 			continue
 		}
 		if endKey(c.FromIP, c.FromName) != key && endKey(c.ToIP, c.ToName) != key {
@@ -298,76 +313,4 @@ func localizeLinks(links []digestLink) digestView {
 		})
 	}
 	return localizeMatrix(cells)
-}
-
-// buildDigest 用矩阵把同一轮通知收成「哪两个点」或「哪一个节点」。
-func buildDigest(kind string, items []pendingNotify, cells []meshCell) alertMsg {
-	view := localizeMatrix(cells)
-	if kind == "recovery" || len(cells) == 0 {
-		links := make([]digestLink, 0, len(items))
-		for _, it := range items {
-			links = append(links, digestLink{
-				FromIP: it.log.Fromip, FromName: it.log.Fromname,
-				ToIP: it.log.Targetip, ToName: it.log.Targetname,
-				Detail: it.log.Reason,
-			})
-		}
-		view = localizeLinks(links)
-	}
-	msgKind, title := "digest", "🔴 故障点对"
-	recovered := false
-	if strings.HasPrefix(view.Headline, "节点 ") {
-		title = "🔴 故障节点"
-	}
-	switch kind {
-	case "recovery":
-		msgKind, title, recovered = "digest_recovery", "✅ 已恢复", true
-	case "reminder":
-		msgKind, title = "digest_reminder", "⏰ 仍未恢复"
-	case "mute_expired":
-		msgKind, title = "digest_mute", "🔔 屏蔽到期"
-	}
-	when := ""
-	if len(items) > 0 {
-		when = items[0].log.Logtime
-	}
-	fields := [][2]string{
-		{"故障点对", view.Headline},
-		{"对照", view.Judgment},
-		{"实测", strings.Join(view.Lines, "\n")},
-		{"时间", when},
-	}
-	var b strings.Builder
-	b.WriteString(title + " " + view.Headline + "\n")
-	for _, f := range fields {
-		b.WriteString(f[0] + ": " + f[1] + "\n")
-	}
-	return alertMsg{
-		Kind: msgKind, Recovered: recovered, Title: title, Link: view.Headline,
-		Fields: fields, Plain: strings.TrimRight(b.String(), "\n"),
-	}
-}
-
-// sendPending 一轮结束时发送。告警用整张矩阵定位到两个点或一个节点。
-func sendPending(items []pendingNotify, cells []meshCell) {
-	if len(items) == 0 {
-		return
-	}
-	groups := map[string][]pendingNotify{}
-	order := []string{}
-	for _, it := range items {
-		if _, ok := groups[it.kind]; !ok {
-			order = append(order, it.kind)
-		}
-		groups[it.kind] = append(groups[it.kind], it)
-	}
-	for _, kind := range order {
-		batch := groups[kind]
-		if kind != "alert" && kind != "reminder" && len(batch) == 1 {
-			it := batch[0]
-			NotifyAll(it.log, it.rule, it.kind, it.extras)
-			continue
-		}
-		NotifyBuilt(buildDigest(kind, batch, cells))
-	}
 }

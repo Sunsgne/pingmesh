@@ -222,8 +222,22 @@ func MasterAlertSweep() {
 	}
 	wg.Wait()
 
-	var pending []pendingNotify
-	var matrix []meshCell
+	loadOpenEvents()
+	now := time.Now()
+	delta := sweepDelta{
+		present: map[string]bool{}, reachable: map[string]bool{},
+		now: now, remind: time.Duration(remindMin) * time.Minute,
+	}
+	for addr, member := range g.Cfg.Network {
+		if !member.Pingmesh {
+			continue
+		}
+		for _, rule := range member.Topology {
+			if t := rule["Addr"]; t != "" && t != addr {
+				delta.present[masterIncidentKey(addr, t)] = true
+			}
+		}
+	}
 	for addr, member := range g.Cfg.Network {
 		if !member.Pingmesh {
 			continue
@@ -234,6 +248,7 @@ func MasterAlertSweep() {
 			seelog.Info("[func:MasterAlertSweep] skip unreachable probe ", member.Name, " (", addr, ")")
 			continue
 		}
+		delta.reachable[addr] = true
 		if snap.FromName == "" {
 			snap.FromName = member.Name
 		}
@@ -253,7 +268,6 @@ func MasterAlertSweep() {
 			}
 			key := masterIncidentKey(addr, target)
 			old, haskey := masterGetStatus(key)
-			// true=正常, false=异常 (与旧 StartAlert 语义一致)
 			healthy := h.OK
 			st := incidentOf(key)
 			l := g.AlertLog{
@@ -261,13 +275,12 @@ func MasterAlertSweep() {
 				Fromip:     addr,
 				Targetname: h.Name,
 				Targetip:   target,
-				Logtime:    time.Now().Format("2006-01-02 15:04"),
+				Logtime:    now.Format("2006-01-02 15:04"),
 			}
 			if l.Targetname == "" {
 				l.Targetname = rule["Name"]
 			}
 			r := topologyRule(member, target)
-			// 合并配置规则字段(阈值文案)
 			for k, v := range rule {
 				if v != "" {
 					r[k] = v
@@ -277,104 +290,67 @@ func MasterAlertSweep() {
 			if !h.OK {
 				_, cellDetail, _ = classifyBreach(addr, target, r, breachFromHealth(h))
 			}
-			toName := l.Targetname
-			matrix = append(matrix, meshCell{
-				FromIP: addr, FromName: snap.FromName, ToIP: target, ToName: toName,
+			delta.cells = append(delta.cells, meshCell{
+				FromIP: addr, FromName: snap.FromName, ToIP: target, ToName: l.Targetname,
 				OK: h.OK, Delay: h.AvgDelay, Loss: h.Loss, Detail: cellDetail,
 			})
 
 			alertNow, recoveryNow := masterTransition(haskey, old, healthy)
 			if healthy {
 				if recoveryNow {
-					// 窗口刚清空就发恢复，抖动链路会变成「告警、恢复、告警」。
-					// 连续正常满 2 分钟再发，期间状态仍视为未恢复，不会再报一次新告警。
+					// 连续正常满 2 分钟才算恢复，期间仍按故障计，不会再开一个新事件。
 					if st.HealthySince.IsZero() {
-						st.HealthySince = time.Now()
+						st.HealthySince = now
 					}
-					if !recoveryHoldElapsed(st.HealthySince, time.Now(), recoveryHold) {
+					if !recoveryHoldElapsed(st.HealthySince, now, recoveryHold) {
 						continue
 					}
-					st.HealthySince = time.Time{}
-				} else {
-					st.HealthySince = time.Time{}
-				}
-				masterSetStatus(key, true)
-				if recoveryNow {
 					seelog.Info("[func:MasterAlertSweep] recovered ", key)
-					if !h.Muted {
-						extras := [][2]string{}
-						if !st.BadSince.IsZero() {
-							extras = append(extras, [2]string{"故障持续", fmtDur(time.Since(st.BadSince))})
-						}
-						if h.AvgDelay > 0 || h.Loss > 0 {
-							extras = append(extras, [2]string{"近15分钟实测",
-								"平均延迟 " + strconv.FormatFloat(h.AvgDelay, 'f', 1, 64) + " ms / 丢包 " +
-									strconv.FormatFloat(h.Loss, 'f', 0, 64) + "% / 抖动 " +
-									strconv.FormatFloat(h.Jitter, 'f', 1, 64) + " ms"})
-						}
-						pending = append(pending, pendingNotify{log: l, rule: r, kind: "recovery", extras: extras})
-					}
+					delta.recovered = append(delta.recovered, key)
 					st.BadSince = time.Time{}
 					st.MutedSkip = false
 					st.AckedUntil = time.Time{}
 				}
+				st.HealthySince = time.Time{}
+				masterSetStatus(key, true)
 				continue
 			}
 
-			// 异常。第一次见到只记状态，避免重启后把存量故障再通知一遍。
+			// 异常。第一次见到只记状态，避免重启后把存量故障再通知一遍；这类链路恢复时也不发恢复。
 			st.HealthySince = time.Time{}
 			if !haskey {
 				masterSetStatus(key, false)
-				st.BadSince = time.Now()
-				st.LastNotify = time.Now()
+				st.BadSince = now
 				seelog.Info("[func:MasterAlertSweep] baseline ", key, " down, skip notify")
 				continue
 			}
+			startEvent := false
 			if alertNow {
-				seelog.Info("[func:MasterAlertSweep] alert ", key)
 				masterSetStatus(key, false)
-				st.BadSince = time.Now()
+				st.BadSince = now
 				st.AckedUntil = time.Time{}
-				l.AvgDelay, l.Loss, l.Jitter = h.AvgDelay, h.Loss, h.Jitter
-				l.AlertType, l.Reason, l.Tag = classifyBreach(addr, target, r, breachFromHealth(h))
-				// 落库由探测节点本地 StartAlert 负责; 主节点只发通知, 避免错误记到主节点库
 				if h.Muted {
 					st.MutedSkip = true
 					seelog.Info("[func:MasterAlertSweep] ", key, " muted, notification skipped")
 				} else {
-					st.LastNotify = time.Now()
-					extras := [][2]string{
-						{"告警类型", AlertTypeLabel(l.AlertType)},
-						{"故障 Tag", l.Tag},
-						{"触发原因", l.Reason},
-					}
-					if h.AvgDelay > 0 || h.Loss > 0 || h.Jitter > 0 || h.DelayHits+h.LossHits+h.JitterHits > 0 {
-						extras = append(extras, [2]string{"窗口均值",
-							"延迟 " + strconv.FormatFloat(h.AvgDelay, 'f', 1, 64) + " ms / 丢包 " +
-								strconv.FormatFloat(h.Loss, 'f', 1, 64) + "% / 抖动 " +
-								strconv.FormatFloat(h.Jitter, 'f', 1, 64) + " ms"})
-					}
-					pending = append(pending, pendingNotify{log: l, rule: r, kind: "alert", extras: extras})
+					startEvent = true
 				}
-				continue
-			}
-
-			dur := [2]string{"故障持续", fmtDur(time.Since(st.BadSince))}
-			if h.Muted {
+			} else if h.Muted {
 				st.MutedSkip = true
-			} else if st.MutedSkip {
-				seelog.Info("[func:MasterAlertSweep] ", key, " mute expired but still down")
+			} else if st.MutedSkip && eventOf(key) == "" {
+				// 屏蔽结束仍故障：这时才第一次通知，按新事件算，之后也会有对应的恢复
 				st.MutedSkip = false
-				st.LastNotify = time.Now()
-				pending = append(pending, pendingNotify{log: l, rule: r, kind: "mute_expired", extras: [][2]string{dur}})
-			} else if remindMin > 0 && time.Now().After(st.AckedUntil) && !st.LastNotify.IsZero() &&
-				time.Since(st.LastNotify) >= time.Duration(remindMin)*time.Minute {
-				seelog.Info("[func:MasterAlertSweep] ", key, " reminder")
-				st.LastNotify = time.Now()
-				pending = append(pending, pendingNotify{log: l, rule: r, kind: "reminder", extras: [][2]string{dur}})
+				startEvent = true
+				seelog.Info("[func:MasterAlertSweep] ", key, " mute expired but still down")
+			}
+			if startEvent {
+				seelog.Info("[func:MasterAlertSweep] alert ", key)
+				l.AvgDelay, l.Loss, l.Jitter = h.AvgDelay, h.Loss, h.Jitter
+				l.AlertType, l.Reason, l.Tag = classifyBreach(addr, target, r, breachFromHealth(h))
+				delta.newBad = append(delta.newBad, pendingNotify{log: l, rule: r, kind: "alert"})
 			}
 		}
 	}
-	sendPending(pending, matrix)
+	settleEvents(delta)
 	seelog.Debug("[func:MasterAlertSweep] finish")
 }
