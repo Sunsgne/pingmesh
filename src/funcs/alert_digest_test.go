@@ -32,7 +32,7 @@ func TestLocalizeIsolatedPair(t *testing.T) {
 	if got.Headline != "HKG-EQHK2 ↔ PEK-BJHK" {
 		t.Fatalf("headline=%s", got.Headline)
 	}
-	if !strings.Contains(got.Judgment, "HKG-EQHK2 其余 4 正常 / 0 异常") || !strings.Contains(got.Judgment, "PEK-BJHK 其余 4 正常 / 0 异常") {
+	if !strings.Contains(got.Judgment, "行 HKG-EQHK2 2 正常 / 0 异常") || !strings.Contains(got.Judgment, "列 PEK-BJHK 2 正常 / 0 异常") {
 		t.Fatalf("judgment=%s", got.Judgment)
 	}
 	if !strings.Contains(strings.Join(got.Lines, "\n"), "延迟 58.5ms ≥ 46ms（观测 5 次）") {
@@ -75,7 +75,7 @@ func TestLocalizeNodeNotFakePair(t *testing.T) {
 	if got.Headline != "节点 FRA" {
 		t.Fatalf("headline=%s", got.Headline)
 	}
-	if !strings.Contains(got.Judgment, "发出 3 异常 / 0 正常") || !strings.Contains(got.Judgment, "收到 3 异常 / 0 正常") {
+	if !strings.Contains(got.Judgment, "行 FRA 0 正常 / 3 异常") || !strings.Contains(got.Judgment, "列 FRA 0 正常 / 3 异常") {
 		t.Fatalf("judgment=%s", got.Judgment)
 	}
 }
@@ -90,7 +90,7 @@ func TestDigestCardNamesThePair(t *testing.T) {
 		mesh("SIN-EQSG2", "PEK-BJHK", true, ""),
 	}
 	card := wecomText(buildDigest("alert", []pendingNotify{{log: g.AlertLog{Logtime: "2026-11-22 14:00"}}}, cells))
-	for _, want := range []string{"【HKG-EQHK2 ↔ PEK-BJHK】", "其余 2 正常 / 0 异常", "延迟 58.5ms ≥ 46ms（观测 5 次）"} {
+	for _, want := range []string{"【HKG-EQHK2 ↔ PEK-BJHK】", "行 HKG-EQHK2 1 正常 / 0 异常", "延迟 58.5ms ≥ 46ms（观测 5 次）"} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("missing %q\n%s", want, card)
 		}

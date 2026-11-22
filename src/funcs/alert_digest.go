@@ -115,7 +115,7 @@ func localizeMatrix(cells []meshCell) digestView {
 		lines := badLinesTouching(cells, best.key)
 		return digestView{
 			Headline: "节点 " + n.label,
-			Judgment: n.label + " 发出 " + strconv.Itoa(n.outBad) + " 异常 / " + strconv.Itoa(n.outOK) + " 正常；收到 " + strconv.Itoa(n.inBad) + " 异常 / " + strconv.Itoa(n.inOK) + " 正常。",
+			Judgment: "行 " + n.label + " " + countText(n.outOK, n.outBad) + "；列 " + n.label + " " + countText(n.inOK, n.inBad) + "。",
 			Lines:    lines,
 		}
 	}
@@ -177,7 +177,7 @@ func localizeMatrix(cells []meshCell) digestView {
 			heads = append(heads, p.bName+" → "+p.aName)
 		}
 		if isolatedOnly {
-			judges = append(judges, p.aName+" 其余 "+restText(cells, p.a, p.b)+"；"+p.bName+" 其余 "+restText(cells, p.b, p.a))
+			judges = append(judges, rowColText(cells, p.a, p.b, p.aName)+"；"+rowColText(cells, p.b, p.a, p.bName))
 		}
 		lines = append(lines, pairDirectionLines(cells, p.a, p.b)...)
 	}
@@ -191,14 +191,35 @@ func localizeMatrix(cells []meshCell) digestView {
 	return digestView{Headline: strings.Join(heads, "；"), Judgment: judgment, Lines: lines}
 }
 
+func rowColText(cells []meshCell, self, except, label string) string {
+	rowOK, rowBad, colOK, colBad := 0, 0, 0, 0
+	for _, c := range cells {
+		a, b := endKey(c.FromIP, c.FromName), endKey(c.ToIP, c.ToName)
+		if a == self && b != except {
+			if c.OK {
+				rowOK++
+			} else {
+				rowBad++
+			}
+		}
+		if b == self && a != except {
+			if c.OK {
+				colOK++
+			} else {
+				colBad++
+			}
+		}
+	}
+	return "行 " + label + " " + countText(rowOK, rowBad) + "；列 " + label + " " + countText(colOK, colBad)
+}
+
+func countText(ok, bad int) string {
+	return strconv.Itoa(ok) + " 正常 / " + strconv.Itoa(bad) + " 异常"
+}
+
 func restBad(cells []meshCell, self, other string) int {
 	bad, _ := restCount(cells, self, other)
 	return bad
-}
-
-func restText(cells []meshCell, self, other string) string {
-	bad, ok := restCount(cells, self, other)
-	return strconv.Itoa(ok) + " 正常 / " + strconv.Itoa(bad) + " 异常"
 }
 
 func restCount(cells []meshCell, self, other string) (bad, ok int) {
