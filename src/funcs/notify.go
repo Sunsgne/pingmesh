@@ -204,11 +204,16 @@ func sendRich(ch g.AlertChannel, m alertMsg, payload map[string]interface{}) (st
 			return "", errors.New("企业微信机器人 Url 不能为空")
 		}
 		// 纯文本没有颜色。markdown 只给文字上色，不用 > 引用条。
-		body, err := postJson(p["Url"], map[string]interface{}{
-			"msgtype":  "markdown",
-			"markdown": map[string]string{"content": wecomText(m)},
-		})
-		return body, checkErrcode(body, err)
+		// 重要告警再发一条 text，用 mentioned_list=@all 真正提醒全群。
+		var last string
+		for _, msg := range wecomMessages(m) {
+			body, err := postJson(p["Url"], msg)
+			if err = checkErrcode(body, err); err != nil {
+				return body, err
+			}
+			last = body
+		}
+		return last, nil
 	case "feishu":
 		if p["Url"] == "" {
 			return "", errors.New("飞书机器人 Url 不能为空")

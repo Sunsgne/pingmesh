@@ -51,6 +51,38 @@ func wecomText(m alertMsg) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// wecomMentionAll 重要告警才 @所有人。恢复和通道测试不叫全群。
+func wecomMentionAll(kind string) bool {
+	switch kind {
+	case "recovery", "digest_recovery", "test":
+		return false
+	default:
+		return true
+	}
+}
+
+// wecomMessages 企业微信群机器人的消息。markdown 保留颜色；
+// @所有人只能放在 text 的 mentioned_list 里，所以重要告警再补一条短文本。
+func wecomMessages(m alertMsg) []map[string]interface{} {
+	msgs := []map[string]interface{}{
+		{
+			"msgtype":  "markdown",
+			"markdown": map[string]string{"content": wecomText(m)},
+		},
+	}
+	if !wecomMentionAll(m.Kind) {
+		return msgs
+	}
+	msgs = append(msgs, map[string]interface{}{
+		"msgtype": "text",
+		"text": map[string]interface{}{
+			"content":        wecomHeadline(m, firstFields(m.Fields)),
+			"mentioned_list": []string{"@all"},
+		},
+	})
+	return msgs
+}
+
 func wecomColor(kind string) string {
 	switch kind {
 	case "recovery", "digest_recovery":

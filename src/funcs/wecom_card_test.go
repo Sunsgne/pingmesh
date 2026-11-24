@@ -154,6 +154,37 @@ func TestWecomCardRecoveryReminderTest(t *testing.T) {
 	}
 }
 
+func TestWecomMentionAllOnImportantOnly(t *testing.T) {
+	for _, kind := range []string{"alert", "digest", "reminder", "digest_reminder", "mute_expired", "digest_mute"} {
+		msgs := wecomMessages(alertMsg{
+			Kind:   kind,
+			Link:   "HKG-EQHK2 ↔ PEK-BJHK",
+			Fields: [][2]string{{"事件", "#1124-110000"}},
+		})
+		if len(msgs) != 2 || msgs[0]["msgtype"] != "markdown" || msgs[1]["msgtype"] != "text" {
+			t.Fatalf("%s should send the card and then @all, got %#v", kind, msgs)
+		}
+		text := msgs[1]["text"].(map[string]interface{})
+		mentioned := text["mentioned_list"].([]string)
+		if len(mentioned) != 1 || mentioned[0] != "@all" {
+			t.Fatalf("%s mention = %v", kind, mentioned)
+		}
+		content := text["content"].(string)
+		if !strings.Contains(content, "HKG-EQHK2 ↔ PEK-BJHK") {
+			t.Fatalf("%s mention text %q", kind, content)
+		}
+		if (kind == "digest" || kind == "digest_reminder") && !strings.Contains(content, "#1124-110000") {
+			t.Fatalf("%s mention should carry the event id, got %q", kind, content)
+		}
+	}
+	for _, kind := range []string{"recovery", "digest_recovery", "test"} {
+		msgs := wecomMessages(alertMsg{Kind: kind, Link: "HKG-EQHK2 ↔ PEK-BJHK"})
+		if len(msgs) != 1 || msgs[0]["msgtype"] != "markdown" {
+			t.Fatalf("%s should stay a single card without @all", kind)
+		}
+	}
+}
+
 func TestWecomCardEdges(t *testing.T) {
 	muted := wecomText(alertMsg{
 		Kind: "mute_expired",
